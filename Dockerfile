@@ -24,8 +24,9 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 # Generate Prisma client and build the application
-RUN npx prisma generate && \
-    npm run build
+RUN npx prisma generate
+RUN npx prisma migrate deploy
+RUN npm run build
 
 # Production stage
 FROM node:20-alpine AS production
