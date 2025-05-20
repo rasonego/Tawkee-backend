@@ -1,0 +1,284 @@
+// Modelo do Banco de Dados
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Workspace - Espaço de trabalho que contém agentes
+model Workspace {
+  id                   String         @id @default(uuid())
+  name                 String
+  credits              Int            @default(0)
+  subscriptionStatus   SubscriptionStatus @default(TRIAL)
+  agents               Agent[]        
+  chats                Chat[]         
+  interactions         Interaction[]  
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+// Agent - Um assistente virtual com comportamento personalizado
+model Agent {
+  id                   String         @id @default(uuid())
+  name                 String
+  behavior             String         @db.Text
+  avatar               String?
+  communicationType    CommunicationType
+  type                 AgentType
+  jobName              String?
+  jobSite              String?
+  jobDescription       String?        @db.Text
+  isActive             Boolean        @default(true)
+  
+  // Relações
+  workspaceId          String
+  workspace            Workspace      @relation(fields: [workspaceId], references: [id])
+  settings             AgentSettings?
+  webhooks             AgentWebhooks?
+  trainings            Training[]
+  intentions           Intention[]
+  channels             Channel[]
+  creditSpent          CreditSpent[]
+  chats                Chat[]
+  interactions         Interaction[]
+  
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+enum CommunicationType {
+  FORMAL
+  NORMAL
+  RELAXED
+}
+
+enum AgentType {
+  SUPPORT
+  SALE
+  PERSONAL
+}
+
+// Configurações do agente
+model AgentSettings {
+  id                   String         @id @default(uuid())
+  preferredModel       AIModel        @default(GPT_4_1)
+  timezone             String         @default("UTC")
+  enabledHumanTransfer Boolean        @default(true)
+  enabledReminder      Boolean        @default(true)
+  splitMessages        Boolean        @default(true)
+  enabledEmoji         Boolean        @default(true)
+  limitSubjects        Boolean        @default(true)
+  messageGroupingTime  GroupingTime   @default(NO_GROUP)
+  
+  // Relação
+  agentId              String         @unique
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+enum AIModel {
+  GPT_4_1
+  GPT_4_1_MINI
+  GPT_4_O_MINI
+  GPT_4_O
+  OPEN_AI_O3_MINI
+  OPEN_AI_O4_MINI
+  OPEN_AI_O3
+  OPEN_AI_O1
+  GPT_4
+  CLAUDE_3_5_SONNET
+  CLAUDE_3_7_SONNET
+  CLAUDE_3_5_HAIKU
+  DEEPINFRA_LLAMA3_3
+  QWEN_2_5_MAX
+  DEEPSEEK_CHAT
+  SABIA_3
+}
+
+enum GroupingTime {
+  NO_GROUP
+  FIVE_SEC
+  TEN_SEC
+  THIRD_SEC
+  ONE_MINUTE
+}
+
+// Configurações de webhooks do agente
+model AgentWebhooks {
+  id                   String         @id @default(uuid())
+  onNewMessage         String?
+  onLackKnowLedge      String?
+  onTransfer           String?
+  onFinishAttendance   String?
+  
+  // Relação
+  agentId              String         @unique
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+// Treinamento - Material de conhecimento para o agente
+model Training {
+  id                   String         @id @default(uuid())
+  type                 TrainingType
+  
+  // Campos específicos por tipo
+  text                 String?        @db.Text
+  image                String?
+  website              String?
+  trainingSubPages     String?        @default("DISABLED")
+  trainingInterval     String?
+  video                String?
+  documentUrl          String?
+  documentName         String?
+  documentMimetype     String?
+  
+  // Relação
+  agentId              String
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+enum TrainingType {
+  TEXT
+  WEBSITE
+  VIDEO
+  DOCUMENT
+}
+
+// Intenção - Ações que o agente pode realizar
+model Intention {
+  id                   String         @id @default(uuid())
+  description          String
+  preprocessingMessage PreprocessingType @default(DISABLED)
+  preprocessingText    String?        @db.Text
+  type                 String         @default("WEBHOOK")
+  httpMethod           String         @default("GET")
+  url                  String?
+  requestBody          String?        @db.Text
+  autoGenerateParams   Boolean        @default(true)
+  autoGenerateBody     Boolean        @default(true)
+  
+  // Relações
+  fields               IntentionField[]
+  headers              IntentionHeader[]
+  params               IntentionParam[]
+  
+  agentId              String
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+enum PreprocessingType {
+  DISABLED
+  GENERATE
+  MANUAL
+}
+
+// Campo de uma intenção
+model IntentionField {
+  id                   String         @id @default(uuid())
+  name                 String
+  jsonName             String
+  description          String
+  type                 FieldType
+  required             Boolean        @default(false)
+  
+  // Relação
+  intentionId          String
+  intention            Intention      @relation(fields: [intentionId], references: [id], onDelete: Cascade)
+}
+
+enum FieldType {
+  TEXT
+  URL
+  DATE_TIME
+  DATE
+  NUMBER
+  BOOLEAN
+}
+
+// Header de uma chamada webhook de intenção
+model IntentionHeader {
+  id                   String         @id @default(uuid())
+  name                 String
+  value                String
+  
+  // Relação
+  intentionId          String
+  intention            Intention      @relation(fields: [intentionId], references: [id], onDelete: Cascade)
+}
+
+// Parâmetro de uma chamada webhook de intenção
+model IntentionParam {
+  id                   String         @id @default(uuid())
+  name                 String
+  value                String
+  
+  // Relação
+  intentionId          String
+  intention            Intention      @relation(fields: [intentionId], references: [id], onDelete: Cascade)
+}
+
+// Registro de consumo de créditos
+model CreditSpent {
+  id                   String         @id @default(uuid())
+  credits              Int
+  year                 Int
+  month                Int
+  day                  Int
+  model                String
+  
+  // Relação
+  agentId              String
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  createdAt            DateTime       @default(now())
+}
+
+// Chat - Conversa entre usuário e agente
+model Chat {
+  id                   String         @id @default(uuid())
+  title                String?
+  name                 String?
+  contextId            String         @unique  // ID externo para identificar o cliente
+  userName             String?
+  userPicture          String?
+  whatsappPhone        String?
+  humanTalk            Boolean        @default(false)  // Indica se está no controle humano
+  read                 Boolean        @default(true)
+  finished             Boolean        @default(false)
+  unReadCount          Int            @default(0)
+  
+  // Relações
+  messages             Message[]
+  interactions         Interaction[]
+  
+  workspaceId          String
+  workspace            Workspace      @relation(fields: [workspaceId], references: [id])
+  
+  agentId              String
+  agent                Agent          @relation(fields: [agentId], references: [id])
+  
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}

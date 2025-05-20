@@ -1,0 +1,13 @@
+dist
+node_modules
+.git
+.gitignore
+README.md
+.env
+.env.*
+prisma/migrations
+build
+coverage
+public
+**/*.min.js
+**/vendor/**

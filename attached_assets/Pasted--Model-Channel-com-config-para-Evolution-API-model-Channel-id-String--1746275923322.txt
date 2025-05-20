@@ -1,0 +1,113 @@
+// Model Channel com config para Evolution API
+model Channel {
+  id                   String         @id @default(uuid())
+  name                 String
+  type                 ChannelType
+  connected            Boolean        @default(false)
+  
+  // Configuração centralizada para diferentes tipos de canais
+  // Para Evolution API, vai conter: instanceId, instanceName, webhookToken, webhookUrl, etc.
+  config               Json           @default("{}")
+  
+  // Relação
+  agentId              String
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  // Relacionamento com mensagens recebidas (webhook)
+  webhookEvents        WebhookEvent[]
+  
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+// Modelo refinado para eventos de webhook da Evolution API
+model WebhookEvent {
+  id                   String         @id @default(uuid())
+  event                String         // Ex: 'messages.upsert', 'status.instance', etc.
+  instance             String         // Nome da instância que enviou o evento
+  instanceId           String         // ID da instância que enviou o evento
+  rawData              Json           // Payload completo do campo 'data'
+  destination          String?        // URL de destino do webhook
+  dateTime             DateTime       // Data/hora do evento (server time)
+  sender               String?        // Número do remetente (quando aplicável)
+  serverUrl            String?        // URL do servidor da Evolution API
+  apikey               String?        // API key utilizada na requisição
+  
+  // Campos específicos extraídos para facilitar consultas
+  remoteJid            String?        // Número/grupo destinatário da mensagem
+  fromMe               Boolean?       // Se a mensagem foi enviada pelo usuário conectado
+  messageId            String?        // ID da mensagem no WhatsApp
+  pushName             String?        // Nome do contato
+  messageType          String?        // Tipo de mensagem (conversation, image, etc)
+  messageContent       String?        @db.Text // Conteúdo principal da mensagem
+  messageTimestamp     BigInt?        // Timestamp da mensagem
+  mediaUrl             String?        // URL da mídia se existir
+  
+  // Status de processamento
+  processed            Boolean        @default(false)
+  processedAt          DateTime?
+  error                String?        @db.Text
+  
+  // Relações
+  channelId            String
+  channel              Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  
+  // Mensagem criada a partir deste evento (opcional)
+  relatedMessageId     String?        @unique
+  relatedMessage       Message?       @relation("WebhookEventMessage", fields: [relatedMessageId], references: [id])
+  
+  createdAt            DateTime       @default(now())
+  
+  @@index([remoteJid, processed])
+  @@index([channelId, processed])
+  @@index([messageId])
+}
+
+// Message model com relações para webhook e status
+model Message {
+  id                   String         @id @default(uuid())
+  text                 String?        @db.Text
+  role                 String         // 'user' ou 'assistant'
+  userName             String?
+  userPicture          String?
+  type                 String?
+  
+  // Conteúdo de mídia
+  imageUrl             String?
+  audioUrl             String?
+  documentUrl          String?
+  fileName             String?
+  midiaContent         String?
+  width                Int?
+  height               Int?
+  
+  // Campos específicos para Evolution API
+  whatsappMessageId    String?        @unique // ID da mensagem no WhatsApp
+  whatsappStatus       String?        // Status (sent, delivered, read)
+  whatsappTimestamp    BigInt?        // Timestamp do WhatsApp
+  
+  // Para mensagens que enviamos
+  sentToEvolution      Boolean        @default(false)
+  sentAt               DateTime?
+  deliveredAt          DateTime?
+  readAt               DateTime?
+  failedAt             DateTime?
+  failReason           String?        @db.Text
+  
+  // Relações de webhook
+  sourceWebhookEvent   WebhookEvent?  @relation("WebhookEventMessage")
+  statusUpdates        WebhookEvent[] @relation("StatusUpdates")
+  
+  // Relações originais
+  chatId               String
+  chat                 Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  
+  interactionId        String?
+  interaction          Interaction?   @relation(fields: [interactionId], references: [id])
+  
+  createdAt            DateTime       @default(now())
+  time                 BigInt         @default(dbgenerated("extract(epoch from now()) * 1000"))
+  
+  @@index([whatsappMessageId])
+  @@index([chatId, createdAt])
+}

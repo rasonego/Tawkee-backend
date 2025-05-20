@@ -1,0 +1,116 @@
+5 CHATS: Chats são vinculados ao WORKSPACE
+
+5.1 Listar chats
+GET /v2/workspace/{workspaceId}/chats
+where workspaceId is path param
+
+Query Parameters
+​
+agentId (string) // filter by agent id
+page (integer) // page number
+pageSize (integer) // page size
+query (string) // filter by intention description
+
+200: Returns the list of chat data
+[
+  {
+    "humanTalk": true, // boolean: Indica se o chat está no controle de um humano ou do agente.
+    "userPicture": "<string | null>", // imagem do usuário que assumiu o atendimento
+    "messageUserName": "<string>", // nome do usuário que enviou a mensagem
+    "read": true, // indica se o chat está lido
+    "role": "<string>", // função no chat
+    "agentName": "<string>", // nome do agente
+    "agentId": "<string>", // id do agente
+    "whatsappPhone": "<string>", // número do whastapp
+    "finished": true, // indica se o chat está finalizado
+    "avatar": "<string>", // avatar do assistente
+    "title": "<string>", // título do chat
+    "type": "<string>", // tipo de chat (quais opções??)
+    "userName": "<string>",  // nome do usuário
+    "userId": "<string>", // ID do usuário
+    "picture": "<string>", // imagem associada ao chat
+    "conversationType": "<string>", // tipo de conversa (quais tipos???)
+    "createdAt": 123, 
+    "name": "<string>", // nome do chat
+    "recipient": "<string>", // destinatário do chat
+    "id": "<string>", // id do chat
+    "time": 123,
+    "unReadCount": 123, // contagem de não lidos (???)
+    "conversation": "<string>" // conversa
+  }
+]
+
+5.2 Deletar chat
+DELETE /v2/chat/{chatId}
+
+200:
+{
+      “success”: true
+}
+
+5.3 Listar mensagens (mensagens estão vinculadas à um chat)
+GET /v2/chat/{chatId}/messages
+where chatId is a path param
+
+Query Parameters
+​
+page (integer) // page number
+pageSize (integer) // page size
+
+200: Returns list of messages data
+[
+  {
+    "userPicture": "<string | null>",
+    "fileName": "<string | null>",
+    "role": "<string>", // Função no chat
+    "documentUrl": "<string>", 
+    "type": "<string>", // message type (???)
+    "userName": "<string | null>",
+    "midiaContent": "<string> | null>",
+    "userId": "<string>",
+    "audioUrl": "<string>",
+    "imageUrl": "<string>",
+    "width": 123,
+    "id": "<string>",
+    "text": "<string>",
+    "time": 123,
+    "height": 123
+  }
+]
+
+5.4 Deletar mensagens
+DELETE v2/chat/{chatId}/messages
+
+200:
+{
+  "success": true
+}
+
+5.5 Assumir atendimento
+PUT v2/chat/{chatId}/start-human
+
+200:
+{
+  "success": true
+}
+
+5.6 Encerrar atendimento
+PUT /v2/chat/{chatId}/stop-human
+
+200:
+{
+  "success": true
+}
+
+5.7 Enviar mensagem
+POST /v2/chat/{chatId}/send-message
+
+Body:
+{
+  "message": "<string>"
+}
+
+200:
+{
+  "success": true
+}

@@ -1,0 +1,23 @@
+{
+  "description": "Warn user about inactive conversation",
+  "preprocessingMessage": "MANUAL",
+  "preprocessingText": "I'll send a warning about inactivity.",
+  "type": "WEBHOOK",
+  "httpMethod": "PUT",
+  "url": "http://localhost:5000/interaction/{{interactionId}}/warn",
+  "requestBody": "{\"warningMessage\": \"This conversation has been inactive for a while. If there's no response in the next 5 minutes, I'll close this conversation to help manage our chat queue effectively.\"}",
+  "autoGenerateParams": false,
+  "autoGenerateBody": false,
+  "fields": [],
+  "headers": [
+    {
+      "name": "Content-Type",
+      "value": "application/json"
+    },
+    {
+      "name": "Authorization", 
+      "value": "Bearer {{API_TOKEN}}"
+    }
+  ],
+  "params": []
+}

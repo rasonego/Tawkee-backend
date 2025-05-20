@@ -1,0 +1,23 @@
+{
+  "description": "End current conversation",
+  "preprocessingMessage": "MANUAL",
+  "preprocessingText": "I'll mark this conversation as resolved.",
+  "type": "WEBHOOK",
+  "httpMethod": "POST",
+  "url": "http://localhost:5000/interaction/{{interactionId}}/resolve",
+  "requestBody": "{\"resolution\": \"User requested to end the conversation\"}",
+  "autoGenerateParams": false,
+  "autoGenerateBody": false,
+  "fields": [],
+  "headers": [
+    {
+      "name": "Content-Type",
+      "value": "application/json"
+    },
+    {
+      "name": "Authorization", 
+      "value": "Bearer {{API_TOKEN}}"
+    }
+  ],
+  "params": []
+}

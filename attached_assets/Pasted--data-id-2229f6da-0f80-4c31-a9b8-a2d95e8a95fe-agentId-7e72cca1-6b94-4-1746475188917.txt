@@ -1,0 +1,140 @@
+{
+	"data": [
+		{
+			"id": "2229f6da-0f80-4c31-a9b8-a2d95e8a95fe",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "e2898f6c-03e0-4e03-9057-27ca0ae035ce",
+			"chatName": "Chat do Victor",
+			"status": "RUNNING",
+			"startAt": "2025-05-05T18:09:12.414Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		},
+		{
+			"id": "c6ac024e-d7c7-411a-9498-70147f4daddc",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "8e22b0a1-1b79-4a06-b21f-6886a3ca5724",
+			"chatName": null,
+			"status": "RUNNING",
+			"startAt": "2025-05-05T15:56:58.963Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		},
+		{
+			"id": "55015f2e-6180-479b-a322-cca8017ad92c",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "0aa14cd2-75e4-4a4c-a27d-ec2a13f090b3",
+			"chatName": null,
+			"status": "RUNNING",
+			"startAt": "2025-05-05T14:10:46.317Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		},
+		{
+			"id": "a8673de0-f1c3-46f6-9e9d-f43dec0e5004",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "78b803d0-c5f7-49a1-a217-5493800cafaf",
+			"chatName": null,
+			"status": "RUNNING",
+			"startAt": "2025-05-05T13:27:36.639Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		},
+		{
+			"id": "7b16d6bb-9fcd-4ac0-b7fd-3ad116e33b19",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "57526bb8-4c4b-4e58-9c0e-483839c0c424",
+			"chatName": null,
+			"status": "RUNNING",
+			"startAt": "2025-05-05T13:24:07.533Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		},
+		{
+			"id": "540736db-f90c-4a1b-8394-d9cf0b29dd1c",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "17bbe6c0-9458-42a0-bdbf-3004d41a0034",
+			"chatName": null,
+			"status": "RUNNING",
+			"startAt": "2025-05-05T13:17:19.641Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		},
+		{
+			"id": "2004701e-7591-4df1-b2c6-7fc1a54a6e53",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "b2b47ecc-554c-476f-96a4-d8eb4f688cd2",
+			"chatName": null,
+			"status": "RUNNING",
+			"startAt": "2025-05-05T12:45:52.688Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		},
+		{
+			"id": "98a08c03-c37f-4724-bdd8-073685dbc286",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "c6af8dbc-573d-42c1-90e5-79d29168a0d1",
+			"chatName": null,
+			"status": "RUNNING",
+			"startAt": "2025-05-05T12:25:05.493Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		},
+		{
+			"id": "d846d949-9f92-43cc-b186-3fb1d4dd8564",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "1fc36ff1-bc37-41d4-b8c3-36242bc3e4fb",
+			"chatName": null,
+			"status": "RUNNING",
+			"startAt": "2025-05-05T12:11:51.625Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		},
+		{
+			"id": "f3f88b6c-f956-4b6c-9cd5-a5b6b7737699",
+			"agentId": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+			"agentName": "Sarah Chen",
+			"agentAvatar": null,
+			"chatId": "9f3096bd-e9b0-47e3-9bc0-bdbe66f10177",
+			"chatName": null,
+			"status": "RUNNING",
+			"startAt": "2025-05-05T12:09:31.236Z",
+			"transferAt": null,
+			"resolvedAt": null,
+			"userId": null
+		}
+	],
+	"meta": {
+		"total": 13,
+		"page": 1,
+		"pageSize": 10,
+		"totalPages": 2
+	}
+}

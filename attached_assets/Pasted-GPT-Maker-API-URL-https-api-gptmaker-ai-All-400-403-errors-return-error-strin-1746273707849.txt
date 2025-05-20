@@ -1,0 +1,752 @@
+GPT Maker API
+
+URL: https://api.gptmaker.ai
+
+All 400 / 403 errors return:
+{
+  "error": "<string>"
+}
+
+All routes require authorization through JWT Token in Header: ‘Authorization Bearer <token>’
+
+1) WORKSPACE: Espaço de trabalho ao qual AGENTES são vinculados. O saldo de créditos também está vinculado ao WORKSPACE, bem como a assinatura. Então entendemos que ao fazer uma assinatura, você assina pra ganhar um determinado WORKSPACE com certa quantidade de créditos, para gastar no uso dos AGENTES.
+
+1.1) Listar os workspaces 
+GET /v2/workspaces
+
+200: Returns a list of workpaces (their ids and names)
+[
+  {
+    "id": "<string>",
+    "name": "<string>"
+  }
+]
+
+1.2) Saldo de créditos 
+GET /v2/workspace/{workspaceId}/credits
+where workspaceId is a required path params
+
+200: Returns the amount of credits (integer) and subscription status
+{
+  "credits": 123,
+  "status": "TRIAL" // Available options: "TRIAL", "ACTIVE", "PAST_DUE", "CANCELED"
+}
+
+2) AGENTES: Personas específicas que têm a capacidade de responder à mensagens de chat.
+
+2.1) Lista de agentes 
+GET /v2/workspace/{workspaceId}/agents
+where workspaceId is a required path params
+
+There are also query params available:
+-- page (integer) // page number
+-- pageSize (integer) // page size
+-- query (string) // filter results by agent name
+
+200: Returns the list of agents (their ids, names, behavior, avatar, communicationType, type, jobName, jobSite, jobDescription)
+[
+  {
+    "id": "<string>",
+    "name": "<string>",
+    "behavior": "<string>",
+    "avatar": "<string>",
+    "communicationType": "FORMAL", // Available options: "FORMAL", "NORMAL", "RELAXED"
+    "type": "SUPPORT", // Available options: "SUPPORT", "SALE", "PERSONAL"
+    "jobName": "<string>",
+    "jobSite": "<string>",
+    "jobDescription": "<string>"
+  }
+]
+
+2.2) Criação de agente 
+POST /v2/workspace/{workspaceId}/agents
+where workspaceId is a required path params
+
+The required body is json:
+{
+  "name": "<string>",
+  "avatar": "<string>",
+  "behavior": "<string>",
+  "communicationType": "FORMAL", // Available options: "FORMAL", "NORMAL", "RELAXED"
+  "type": "SUPPORT", // Available options: "SUPPORT", "SALE", "PERSONAL"
+  "jobName": "<string>",
+  "jobSite": "<string>",
+  "jobDescription": "<string>"
+}
+
+200: Returns the body along with an unique id
+{
+  "id": "<string>",
+  "name": "<string>",
+  "behavior": "<string>",
+  "avatar": "<string>",
+  "communicationType": "FORMAL", // Available options: "FORMAL", "NORMAL", "RELAXED"
+  "type": "SUPPORT", // Available options: "SUPPORT", "SALE", "PERSONAL"
+  "jobName": "<string>",
+  "jobSite": "<string>",
+  "jobDescription": "<string>"
+}
+
+2.3) Deleção de agente 
+DELETE /v2/agent/{agentId}
+where agentId is a required path params
+
+200: Returns whether the operation was successful or not
+{
+  "success": true
+}
+
+2.4) Busca agente por id 
+GET /v2/agent/{agentId}
+where agentId is a required path params
+
+200: Returns agent data
+{
+  "id": "<string>",
+  "name": "<string>",
+  "behavior": "<string>",
+  "avatar": "<string>",
+  "communicationType": "FORMAL", // Available options: "FORMAL", "NORMAL", "RELAXED"
+  "type": "SUPPORT", // Available options: "SUPPORT", "SALE", "PERSONAL"
+  "jobName": "<string>",
+  "jobSite": "<string>",
+  "jobDescription": "<string>"
+}
+
+2.5) Consumo de créditos 
+GET /v2/agent/{agentId}/credits-spent
+where agentId is a required path params
+
+200: Returns the total spent credits ("total") and a list of spent credits per date per model {day, month, year represent the actual date, and credits the total amount
+spent per date per model)
+  "total": 123,
+  "data": [
+    {
+      "credits": 123,
+      "year": 123,
+      "month": 123,
+      "day": 123,
+      "model": "<string>"
+    }
+  ]
+}
+
+2.6) Atualizar um agente existente 
+PUT /v2/agent/{agentId}
+where agentId is a required path params
+
+The required body is json:
+{
+  "name": "<string>",
+  "avatar": "<string>",
+  "behavior": "<string>",
+  "communicationType": "FORMAL", // Available options: "FORMAL", "NORMAL", "RELAXED"
+  "type": "SUPPORT", // Available options: "SUPPORT", "SALE", "PERSONAL"
+  "jobName": "<string>",
+  "jobSite": "<string>",
+  "jobDescription": "<string>"
+}
+
+200: Returns all current data of the updated agent
+{
+  "id": "<string>",
+  "name": "<string>",
+  "behavior": "<string>",
+  "avatar": "<string>",
+  "communicationType": "FORMAL",
+  "type": "SUPPORT",
+  "jobName": "<string>",
+  "jobSite": "<string>",
+  "jobDescription": "<string>"
+}
+
+2.7 Inativar um agente 
+PUT /v2/agent/{agentId}/inactive
+where agentId is a required path params
+
+200: Returns whether the action was successful or not
+{
+  "success": true
+}
+
+2.8 Ativar agente 
+PUT /v2/agent/{agentId}/active
+where agentId is a required path params
+
+200: Returns whether the action was successful or not
+{
+  "success": true
+}
+
+2.9 Pegar configurações 
+GET /v2/agent/{agentId}/settings
+where agentId is a required path params
+
+200: // Return current settings of existing agent.
+{
+  "prefferModel": "GPT_4_1",
+  "timezone": "<string>", // Agent timezone
+  "enabledHumanTransfer": true, // Defines if the agent can transfer to human during chat
+  "enabledReminder": true, // Defines if the agent can schedule reminders
+  "splitMessages": true, // Defines if the message will be split in various, in case it is huge
+  "enabledEmoji": true, // Defines if the agent can use emoji on the messages
+  "limitSubjects": true, // Defines if the agent can talk about other subjects rather than the company or product subject
+  "messageGroupingTime": "NO_GROUP" // What does it mean?
+}
+
+preferredModel Available options: GPT_4_1, GPT_4_1_MINI, GPT_4_O_MINI, GPT_4_O, OPEN_AI_O3_MINI, OPEN_AI_O4_MINI, OPEN_AI_O3, OPEN_AI_O1, GPT_4, CLAUDE_3_5_SONNET, CLAUDE_3_7_SONNET, CLAUDE_3_5_HAIKU, DEEPINFRA_LLAMA3_3, QWEN_2_5_MAX, DEEPSEEK_CHAT, SABIA_3
+
+messageGroupingTime Available options: NO_GROUP, FIVE_SEC, TEN_SEC, THIRD_SEC, ONE_MINUTE (What does it mean?)
+
+2.10 Atualizar configurações 
+PUT /v2/agent/{agentId}/settings
+where agentId is a required path params
+
+The body is a json:
+{
+  "prefferModel": "GPT_4_1",
+  "timezone": "<string>", // Agent timezone
+  "enabledHumanTransfer": true, // Defines if the agent can transfer to human during chat
+  "enabledReminder": true, // Defines if the agent can schedule reminders
+  "splitMessages": true, // Defines if the message will be split in various, in case it is huge
+  "enabledEmoji": true, // Defines if the agent can use emoji on the messages
+  "limitSubjects": true, // Defines if the agent can talk about other subjects rather than the company or product subject
+  "messageGroupingTime": "NO_GROUP" // What does it mean?
+}
+
+200: // Return whether the action was successful or not
+{
+  "success": true
+}
+
+preferredModel Available options: GPT_4_1, GPT_4_1_MINI, GPT_4_O_MINI, GPT_4_O, OPEN_AI_O3_MINI, OPEN_AI_O4_MINI, OPEN_AI_O3, OPEN_AI_O1, GPT_4, CLAUDE_3_5_SONNET, CLAUDE_3_7_SONNET, CLAUDE_3_5_HAIKU, DEEPINFRA_LLAMA3_3, QWEN_2_5_MAX, DEEPSEEK_CHAT, SABIA_3
+
+messageGroupingTime Available options: NO_GROUP, FIVE_SEC, TEN_SEC, THIRD_SEC, ONE_MINUTE (What does it mean?)
+
+2.11 Pegar Webhooks
+GET /v2/agent/{agentId}/webhooks
+where agentId is a required path params
+
+200: Returns webhook URLs
+{
+  "onNewMessage": "<string>", // Quando chega uma nova mensagem em um chat
+  "onLackKnowLedge": "<string>", // Quando o agente não sabe responder uma pergunta
+  "onTransfer": "<string>", // Quando o agente transfere o atendimento para um humano
+  "onFinishAttendance": "<string>" // Quando um atendimento é finalizado
+}
+
+2.12 Atualizar webhooks
+PUT /v2/agent/{agentId}/webhooks
+where agentId is a required path params
+
+Body:
+{
+  "onNewMessage": "<string>",
+  "onLackKnowLedge": "<string>",
+  "onTransfer": "<string>",
+  "onFinishAttendance": "<string>"
+}
+
+200: Returns whether the action succeeded or failed
+{
+  "success": true
+}
+
+2.13 Conversar com agente
+POST /v2/agent/{agentId}/conversation
+where agentId is a required path params
+
+Body is json:
+{
+  "contextId": "12345", // Id externo para identificar o cliente
+  "prompt": "oi qual seu nome?", // Texto para o agente responder
+  "callbackUrl": "https://webhook.site", // Caso seja informado, a chamada será assíncrona, quando o agente responder, ele vai chamar esse webhook com a resposta
+  "chatName": "Fulano", // Você pode informar o nome do cliente caso já possua
+  "chatPicture": "https://foto.jpeg", // Uma foto do cliente que será mostrada no chat de atendimento
+  "phone": "55xxxxxxxx" // Número de whatsapp do cliente
+}
+
+
+200: Returns the response via text, and may include an array of images and/or audios
+{
+  "message": "<string>", // Resposta do agente
+  "images": [
+    "<string>" // URLs das imagens respondidas pelo agente
+  ],
+  "audios": [
+    "<string>" // URL dos áudios respondidos pelo agente
+  ]
+}
+
+2.14 Adicionar contexto // Permite adicionar uma mensagem ao contexto da conversa, muito usado para quando fizer um disparo ativo por outras ferramentas e precisa adicionar essa mensagem ao contexto da conversa
+POST /v2/agent/{agentId}/add-message
+where agentId is a required path params
+
+Body:
+{ 
+  "contextId": "12345", // Id externo para identificar o cliente
+  "prompt": "oi você tem interesse no produto x?",
+  "role": "<string>" // define se é uma mensagem do usuário ou do agente, 'user' ou 'assistant' default: 'assistant'
+}
+
+200: 
+{
+  "message": "<string>",
+  "images": [
+    "<string>"
+  ],
+  "audios": [
+    "<string>"
+  ]
+}
+
+3) TREINAMENTOS: Até onde entendi, treinamentos são pedaços de informação que são incrementam os prompts feitos durante as conversas com a IA
+
+3.1 Listar treinamentos
+GET /v2/agent/{agentId}/trainings
+where agentId is the path params
+
+Query params:
+
+
+page (integer) // page number
+pageSize (integer) // page size
+type (enum) // training type used to filter results. 
+
+query
+string
+Filtro para os treinamentos
+
+
+200: Returns a list of training material
+When returning data of type “TEXT”:
+[
+  {
+    "id": "<string>",
+    "type": "TEXT", Available options: TEXT, WEBSITE, VIDEO, DOCUMENT 
+​    "text": "<string>",
+    "image": "<string>"
+  }
+]
+
+When returning data of type “WEBSITE”:
+[
+  {
+    "id": "<string>",
+    "type": "WEBSITE",
+​    "website": "<string>",
+    "trainingSubPages": "<string>", // Available options: DISABLED, ACTIVE
+    “trainingInterval”: enum<string>  // Available options: THIRTY_SECONDS, NEVER, ONE_HOUR, FOUR_HOUR, EIGHT_HOUR, TWELVE_HOUR, ONE_DAY, ONE_WEEK, ONE_MONTH
+  }
+]
+
+When returning data of type “VIDEO”:
+[
+  {
+    "id": "<string>",
+    "type": "WEBSITE",
+​    "video": "<string>",
+  }
+]
+
+
+When returning data of type “DOCUMENT”:
+[
+  {
+    "id": "<string>",
+    "type": "DOCUMENT",
+    “documentUrl”: “<string>”,
+    “documentName”: “<string>”
+    “documentMimetype”: “<string>”
+​  }
+]
+
+3.2 Criar treinamento
+POST /v2/agent/{agentId}/trainings
+where agentId is a path param
+
+Body:
+{
+  "type": "TEXT",
+  "text": "<string>",
+  "image": "<string>"
+} ** a training material as detailed on topic 3.1 **
+
+200: Returns whether the training was successful or not
+{
+   “success”: true
+}
+
+3.3 Atualizar treinamento
+PUT /v2/training/{trainingId}
+where trainingId is a path param
+
+Body:
+{
+  "type": "TEXT", // Only TEXT type is available for update
+  "text": "<string>",
+  "image": "<string>"
+}
+
+3.4 Remover treinamento
+DELETE /v2/training/{trainingId}
+
+
+200:
+{
+  "success": true
+}
+
+4 INTENÇÕES: Ainda não está claro para mim do que se tratam intenções do agente.
+
+4.1 Listar intenções
+GET /v2/agent/{agentId}/intentions
+
+Query Parameters
+​
+page (integer) // page number
+pageSize (integer) // page size
+query (string) // filter by intention description
+
+200: Returns list of intentions:
+[
+  {
+    "id": "<string>",
+    "description": "<string>",
+    "preprocessingMessage": "DISABLED", Available options: DISABLED, GENERATE, MANUAL
+    "preprocessingText": "<string>",
+    "fields": [
+      {
+        "name": "<string>",
+        "jsonName": "<string>",
+        "description": "<string>",
+        "type": "TEXT", // Available options: TEXT, URL, DATE_TIME, DATE, NUMBER, BOOLEAN
+        "required": true 
+      }
+    ],
+    "type": "WEBHOOK", // Available options: WEBHOOK
+    "httpMethod": "GET",
+    "url": "<string>",
+    "headers": [
+      {
+        "name": "<string>",
+        "value": "<string>"
+      }
+    ],
+    "params": [
+      {
+        "name": "<string>",
+        "value": "<string>"
+      }
+    ],
+    "requestBody": "<string>",
+    "autoGenerateParams": true,
+    "autoGenerateBody": true
+  }
+]
+
+4.2 Criar intenção
+POST v2/agent/{agentId}/intentions
+where agentId is a path param
+Body:
+  {
+    "id": "<string>",
+    "description": "<string>",
+    "preprocessingMessage": "DISABLED", Available options: DISABLED, GENERATE, MANUAL
+    "preprocessingText": "<string>",
+    "fields": [
+      {
+        "name": "<string>",
+        "jsonName": "<string>",
+        "description": "<string>",
+        "type": "TEXT", // Available options: TEXT, URL, DATE_TIME, DATE, NUMBER, BOOLEAN
+        "required": true 
+      }
+    ],
+    "type": "WEBHOOK", // Available options: WEBHOOK
+    "httpMethod": "GET",
+    "url": "<string>",
+    "headers": [
+      {
+        "name": "<string>",
+        "value": "<string>"
+      }
+    ],
+    "params": [
+      {
+        "name": "<string>",
+        "value": "<string>"
+      }
+    ],
+    "requestBody": "<string>",
+    "autoGenerateParams": true,
+    "autoGenerateBody": true
+  }
+
+200:
+{
+  "success": true
+}
+
+4.3 Atualizar intenção
+PUT /v2/intention/{intentionId}
+where intentionId is a path param
+
+Body:
+{
+  "id": "<string>",
+  "description": "<string>",
+  "preprocessingMessage": "DISABLED",
+  "preprocessingText": "<string>",
+  "fields": [
+    {
+      "name": "<string>",
+      "jsonName": "<string>",
+      "description": "<string>",
+      "type": "TEXT",
+      "required": true
+    }
+  ],
+  "type": "WEBHOOK",
+  "httpMethod": "GET",
+  "url": "<string>",
+  "headers": [
+    {
+      "name": "<string>",
+      "value": "<string>"
+    }
+  ],
+  "params": [
+    {
+      "name": "<string>",
+      "value": "<string>"
+    }
+  ],
+  "requestBody": "<string>",
+  "autoGenerateParams": true,
+  "autoGenerateBody": true
+}
+
+200:
+{
+  "success": true
+}
+
+4.4 Remover intenção
+DELETE/v2/intention/{intentionId}
+
+200:
+{
+  "success": true
+}
+
+5 CHATS: Chats são vinculados ao WORKSPACE
+
+5.1 Listar chats
+GET /v2/workspace/{workspaceId}/chats
+where workspaceId is path param
+
+Query Parameters
+​
+agentId (string) // filter by agent id
+page (integer) // page number
+pageSize (integer) // page size
+query (string) // filter by intention description
+
+200: Returns the list of chat data
+[
+  {
+    "humanTalk": true, // boolean: Indica se o chat está no controle de um humano ou do agente.
+    "userPicture": "<string | null>", // imagem do usuário que assumiu o atendimento
+    "messageUserName": "<string>", // nome do usuário que enviou a mensagem
+    "read": true, // indica se o chat está lido
+    "role": "<string>", // função no chat
+    "agentName": "<string>", // nome do agente
+    "agentId": "<string>", // id do agente
+    "whatsappPhone": "<string>", // número do whastapp
+    "finished": true, // indica se o chat está finalizado
+    "avatar": "<string>", // avatar do assistente
+    "title": "<string>", // título do chat
+    "type": "<string>", // tipo de chat (quais opções??)
+    "userName": "<string>",  // nome do usuário
+    "userId": "<string>", // ID do usuário
+    "picture": "<string>", // imagem associada ao chat
+    "conversationType": "<string>", // tipo de conversa (quais tipos???)
+    "createdAt": 123, 
+    "name": "<string>", // nome do chat
+    "recipient": "<string>", // destinatário do chat
+    "id": "<string>", // id do chat
+    "time": 123,
+    "unReadCount": 123, // contagem de não lidos (???)
+    "conversation": "<string>" // conversa
+  }
+]
+
+5.2 Deletar chat
+DELETE /v2/chat/{chatId}
+
+200:
+{
+      “success”: true
+}
+
+5.3 Listar mensagens (mensagens estão vinculadas à um chat)
+GET /v2/chat/{chatId}/messages
+where chatId is a path param
+
+Query Parameters
+​
+page (integer) // page number
+pageSize (integer) // page size
+
+200: Returns list of messages data
+[
+  {
+    "userPicture": "<string | null>",
+    "fileName": "<string | null>",
+    "role": "<string>", // Função no chat
+    "documentUrl": "<string>", 
+    "type": "<string>", // message type (???)
+    "userName": "<string | null>",
+    "midiaContent": "<string> | null>",
+    "userId": "<string>",
+    "audioUrl": "<string>",
+    "imageUrl": "<string>",
+    "width": 123,
+    "id": "<string>",
+    "text": "<string>",
+    "time": 123,
+    "height": 123
+  }
+]
+
+5.4 Deletar mensagens
+DELETE v2/chat/{chatId}/messages
+
+200:
+{
+  "success": true
+}
+
+5.5 Assumir atendimento
+PUT v2/chat/{chatId}/start-human
+
+200:
+{
+  "success": true
+}
+
+5.6 Encerrar atendimento
+PUT /v2/chat/{chatId}/stop-human
+
+200:
+{
+  "success": true
+}
+
+5.7 Enviar mensagem
+POST /v2/chat/{chatId}/send-message
+
+Body:
+{
+  "message": "<string>"
+}
+
+200:
+{
+  "success": true
+}
+
+6 ATENDIMENTOS
+
+6.1 Listar atendimentos (Lista os atendimentos de um workspace, uma mesma conversa com seu cliente pode gerar vários atendimentos, pois o cliente pode retornar várias vezes, essa api lista todos os atendimentos, quando iniciou, quando finalizou, status etc.)
+
+GET /v2/workspace/{workspaceId}/interactions
+where workspaceId is the path param
+
+Query Parameters
+​
+agentId (string) // ID do agente para filtrar os atendimentos
+page (integer) // Número da página
+pageSize (integer) // Tamanho da página
+
+200:
+[
+  {
+    "id": "<string>",
+    "agentId": "<string>",
+    "agentName": "<string>",
+    "agentAvatar": "<string>",
+    "chatId": "<string>", // Id do chat/contextId.
+    "chatName": "<string>",
+    "status": "RUNNING", // Available options: RUNNING, WAITING, RESOLVED
+    "startAt": "2023-11-07T05:31:56Z", // Data/hora de início do atendimento.
+    "transferAt": "2023-11-07T05:31:56Z", // Data/hora da transferência foi feita para humano.
+    "resolvedAt": "2023-11-07T05:31:56Z", //Data/hora do encerramento do atendimento.
+    "userId": "<string>" // Id do membro que participou do atendimento.
+  }
+]
+
+6.2 Mensagens do atendimento (Lista as mensagens de um atendimento especifico, muitos clientes usam dessa API para gerar resumos ou fazer análises sobre o atendimento)
+GET /v2/interaction/{interactionId}/messages
+where interactionId is path param
+
+200: Returns list of message of this attendance
+[
+  {
+    "userPicture": "<string>",
+    "fileName": "<string>",
+    "role": "<string>",
+    "documentUrl": "<string>",
+    "type": "<string>",
+    "userName": "<string>",
+    "midiaContent": "<string>",
+    "userId": "<string>",
+    "audioUrl": "<string>",
+    "imageUrl": "<string>",
+    "width": 123,
+    "id": "<string>",
+    "text": "<string>",
+    "time": 123,
+    "height": 123
+  }
+]
+
+
+7 CANAIS
+
+7.1 Listar canais (Lista os canais de um agente)
+GET /v2/agent/{agentId}/search
+where agentId is a path param
+
+Query Parameters
+​
+page (integer) //Número da página
+
+​
+pageSize (integer) //Tamanho da página
+
+​query (string) //Filtro pelo nome do canal
+
+200: Return list of chanel 
+{
+  "data": [
+    {
+      "name": "<string>",
+      "type": "WHATSAPP",
+      "id": "<string>",
+      "connected": true
+    }
+  ],
+  "count": 123
+}
+
+7.2 Criar canal
+POST /v2/agent/{agentId}/create-channel
+where agentId is a query param
+
+Body:
+{
+  "name": "<string>",
+  "type": "WHATSAPP" // Available options: WHATSAPP, INSTAGRAM, CLOUD_API, TELEGRAM, WIDGET, MESSENGER, MERCADO_LIVRE
+}

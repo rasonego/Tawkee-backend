@@ -1,0 +1,314 @@
+{   event: 'messages.upsert',   instance: 'Teste',   data: {     key: {       remoteJid: '553597731025@s.whatsapp.net',       fromMe: true,       id: '0100A7D3C3A5BD5F97EB1E774399D8B3'     },     pushName: 'Victor Baptista',     message: {       conversation: 'Mensagem de teste',       messageContextInfo: { messageSecret: 'xT46+HciN92zmN518N4MGO2Xfub6niXHrwJHU+95/ws=' }     },     messageType: 'conversation',     messageTimestamp: 1746272800,     instanceId: 'd306001a-8793-47ec-be85-7f246983d1f5',     source: 'android'   },   destination: 'https://9aa9-2804-29b8-50a6-dedc-bc14-5ed1-54ad-9f7b.ngrok-free.app',   date_time: '2025-05-03T08:46:40.638Z',   sender: '558396628630@s.whatsapp.net',   server_url: 'http://localhost:8080',   apikey: 'B8F693111D90-4571-863D-92429C4D1C69' }
+
+Editar
+Modelagem Refinada para Integração com Evolution API
+Entendi suas preferências. Vamos ajustar o modelo para armazenar os detalhes de configuração da Evolution API dentro do campo config do modelo Channel e vamos aprimorar o modelo WebhookEvent com base no exemplo de JSON fornecido.
+
+Schema Prisma Atualizado
+prisma
+// Model Channel com config para Evolution API
+model Channel {
+  id                   String         @id @default(uuid())
+  name                 String
+  type                 ChannelType
+  connected            Boolean        @default(false)
+  
+  // Configuração centralizada para diferentes tipos de canais
+  // Para Evolution API, vai conter: instanceId, instanceName, webhookToken, webhookUrl, etc.
+  config               Json           @default("{}")
+  
+  // Relação
+  agentId              String
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  // Relacionamento com mensagens recebidas (webhook)
+  webhookEvents        WebhookEvent[]
+  
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+// Modelo refinado para eventos de webhook da Evolution API
+model WebhookEvent {
+  id                   String         @id @default(uuid())
+  event                String         // Ex: 'messages.upsert', 'status.instance', etc.
+  instance             String         // Nome da instância que enviou o evento
+  instanceId           String         // ID da instância que enviou o evento
+  rawData              Json           // Payload completo do campo 'data'
+  destination          String?        // URL de destino do webhook
+  dateTime             DateTime       // Data/hora do evento (server time)
+  sender               String?        // Número do remetente (quando aplicável)
+  serverUrl            String?        // URL do servidor da Evolution API
+  apikey               String?        // API key utilizada na requisição
+  
+  // Campos específicos extraídos para facilitar consultas
+  remoteJid            String?        // Número/grupo destinatário da mensagem
+  fromMe               Boolean?       // Se a mensagem foi enviada pelo usuário conectado
+  messageId            String?        // ID da mensagem no WhatsApp
+  pushName             String?        // Nome do contato
+  messageType          String?        // Tipo de mensagem (conversation, image, etc)
+  messageContent       String?        @db.Text // Conteúdo principal da mensagem
+  messageTimestamp     BigInt?        // Timestamp da mensagem
+  mediaUrl             String?        // URL da mídia se existir
+  
+  // Status de processamento
+  processed            Boolean        @default(false)
+  processedAt          DateTime?
+  error                String?        @db.Text
+  
+  // Relações
+  channelId            String
+  channel              Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  
+  // Mensagem criada a partir deste evento (opcional)
+  relatedMessageId     String?        @unique
+  relatedMessage       Message?       @relation("WebhookEventMessage", fields: [relatedMessageId], references: [id])
+  
+  createdAt            DateTime       @default(now())
+  
+  @@index([remoteJid, processed])
+  @@index([channelId, processed])
+  @@index([messageId])
+}
+
+// Message model com relações para webhook e status
+model Message {
+  id                   String         @id @default(uuid())
+  text                 String?        @db.Text
+  role                 String         // 'user' ou 'assistant'
+  userName             String?
+  userPicture          String?
+  type                 String?
+  
+  // Conteúdo de mídia
+  imageUrl             String?
+  audioUrl             String?
+  documentUrl          String?
+  fileName             String?
+  midiaContent         String?
+  width                Int?
+  height               Int?
+  
+  // Campos específicos para Evolution API
+  whatsappMessageId    String?        @unique // ID da mensagem no WhatsApp
+  whatsappStatus       String?        // Status (sent, delivered, read)
+  whatsappTimestamp    BigInt?        // Timestamp do WhatsApp
+  
+  // Para mensagens que enviamos
+  sentToEvolution      Boolean        @default(false)
+  sentAt               DateTime?
+  deliveredAt          DateTime?
+  readAt               DateTime?
+  failedAt             DateTime?
+  failReason           String?        @db.Text
+  
+  // Relações de webhook
+  sourceWebhookEvent   WebhookEvent?  @relation("WebhookEventMessage")
+  statusUpdates        WebhookEvent[] @relation("StatusUpdates")
+  
+  // Relações originais
+  chatId               String
+  chat                 Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  
+  interactionId        String?
+  interaction          Interaction?   @relation(fields: [interactionId], references: [id])
+  
+  createdAt            DateTime       @default(now())
+  time                 BigInt         @default(dbgenerated("extract(epoch from now()) * 1000"))
+  
+  @@index([whatsappMessageId])
+  @@index([chatId, createdAt])
+}
+Estrutura de Config para Canal Evolution API
+O campo config do Channel para um canal de WhatsApp da Evolution API seria um JSON estruturado assim:
+
+json
+{
+  "evolutionApi": {
+    "instanceId": "d306001a-8793-47ec-be85-7f246983d1f5",
+    "instanceName": "Teste",
+    "webhookToken": "seu-token-secreto-aqui",
+    "webhookUrl": "https://seu-backend.com/webhooks/evolution",
+    "baseUrl": "http://localhost:8080",
+    "apiKey": "B8F693111D90-4571-863D-92429C4D1C69",
+    "phoneNumber": "558396628630",
+    "qrCode": null,
+    "lastSync": "2025-05-03T08:46:40.638Z",
+    "status": "connected"
+  }
+}
+Processamento de Webhooks da Evolution API
+Com este modelo, você pode implementar um fluxo como:
+
+Receber webhook da Evolution API:
+typescript
+// Exemplo de lógica para processar webhook
+async function processWebhook(req, res) {
+  const webhookData = req.body;
+  
+  // Encontrar o canal correspondente baseado na instância
+  const channel = await prisma.channel.findFirst({
+    where: {
+      config: {
+        path: ["evolutionApi", "instanceId"],
+        equals: webhookData.instanceId
+      }
+    }
+  });
+  
+  if (!channel) {
+    console.error(`Instância desconhecida: ${webhookData.instanceId}`);
+    return res.status(400).send("Instância desconhecida");
+  }
+  
+  // Extrair dados importantes para facilitar consultas
+  let messageContent = null;
+  let messageType = null;
+  let remoteJid = null;
+  let fromMe = null;
+  let messageId = null;
+  
+  if (webhookData.event === 'messages.upsert') {
+    const msgData = webhookData.data;
+    messageType = msgData.messageType;
+    remoteJid = msgData.key.remoteJid;
+    fromMe = msgData.key.fromMe;
+    messageId = msgData.key.id;
+    
+    // Extrair conteúdo baseado no tipo
+    if (messageType === 'conversation') {
+      messageContent = msgData.message.conversation;
+    } else if (messageType === 'imageMessage') {
+      messageContent = msgData.message.imageMessage.caption;
+      // Processar URLs de mídia...
+    }
+    // outros tipos de mensagem...
+  }
+  
+  // Salvar o evento de webhook
+  const webhookEvent = await prisma.webhookEvent.create({
+    data: {
+      event: webhookData.event,
+      instance: webhookData.instance,
+      instanceId: webhookData.instanceId,
+      rawData: webhookData.data,
+      destination: webhookData.destination,
+      dateTime: new Date(webhookData.date_time),
+      sender: webhookData.sender,
+      serverUrl: webhookData.server_url,
+      apikey: webhookData.apikey,
+      remoteJid,
+      fromMe,
+      messageId,
+      messageType,
+      messageContent,
+      messageTimestamp: webhookData.data.messageTimestamp,
+      channelId: channel.id
+    }
+  });
+  
+  // Enfileirar para processamento assíncrono
+  await processWebhookEventQueue.add({ webhookEventId: webhookEvent.id });
+  
+  return res.status(200).send("Webhook recebido");
+}
+Processar mensagem de webhook:
+typescript
+async function processWebhookEvent(webhookEventId) {
+  const webhookEvent = await prisma.webhookEvent.findUnique({
+    where: { id: webhookEventId },
+    include: { channel: { include: { agent: true } } }
+  });
+  
+  if (!webhookEvent || webhookEvent.processed) return;
+  
+  try {
+    // Processar mensagem recebida (se for mensagem)
+    if (webhookEvent.event === 'messages.upsert' && !webhookEvent.fromMe) {
+      const remoteJid = webhookEvent.remoteJid;
+      const phoneNumber = remoteJid.split('@')[0];
+      
+      // Encontrar ou criar chat
+      let chat = await prisma.chat.findFirst({
+        where: {
+          whatsappPhone: phoneNumber,
+          agentId: webhookEvent.channel.agentId
+        }
+      });
+      
+      if (!chat) {
+        chat = await prisma.chat.create({
+          data: {
+            title: `Chat com ${phoneNumber}`,
+            contextId: `whatsapp-${phoneNumber}`,
+            whatsappPhone: phoneNumber,
+            userName: webhookEvent.rawData.pushName || phoneNumber,
+            workspaceId: webhookEvent.channel.agent.workspaceId,
+            agentId: webhookEvent.channel.agentId
+          }
+        });
+        
+        // Criar interação inicial
+        await prisma.interaction.create({
+          data: {
+            workspaceId: webhookEvent.channel.agent.workspaceId,
+            agentId: webhookEvent.channel.agentId,
+            chatId: chat.id,
+            status: 'RUNNING'
+          }
+        });
+      }
+      
+      // Criar mensagem a partir do webhook
+      const message = await prisma.message.create({
+        data: {
+          text: webhookEvent.messageContent,
+          role: 'user',
+          userName: webhookEvent.rawData.pushName,
+          type: webhookEvent.messageType,
+          whatsappMessageId: webhookEvent.messageId,
+          whatsappTimestamp: webhookEvent.messageTimestamp,
+          chatId: chat.id,
+          // Adicionar campos de mídia se aplicável
+        }
+      });
+      
+      // Vincular mensagem ao webhook event
+      await prisma.webhookEvent.update({
+        where: { id: webhookEvent.id },
+        data: { 
+          relatedMessageId: message.id,
+          processed: true,
+          processedAt: new Date()
+        }
+      });
+      
+      // Chamar API do agente para processar a mensagem
+      const agentResponse = await callAgentApi(
+        webhookEvent.channel.agent.id,
+        chat.contextId,
+        webhookEvent.messageContent
+      );
+      
+      // Processar resposta do agente...
+    }
+    
+    // Processar outros tipos de eventos...
+    
+  } catch (error) {
+    await prisma.webhookEvent.update({
+      where: { id: webhookEvent.id },
+      data: { 
+        error: error.toString(),
+        processed: true,
+        processedAt: new Date()
+      }
+    });
+  }
+}
+Este modelo de dados refinado lida melhor com a realidade dos webhooks da Evolution API e permite que você tenha um sistema robusto para processar mensagens, rastrear status e gerenciar a comunicação com o WhatsApp.
+
+
+
+
+

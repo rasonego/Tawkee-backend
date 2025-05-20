@@ -1,0 +1,133 @@
+{
+	"data": [
+		{
+			"agent": {
+				"id": "1e46c23c-a9bd-4cd0-815c-84ef25c4ce5c",
+				"workspaceId": "83c9488a-d4a1-4011-b5bd-b443fafa5344",
+				"name": "Emmanuel Pereira",
+				"behavior": "Professional, attentive, and knowledgeable about the products. Focused on understanding customer needs and offering suitable book recommendations.",
+				"avatar": null,
+				"communicationType": "FORMAL",
+				"type": "SALE",
+				"jobName": "Sales Representative",
+				"jobSite": "Bookstore XYZ",
+				"jobDescription": "Responsible for promoting and selling books, understanding customer preferences, providing personalized book recommendations, and handling customer inquiries. Ensures a high level of customer satisfaction and contributes to meeting sales targets.",
+				"isActive": false,
+				"channels": [
+					{
+						"id": "1ed410cd-fdcd-4f77-898d-f4689c09c42b",
+						"name": "New Channel",
+						"type": "WHATSAPP",
+						"connected": false,
+						"createdAt": "2025-05-08T16:37:25.809Z",
+						"updatedAt": "2025-05-09T15:22:21.355Z"
+					}
+				]
+			},
+			"settings": {
+				"preferredModel": "GPT_4_1",
+				"timezone": "UTC",
+				"enabledHumanTransfer": false,
+				"enabledReminder": false,
+				"splitMessages": false,
+				"enabledEmoji": false,
+				"limitSubjects": true,
+				"messageGroupingTime": "TEN_SEC"
+			},
+			"webhooks": {
+				"onNewMessage": null,
+				"onLackKnowLedge": null,
+				"onTransfer": null,
+				"onFinishAttendance": null
+			}
+		},
+		{
+			"agent": {
+				"id": "1fc8f2d1-680c-418f-9d5c-c2d482499b98",
+				"workspaceId": "83c9488a-d4a1-4011-b5bd-b443fafa5344",
+				"name": "Formal Sales Bot",
+				"behavior": "Provides formal sales support and product information.",
+				"avatar": null,
+				"communicationType": "FORMAL",
+				"type": "SALE",
+				"jobName": "Sales Representative",
+				"jobSite": "Online Store",
+				"jobDescription": "Assists customers with product inquiries and formal quotations.",
+				"isActive": false,
+				"channels": [
+					{
+						"id": "64fcc802-91cd-4f3e-be76-d5e2a6ab9123",
+						"name": "Meu Canal",
+						"type": "WHATSAPP",
+						"connected": false,
+						"createdAt": "2025-05-07T21:00:44.050Z",
+						"updatedAt": "2025-05-07T21:30:28.498Z"
+					}
+				]
+			},
+			"settings": {
+				"preferredModel": "GPT_4_O_MINI",
+				"timezone": "UTC",
+				"enabledHumanTransfer": false,
+				"enabledReminder": true,
+				"splitMessages": false,
+				"enabledEmoji": false,
+				"limitSubjects": false,
+				"messageGroupingTime": "FIVE_SEC"
+			},
+			"webhooks": {
+				"onNewMessage": null,
+				"onLackKnowLedge": null,
+				"onTransfer": null,
+				"onFinishAttendance": null
+			}
+		},
+		{
+			"agent": {
+				"id": "7e72cca1-6b94-444a-beba-62e5b4e1f3d2",
+				"workspaceId": "83c9488a-d4a1-4011-b5bd-b443fafa5344",
+				"name": "Sarah Chen",
+				"behavior": "Professional, knowledgeable, and patient. Provides clear explanations with a friendly tone. Focuses on resolving customer issues efficiently while maintaining a personal touch.",
+				"avatar": null,
+				"communicationType": "RELAXED",
+				"type": "SUPPORT",
+				"jobName": "Customer Solutions Specialist",
+				"jobSite": "TechNova Solutions",
+				"jobDescription": "Provides technical support and customer service for TechNova's cloud-based software products. Assists users with troubleshooting, account management, and product guidance. Responsible for maintaining high customer satisfaction while efficiently resolving issues through clear communication and product expertise.",
+				"isActive": true,
+				"channels": [
+					{
+						"id": "d31e3ed6-f23a-485b-8be5-a4c2950fa8df",
+						"name": "Novo Canal",
+						"type": "WHATSAPP",
+						"connected": false,
+						"createdAt": "2025-05-07T20:11:45.252Z",
+						"updatedAt": "2025-05-07T20:32:46.228Z"
+					}
+				]
+			},
+			"settings": {
+				"preferredModel": "GPT_4_1",
+				"timezone": "UTC",
+				"enabledHumanTransfer": true,
+				"enabledReminder": true,
+				"splitMessages": true,
+				"enabledEmoji": false,
+				"limitSubjects": false,
+				"messageGroupingTime": "NO_GROUP"
+			},
+			"webhooks": {
+				"onNewMessage": null,
+				"onLackKnowLedge": null,
+				"onTransfer": null,
+				"onFinishAttendance": null
+			}
+		}
+	],
+	"meta": {
+		"total": 3,
+		"page": 1,
+		"pageSize": 10,
+		"totalPages": 1
+	}
+}

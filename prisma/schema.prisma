@@ -1,0 +1,393 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  password            String?
+  name                String
+  workspaceId         String    @unique
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  avatar              String?
+  emailVerified       Boolean   @default(false)
+  facebookId          String?   @unique
+  firstName           String?
+  googleId            String?   @unique
+  lastName            String?
+  provider            String?
+  providerId          String?
+  resetExpires        DateTime?
+  resetToken          String?
+  verificationExpires DateTime?
+  verificationToken   String?
+  workspace           Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([provider, providerId])
+  @@index([verificationToken])
+  @@index([resetToken])
+}
+
+model Workspace {
+  id                 String             @id @default(uuid())
+  name               String
+  credits            Int                @default(0)
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  agents             Agent[]
+  chats              Chat[]
+  interactions       Interaction[]
+  user               User?
+}
+
+model Agent {
+  id                String             @id @default(uuid())
+  name              String?
+  behavior          String?
+  avatar            String?
+  communicationType CommunicationType?
+  type              AgentType?
+  jobName           String?
+  jobSite           String?
+  jobDescription    String?
+  isActive          Boolean            @default(true)
+  workspaceId       String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  settings          AgentSettings?
+  webhooks          AgentWebhooks?
+  channels          Channel[]
+  chats             Chat[]
+  creditSpent       CreditSpent[]
+  intentions        Intention[]
+  interactions      Interaction[]
+  trainings         Training[]
+}
+
+model AgentSettings {
+  id                   String       @id @default(uuid())
+  preferredModel       AIModel      @default(GPT_4_1)
+  timezone             String       @default("UTC")
+  enabledHumanTransfer Boolean      @default(true)
+  enabledReminder      Boolean      @default(true)
+  splitMessages        Boolean      @default(true)
+  enabledEmoji         Boolean      @default(true)
+  limitSubjects        Boolean      @default(true)
+  messageGroupingTime  GroupingTime @default(NO_GROUP)
+  agentId              String       @unique
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  agent                Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentWebhooks {
+  id                 String   @id @default(uuid())
+  onNewMessage       String?
+  onLackKnowLedge    String?
+  onTransfer         String?
+  onFinishAttendance String?
+  agentId            String   @unique
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  agent              Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model Training {
+  id               String       @id @default(uuid())
+  type             TrainingType
+  text             String?
+  image            String?
+  website          String?
+  trainingSubPages String?      @default("DISABLED")
+  trainingInterval String?
+  video            String?
+  documentUrl      String?
+  documentName     String?
+  documentMimetype String?
+  agentId          String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  agent            Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model Intention {
+  id                   String            @id @default(uuid())
+  description          String
+  preprocessingMessage PreprocessingType @default(DISABLED)
+  preprocessingText    String?
+  type                 String            @default("WEBHOOK")
+  httpMethod           String            @default("GET")
+  url                  String?
+  requestBody          String?
+  autoGenerateParams   Boolean           @default(true)
+  autoGenerateBody     Boolean           @default(true)
+  agentId              String
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  agent                Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  fields               IntentionField[]
+  headers              IntentionHeader[]
+  params               IntentionParam[]
+}
+
+model IntentionField {
+  id          String    @id @default(uuid())
+  name        String
+  jsonName    String
+  description String
+  type        FieldType
+  required    Boolean   @default(false)
+  intentionId String
+  intention   Intention @relation(fields: [intentionId], references: [id], onDelete: Cascade)
+}
+
+model IntentionHeader {
+  id          String    @id @default(uuid())
+  name        String
+  value       String
+  intentionId String
+  intention   Intention @relation(fields: [intentionId], references: [id], onDelete: Cascade)
+}
+
+model IntentionParam {
+  id          String    @id @default(uuid())
+  name        String
+  value       String
+  intentionId String
+  intention   Intention @relation(fields: [intentionId], references: [id], onDelete: Cascade)
+}
+
+model CreditSpent {
+  id        String   @id @default(uuid())
+  credits   Int
+  year      Int
+  month     Int
+  day       Int
+  model     String
+  agentId   String
+  createdAt DateTime @default(now())
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model Chat {
+  id            String        @id @default(uuid())
+  title         String?
+  name          String?
+  contextId     String        @unique
+  userName      String?
+  userPicture   String?
+  whatsappPhone String?
+  humanTalk     Boolean       @default(false)
+  read          Boolean       @default(true)
+  finished      Boolean       @default(false)
+  unReadCount   Int           @default(0)
+  workspaceId   String
+  agentId       String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  agent         Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  interactions  Interaction[]
+  messages      Message[]
+}
+
+model Interaction {
+  id          String            @id @default(uuid())
+  status      InteractionStatus @default(RUNNING)
+  startAt     DateTime          @default(now())
+  transferAt  DateTime?
+  resolvedAt  DateTime?
+  userId      String?
+  workspaceId String
+  agentId     String
+  chatId      String
+  agent       Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  chat        Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages    Message[]
+}
+
+model Message {
+  id                 String         @id @default(uuid())
+  text               String?
+  role               String
+  userName           String?
+  userPicture        String?
+  type               String?
+  imageUrl           String?
+  audioUrl           String?
+  documentUrl        String?
+  fileName           String?
+  midiaContent       String?
+  width              Int?
+  height             Int?
+  whatsappMessageId  String?        @unique
+  whatsappStatus     String?
+  whatsappTimestamp  BigInt?
+  sentToEvolution    Boolean        @default(false)
+  sentAt             DateTime?
+  deliveredAt        DateTime?
+  readAt             DateTime?
+  failedAt           DateTime?
+  failReason         String?
+  chatId             String
+  interactionId      String?
+  createdAt          DateTime       @default(now())
+  time               BigInt         @default(dbgenerated("(EXTRACT(epoch FROM now()) * (1000)::numeric)"))
+  chat               Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  interaction        Interaction?   @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  sourceWebhookEvent WebhookEvent?  @relation("WebhookEventMessage")
+  statusUpdates      WebhookEvent[] @relation("StatusUpdates")
+
+  @@index([whatsappMessageId])
+  @@index([chatId, createdAt])
+}
+
+model Channel {
+  id            String         @id @default(uuid())
+  name          String
+  type          ChannelType
+  connected     Boolean        @default(false)
+  config        Json           @default("{}")
+  agentId       String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  agent         Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  webhookEvents WebhookEvent[]
+}
+
+model WebhookEvent {
+  id               String    @id @default(uuid())
+  event            String
+  instance         String
+  instanceId       String
+  rawData          Json
+  destination      String?
+  dateTime         DateTime
+  sender           String?
+  serverUrl        String?
+  apikey           String?
+  remoteJid        String?
+  fromMe           Boolean?
+  messageId        String?
+  pushName         String?
+  messageType      String?
+  messageContent   String?
+  messageTimestamp BigInt?
+  mediaUrl         String?
+  processed        Boolean   @default(false)
+  processedAt      DateTime?
+  error            String?
+  channelId        String
+  relatedMessageId String?   @unique
+  createdAt        DateTime  @default(now())
+  channel          Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  relatedMessage   Message?  @relation("WebhookEventMessage", fields: [relatedMessageId], references: [id], onDelete: Cascade)
+  statusUpdates    Message[] @relation("StatusUpdates")
+
+  @@index([remoteJid, processed])
+  @@index([channelId, processed])
+  @@index([messageId])
+}
+
+model BlacklistedToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([expiresAt])
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum CommunicationType {
+  FORMAL
+  NORMAL
+  RELAXED
+}
+
+enum AgentType {
+  SUPPORT
+  SALE
+  PERSONAL
+}
+
+enum AIModel {
+  GPT_4_1
+  GPT_4_1_MINI
+  GPT_4_O_MINI
+  GPT_4_O
+  OPEN_AI_O3_MINI
+  OPEN_AI_O4_MINI
+  OPEN_AI_O3
+  OPEN_AI_O1
+  GPT_4
+  CLAUDE_3_5_SONNET
+  CLAUDE_3_7_SONNET
+  CLAUDE_3_5_HAIKU
+  DEEPINFRA_LLAMA3_3
+  QWEN_2_5_MAX
+  DEEPSEEK_CHAT
+  SABIA_3
+}
+
+enum GroupingTime {
+  NO_GROUP
+  FIVE_SEC
+  TEN_SEC
+  THIRD_SEC
+  ONE_MINUTE
+}
+
+enum TrainingType {
+  TEXT
+  WEBSITE
+  VIDEO
+  DOCUMENT
+}
+
+enum PreprocessingType {
+  DISABLED
+  GENERATE
+  MANUAL
+}
+
+enum FieldType {
+  TEXT
+  URL
+  DATE_TIME
+  DATE
+  NUMBER
+  BOOLEAN
+}
+
+enum InteractionStatus {
+  RUNNING
+  WAITING
+  RESOLVED
+}
+
+enum ChannelType {
+  WHATSAPP
+  TELEGRAM
+  MESSENGER
+  INSTAGRAM
+  WEBCHAT
+  EMAIL
+}
