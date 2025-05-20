@@ -25,7 +25,6 @@ RUN npm ci
 COPY . .
 # Generate Prisma client and build the application
 RUN npx prisma generate
-RUN npx prisma migrate deploy
 RUN npm run build
 
 # Production stage
@@ -37,6 +36,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
-# The prisma client gets generated in node_modules, which is copied above
+# O Prisma Client é gerado em node_modules, que já foi copiado acima
 EXPOSE ${PORT:-5003}
-CMD ["node", "dist/main.js"]
+# Executa as migrações e inicia a aplicação
+CMD sh -c "npx prisma migrate deploy && node dist/main.js"
