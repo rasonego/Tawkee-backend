@@ -8,6 +8,7 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
+    
     ports:
       - "${PORT:-5003}:${PORT:-5003}"
     env_file:

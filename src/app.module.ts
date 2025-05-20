@@ -17,6 +17,7 @@ import { HealthModule } from './health/health.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { EvolutionApiModule } from './evolution-api/evolution-api.module';
 import { OpenAiModule } from './openai/openai.module';
+import { QdrantModule } from './qdrant/qdrant.module';
 import { UsersModule } from './users/users.module';
 import * as Joi from 'joi';
 
@@ -27,37 +28,28 @@ import * as Joi from 'joi';
       validationSchema: Joi.object({
         // Database URL is required for the application to work
         DATABASE_URL: Joi.string().required(),
-
+        
         // JWT secrets required for authentication
         JWT_SECRET: Joi.string().required(),
-
+        
         // Evolution API credentials - only required for WhatsApp integration
         // We'll make these optional to allow the application to start without WhatsApp integration
-        EVOLUTION_API_URL: Joi.string()
-          .uri()
-          .optional()
+        EVOLUTION_API_URL: Joi.string().uri().optional()
           .description('The URL of the Evolution API server'),
-        EVOLUTION_API_KEY: Joi.string()
-          .optional()
+        EVOLUTION_API_KEY: Joi.string().optional()
           .description('The API key for authenticating with Evolution API'),
-
+        
         // Optional webhook token for added security
-        WEBHOOK_TOKEN: Joi.string()
-          .optional()
+        WEBHOOK_TOKEN: Joi.string().optional()
           .description('Optional token for securing webhook endpoints'),
-
+        
         // Server address for creating webhook URLs
-        OUR_ADDRESS: Joi.string()
-          .uri()
-          .optional()
+        OUR_ADDRESS: Joi.string().uri().optional()
           .default('http://localhost:5000')
-          .description(
-            'The publicly accessible URL of this server for webhooks'
-          ),
-
+          .description('The publicly accessible URL of this server for webhooks'),
+          
         // OpenAI API key for generating responses
-        OPENAI_API_KEY: Joi.string()
-          .optional()
+        OPENAI_API_KEY: Joi.string().optional()
           .description('API key for OpenAI to generate responses'),
       }),
       validationOptions: {
@@ -82,6 +74,7 @@ import * as Joi from 'joi';
     WebhooksModule,
     EvolutionApiModule,
     OpenAiModule,
+    QdrantModule,
   ],
 })
 export class AppModule {}

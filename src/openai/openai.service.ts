@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
+import { CreateEmbeddingResponse } from "openai/resources";
+
 
 @Injectable()
 export class OpenAiService {
@@ -137,14 +139,15 @@ export class OpenAiService {
     communicationGuide: string,
     goalGuide: string,
     agent: any,
-    conversationContext?: string
+    conversationContext?: string,
+    retrievedContext?: string,
   ): string {
     // Base system instruction
-    let prompt = `You are an AI assistant named ${agent.name || 'Assistant'}.`;
+    let prompt = `You are an AI assistant named ${agent.name || "Assistant"}.`;
 
     // Add professional context if available
     if (agent.jobName || agent.jobSite || agent.jobDescription) {
-      prompt += '\n\n## PROFESSIONAL CONTEXT';
+      prompt += "\n\n## PROFESSIONAL CONTEXT";
 
       if (agent.jobName) {
         prompt += `\n- Role: ${agent.jobName}`;
@@ -164,39 +167,35 @@ export class OpenAiService {
 
     // Add goal guide
     prompt += `\n\n## GOAL GUIDE\n${goalGuide}`;
-
+    
     // Add behavioral settings if available
     if (agent.settings) {
-      prompt += '\n\n## BEHAVIOR SETTINGS';
-
+      prompt += "\n\n## BEHAVIOR SETTINGS";
+      
       // Emoji usage
       if (agent.settings.enabledEmoji === false) {
-        prompt += '\n- Do not use emojis in your responses.';
+        prompt += "\n- Do not use emojis in your responses.";
       } else {
-        prompt +=
-          '\n- Feel free to use appropriate emojis in your responses when suitable.';
+        prompt += "\n- Feel free to use appropriate emojis in your responses when suitable.";
       }
-
+      
       // Subject limitations
       if (agent.settings.limitSubjects === true) {
-        prompt +=
-          '\n- Only discuss topics directly related to the company, product, or your specific role. Politely decline to discuss unrelated subjects.';
+        prompt += "\n- Only discuss topics directly related to the company, product, or your specific role. Politely decline to discuss unrelated subjects.";
       }
-
+      
       // Human transfer capability
       if (agent.settings.enabledHumanTransfer === true) {
-        prompt +=
-          "\n- If you can't resolve an issue or if the user explicitly asks for a human, acknowledge that you can transfer them to a human agent.";
+        prompt += "\n- If you can't resolve an issue or if the user explicitly asks for a human, acknowledge that you can transfer them to a human agent.";
       }
-
+      
       // Message splitting preference
       if (agent.settings.splitMessages === true) {
-        prompt +=
-          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs.';
+        prompt += "\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs.";
       } else {
-        prompt += '\n- Aim to provide complete answers in a single response.';
+        prompt += "\n- Aim to provide complete answers in a single response.";
       }
-
+      
       // Timezone awareness
       if (agent.settings.timezone) {
         prompt += `\n- When discussing time-related matters, consider the user's timezone (${agent.settings.timezone}).`;
@@ -205,7 +204,7 @@ export class OpenAiService {
 
     // Add any specific training or intentions if available
     if (agent.trainings && agent.trainings.length > 0) {
-      prompt += '\n\n## SPECIFIC KNOWLEDGE AND TRAINING';
+      prompt += "\n\n## SPECIFIC KNOWLEDGE AND TRAINING";
       agent.trainings.forEach((training) => {
         prompt += `\n- ${training.title}: ${training.content}`;
       });
@@ -213,10 +212,17 @@ export class OpenAiService {
 
     // Add any specific intentions if available
     if (agent.intentions && agent.intentions.length > 0) {
-      prompt += '\n\n## BEHAVIOR INTENTIONS';
+      prompt += "\n\n## BEHAVIOR INTENTIONS";
       agent.intentions.forEach((intention) => {
         prompt += `\n- ${intention.title}: ${intention.content}`;
       });
+    }
+
+    // Add retrieved context from RAG if available
+    if (retrievedContext && retrievedContext.length > 0) {
+      prompt += "\n\n## RETRIEVED KNOWLEDGE";
+      prompt += `\n${retrievedContext}`;
+      prompt += "\n\nUse the above retrieved knowledge to inform your response when relevant to the user's query.";
     }
 
     // Add conversation history if available
@@ -247,7 +253,8 @@ export class OpenAiService {
     agent: any,
     communicationGuide: string,
     goalGuide: string,
-    conversationContext?: string
+    conversationContext?: string,
+    retrievedContext?: string, // New parameter for RAG context
   ): Promise<string> {
     // Build the prompt incorporating all agent settings and guides
     const prompt = this.buildPrompt(
@@ -255,23 +262,49 @@ export class OpenAiService {
       communicationGuide,
       goalGuide,
       agent,
-      conversationContext
+      conversationContext,
+      retrievedContext, // Pass retrieved context to buildPrompt
     );
 
     this.logger.debug(
-      `Generated prompt for OpenAI: ${prompt.substring(0, 100)}...`
+      `Generated prompt for OpenAI: ${prompt.substring(0, 100)}...`,
     );
 
     // Determine the model to use
-    let modelPreference = 'GPT_4_O'; // Default to GPT-4o
-
+    let modelPreference = "GPT_4_O"; // Default to GPT-4o
+    
     // If agent has settings with a preferred model, use that instead
     if (agent.settings && agent.settings.preferredModel) {
       modelPreference = agent.settings.preferredModel;
       this.logger.debug(`Using agent's preferred model: ${modelPreference}`);
     }
-
+    
     // Generate the response from OpenAI using the appropriate model
     return this.generateResponse(prompt, modelPreference);
+  }
+
+
+  /**
+   * Generate embeddings for text using OpenAI
+   * @param text The text to generate embeddings for
+   * @returns An array of embedding values
+   */
+  async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      this.logger.debug(`Generating embedding for text: ${text.substring(0, 50)}...`);
+      
+      const response: CreateEmbeddingResponse = await this.openai.embeddings.create({
+        model: "text-embedding-3-small", // Using OpenAI's latest embedding model
+        input: text,
+        encoding_format: "float",
+      });
+      
+      this.logger.debug(`Generated embedding with ${response.data[0].embedding.length} dimensions`);
+      
+      return response.data[0].embedding;
+    } catch (error) {
+      this.logger.error(`Error generating embedding: ${error.message}`);
+      throw error;
+    }
   }
 }

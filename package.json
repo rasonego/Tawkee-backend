@@ -29,6 +29,7 @@
     "@nestjs/swagger": "^11.1.6",
     "@nestjs/testing": "^11.1.0",
     "@prisma/client": "^6.7.0",
+    "@qdrant/js-client-rest": "^1.14.0",
     "@types/bcrypt": "^5.0.2",
     "@types/express": "^5.0.1",
     "@types/node": "^22.15.3",
