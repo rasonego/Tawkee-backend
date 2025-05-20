@@ -120,7 +120,7 @@ async function bootstrap() {
   const evolutionApiUrl = process.env.EVOLUTION_API_URL;
   const evolutionApiKey = process.env.EVOLUTION_API_KEY;
 
-  await app.listen(5000, '0.0.0.0');
+  await app.listen(process.env.PORT, '0.0.0.0');
   console.log(`Application is running on: ${await app.getUrl()}`);
 
   // Show informational messages about optional configuration
