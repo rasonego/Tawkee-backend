@@ -3,6 +3,7 @@ import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface CreateInstanceOptions {
+  agentId: string;
   instanceName: string;
   serverUrl: string;
   apiKey: string;
@@ -12,7 +13,7 @@ interface CreateInstanceOptions {
 interface SendTextMessageOptions {
   phoneNumber: string;
   message: string;
-  instanceName: string; // Primary identifier for Evolution API
+  instanceName: string; // Primary identifier for Waha API
   serverUrl: string;
   apiKey: string;
   instanceId?: string; // Made optional as we're using instanceName
@@ -23,30 +24,31 @@ interface SendMediaMessageOptions {
   mediaUrl: string;
   caption?: string;
   mediaType: 'image' | 'video' | 'audio' | 'document';
+  mediaMimeType: string;
   fileName?: string;
-  instanceName: string; // Primary identifier for Evolution API
+  instanceName: string; // Primary identifier for Waha API
   serverUrl: string;
   apiKey: string;
   instanceId?: string; // Made optional as we're using instanceName
 }
 
 @Injectable()
-export class EvolutionApiService {
-  private readonly logger = new Logger(EvolutionApiService.name);
+export class WahaApiService {
+  private readonly logger = new Logger(WahaApiService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Get Evolution API configuration from environment variables
+   * Get Waha API configuration from environment variables
    * @returns {Object} Object containing server URL and API key
    */
-  getEvolutionApiConfig() {
-    const serverUrl = process.env.EVOLUTION_API_URL;
-    const apiKey = process.env.EVOLUTION_API_KEY;
+  getWahaConfig() {
+    const serverUrl = process.env.WAHA_API_URL;
+    const apiKey = process.env.WAHA_API_KEY;
 
     if (!serverUrl || !apiKey) {
       throw new Error(
-        'Missing EVOLUTION_API_URL or EVOLUTION_API_KEY environment variables'
+        'Missing WAHA_API_URL or WAHA_API_KEY environment variables'
       );
     }
 
@@ -54,7 +56,7 @@ export class EvolutionApiService {
   }
 
   /**
-   * Send a text message through Evolution API
+   * Send a text message through Waha API
    */
   async sendTextMessage(options: SendTextMessageOptions): Promise<any> {
     try {
@@ -65,45 +67,45 @@ export class EvolutionApiService {
 
       // If phone number doesn't start with +, ensure it doesn't start with a leading 0
       const finalPhoneNumber = formattedPhone.startsWith('+')
-        ? formattedPhone.substring(1) // Evolution API doesn't want the + prefix
+        ? formattedPhone.substring(1) // Waha API doesn't want the + prefix
         : formattedPhone.replace(/^0/, ''); // Remove leading 0 if present
+
+      // This must actually only happen on the first time sending message to the contact
+      this.logger.log(
+        `Checking actual ${finalPhoneNumber} chatId value using instance ${instanceName} on ${serverUrl}`
+      );
+      let response = await axios.get(
+        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`
+      );
+
+      const chatId = response.data.chatId;
 
       this.logger.log(
         `Sending message to ${finalPhoneNumber} using instance ${instanceName}`
       );
-      // According to Evolution API docs, use instanceName instead of instanceId
       const payload = {
-        number: finalPhoneNumber,
+        session: instanceName,
+        chatId,
         text: message,
-        delay: 1000, // 1 second delay
       };
 
       this.logger.debug(`Sending with payload: ${JSON.stringify(payload)}`);
 
-      const response = await axios.post(
-        `${serverUrl}/message/sendText/${instanceName}`,
-        payload,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: apiKey,
-          },
-          timeout: 10000, // 10 second timeout
-        }
-      );
+      response = await axios.post(`${serverUrl}/sendText`, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: apiKey,
+        },
+        timeout: 10000, // 10 second timeout
+      });
 
-      // Evolution API might return 200 or 201, and the success flag might be missing
-      // but we'll always get a valid response with message details when successful
-      if (
-        (response.status === 200 || response.status === 201) &&
-        response.data.key
-      ) {
+      if (response.status === 200 || response.status === 201) {
         this.logger.log(`Message sent successfully to ${finalPhoneNumber}`);
         return response.data;
       } else {
         // Log the issue but don't throw an error since the message might have been sent
         this.logger.warn(
-          `Unexpected response from Evolution API: ${JSON.stringify(response.data)}`
+          `Unexpected response from Waha API: ${JSON.stringify(response.data)}`
         );
         return response.data; // Return the data anyway so the caller can decide what to do
       }
@@ -113,7 +115,7 @@ export class EvolutionApiService {
         // The request was made and the server responded with a status code
         // that falls out of the range of 2xx
         this.logger.error(
-          `Evolution API error: Status ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`
+          `Waha API error: Status ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`
         );
 
         // Check for specific error codes and provide more helpful messages
@@ -138,17 +140,17 @@ export class EvolutionApiService {
           return {
             success: false,
             error:
-              'Server error from Evolution API. The instance may not be connected properly.',
+              'Server error from Waha API. The instance may not be connected properly.',
             details: error.response.data,
           };
         }
       } else if (error.request) {
         // The request was made but no response was received
-        this.logger.error(`Evolution API no response: ${error.message}`);
+        this.logger.error(`Waha API no response: ${error.message}`);
         return {
           success: false,
           error:
-            'No response from Evolution API server. Check your server URL and network connection.',
+            'No response from Waha API server. Check your server URL and network connection.',
         };
       }
 
@@ -159,7 +161,7 @@ export class EvolutionApiService {
   }
 
   /**
-   * Send a media message through Evolution API
+   * Send a media message through Waha API
    */
   async sendMediaMessage(options: SendMediaMessageOptions): Promise<any> {
     try {
@@ -168,10 +170,10 @@ export class EvolutionApiService {
         mediaUrl,
         caption,
         mediaType,
+        mediaMimeType,
         fileName,
         instanceName,
         serverUrl,
-        apiKey,
       } = options;
 
       // Ensure phone number is properly formatted - remove any non-numeric characters except +
@@ -179,87 +181,70 @@ export class EvolutionApiService {
 
       // If phone number doesn't start with +, ensure it doesn't start with a leading 0
       const finalPhoneNumber = formattedPhone.startsWith('+')
-        ? formattedPhone.substring(1) // Evolution API doesn't want the + prefix
+        ? formattedPhone.substring(1) // Waha API doesn't want the + prefix
         : formattedPhone.replace(/^0/, ''); // Remove leading 0 if present
+
+      // This must actually only happen on the first time sending message to the contact
+      this.logger.log(
+        `Checking actual ${finalPhoneNumber} chatId value using instance ${instanceName}`
+      );
+      let response = await axios.get(
+        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`
+      );
+
+      const chatId = response.data.chatId;
 
       this.logger.log(
         `Sending ${mediaType} to ${finalPhoneNumber} using instance ${instanceName}`
       );
 
-      // Check instance status before attempting to send media
-      try {
-        const instanceStatus = await axios.get(
-          `${serverUrl}/instance/connectionState/${instanceName}`,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              apikey: apiKey,
-            },
-          }
-        );
-
-        // Log the connection state
-        const state = instanceStatus?.data?.state || 'unknown';
-        const connected = state === 'open' || state === 'connected';
-        this.logger.log(
-          `Instance ${instanceName} connection state: ${state}, connected: ${connected}`
-        );
-
-        if (!connected) {
-          this.logger.warn(
-            `Cannot send media: WhatsApp instance ${instanceName} is not connected (state: ${state})`
-          );
-          return {
-            success: false,
-            error: `WhatsApp instance is not connected (state: ${state})`,
-            state: state,
-          };
-        }
-      } catch (statusError) {
-        this.logger.warn(
-          `Failed to check instance state: ${statusError.message}`
-        );
-        // Continue anyway since the instance might still be connected
-      }
-
       let endpoint;
       const payload: any = {
-        number: finalPhoneNumber,
-        options: {
-          delay: 1000,
-          presence: 'composing', // Show "typing" indicator
-        },
+        session: instanceName,
+        chatId,
       };
 
       switch (mediaType) {
-        case 'image':
+        case 'image': {
           endpoint = 'sendImage';
-          payload.imageMessage = {
-            image: mediaUrl,
-            caption: caption || '',
+          payload.caption = caption ? caption : '';
+          payload.file = {
+            mimetype: mediaMimeType,
+            url: mediaUrl,
+            filename: fileName,
           };
           break;
-        case 'video':
+        }
+        case 'video': {
           endpoint = 'sendVideo';
-          payload.videoMessage = {
-            video: mediaUrl,
-            caption: caption || '',
+          payload.caption = caption ? caption : '';
+          payload.asNote = false;
+          payload.file = {
+            mimetype: mediaMimeType,
+            url: mediaUrl,
+            filename: fileName,
           };
           break;
-        case 'audio':
-          endpoint = 'sendAudio';
-          payload.audioMessage = {
-            audio: mediaUrl,
+        }
+        case 'audio': {
+          endpoint = 'sendVoice';
+          payload.caption = caption;
+          payload.file = {
+            mimetype: mediaMimeType,
+            url: mediaUrl,
           };
           break;
-        case 'document':
-          endpoint = 'sendDocument';
-          payload.documentMessage = {
-            document: mediaUrl,
-            fileName: fileName || 'document',
-            caption: caption || '',
+        }
+        case 'document': {
+          endpoint = 'sendFile';
+          payload.caption = caption ? caption : '';
+          payload.file = {
+            mimetype: mediaMimeType,
+            url: mediaUrl,
+            fileName: fileName,
           };
           break;
+        }
         default:
           throw new Error(`Unsupported media type: ${mediaType}`);
       }
@@ -268,30 +253,27 @@ export class EvolutionApiService {
         `Sending media with payload: ${JSON.stringify(payload)}`
       );
 
-      // According to Evolution API docs, use instanceName instead of instanceId
-      const response = await axios.post(
-        `${serverUrl}/message/${endpoint}/${instanceName}`,
-        payload,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: apiKey,
-          },
-          timeout: 15000, // 15 second timeout for media (larger than text timeout)
-        }
+      // According to Waha API docs, use instanceName instead of instanceId
+      response = await axios.post(
+        `${serverUrl}/${endpoint}`,
+        payload
+        // {
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //     apikey: apiKey,
+        //   },
+        //   timeout: 15000, // 15 second timeout for media (larger than text timeout)
+        // }
       );
 
       // Apply the same improved validation logic as for text messages
-      if (
-        (response.status === 200 || response.status === 201) &&
-        (response.data.success === true || response.data.key)
-      ) {
+      if (response.status === 200 || response.status === 201) {
         this.logger.log(`Media sent successfully to ${finalPhoneNumber}`);
         return response.data;
       } else {
         // Log the issue but don't throw an error since the media might have been sent
         this.logger.warn(
-          `Unexpected response from Evolution API for media: ${JSON.stringify(response.data)}`
+          `Unexpected response from Waha API for media: ${JSON.stringify(response.data)}`
         );
         return response.data; // Return the data anyway so the caller can decide what to do
       }
@@ -301,7 +283,7 @@ export class EvolutionApiService {
         // The request was made and the server responded with a status code
         // that falls out of the range of 2xx
         this.logger.error(
-          `Evolution API error (media): Status ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`
+          `Waha API error (media): Status ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`
         );
 
         // Check for specific error codes and provide more helpful messages
@@ -326,19 +308,17 @@ export class EvolutionApiService {
           return {
             success: false,
             error:
-              'Server error from Evolution API. The instance may not be connected properly or media URL is invalid.',
+              'Server error from Waha API. The instance may not be connected properly or media URL is invalid.',
             details: error.response.data,
           };
         }
       } else if (error.request) {
         // The request was made but no response was received
-        this.logger.error(
-          `Evolution API no response (media): ${error.message}`
-        );
+        this.logger.error(`Waha API no response (media): ${error.message}`);
         return {
           success: false,
           error:
-            'No response from Evolution API server. Check your server URL and network connection.',
+            'No response from Waha API server. Check your server URL and network connection.',
         };
       }
 
@@ -349,7 +329,7 @@ export class EvolutionApiService {
   }
 
   /**
-   * Get channel configuration for Evolution API
+   * Get channel configuration for Waha API
    */
   async getChannelConfig(channelId: string): Promise<{
     instanceName: string;
@@ -368,41 +348,36 @@ export class EvolutionApiService {
     const config = channel.config as any;
 
     // If channel doesn't have instance name, return null
-    if (
-      !config ||
-      !config.evolutionApi ||
-      (!config.evolutionApi.instanceName && !config.evolutionApi.instanceId)
-    ) {
+    if (!config || !config.wahaApi || !config.wahaApi.instanceName) {
       return null;
     }
 
     try {
       // Get server URL and API key from environment vars if not in config
-      const { serverUrl, apiKey } = this.getEvolutionApiConfig();
+      const { serverUrl, apiKey } = this.getWahaConfig();
 
       return {
-        instanceId: config.evolutionApi.instanceId,
-        instanceName:
-          config.evolutionApi.instanceName || config.evolutionApi.instanceId, // Use instanceName if available, fallback to instanceId
+        instanceId: config.wahaApi.instanceId,
+        instanceName: config.wahaApi.instanceName,
         // Use values from config if they exist, otherwise fall back to environment variables
-        serverUrl: config.evolutionApi.serverUrl || serverUrl,
-        apiKey: config.evolutionApi.apiKey || apiKey,
+        serverUrl: config.wahaApi.serverUrl || serverUrl,
+        apiKey: config.wahaApi.apiKey || apiKey,
       };
     } catch (error) {
-      this.logger.error(`Error getting Evolution API config: ${error.message}`);
+      this.logger.error(`Error getting Waha API config: ${error.message}`);
 
       // If config has all the required values, return them even if env vars are missing
       if (
-        config.evolutionApi.serverUrl &&
-        config.evolutionApi.apiKey &&
-        (config.evolutionApi.instanceName || config.evolutionApi.instanceId)
+        config.wahaApi.serverUrl &&
+        config.wahaApi.apiKey &&
+        (config.wahaApi.instanceName || config.wahaApi.instanceId)
       ) {
         return {
-          instanceId: config.evolutionApi.instanceId,
+          instanceId: config.wahaApi.instanceId,
           instanceName:
-            config.evolutionApi.instanceName || config.evolutionApi.instanceId,
-          serverUrl: config.evolutionApi.serverUrl,
-          apiKey: config.evolutionApi.apiKey,
+            config.wahaApi.instanceName || config.wahaApi.instanceId,
+          serverUrl: config.wahaApi.serverUrl,
+          apiKey: config.wahaApi.apiKey,
         };
       }
 
@@ -411,36 +386,32 @@ export class EvolutionApiService {
   }
 
   /**
-   * Create a new instance on Evolution API
+   * Create a new instance on Waha API
    */
   async createInstance(options: CreateInstanceOptions): Promise<any> {
     try {
-      const { instanceName, serverUrl, apiKey, webhookUrl } = options;
+      const { agentId, instanceName, serverUrl, apiKey, webhookUrl } = options;
 
       this.logger.log(
-        `Creating instance ${instanceName} on Evolution API at ${serverUrl} with apiKey ${apiKey} and webhookUrl ${webhookUrl}`
+        `Creating instance ${instanceName} of ${agentId} on Waha API at ${serverUrl} with apiKey ${apiKey} and webhookUrl ${webhookUrl}`
       );
 
       // First, check if the instance already exists
       try {
         const response = await axios.get(
-          `${serverUrl}/instance/fetchInstances`,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              apikey: apiKey,
-            },
-          }
+          `${serverUrl}/sessions`
+          // {
+          //   headers: {
+          //     'Content-Type': 'application/json',
+          //     apikey: apiKey,
+          //   },
+          // }
         );
 
         // If the instance already exists, return it
-        if (
-          response.data &&
-          response.data.data &&
-          Array.isArray(response.data.data)
-        ) {
-          const existingInstance = response.data.data.find(
-            (inst: any) => inst.instance?.instanceName === instanceName
+        if (response.data && Array.isArray(response.data)) {
+          const existingInstance = response.data.find(
+            (instance: any) => instance.name === instanceName
           );
 
           if (existingInstance) {
@@ -458,29 +429,31 @@ export class EvolutionApiService {
 
       // Create the instance
       const createResponse = await axios.post(
-        `${serverUrl}/instance/create`,
+        `${serverUrl}/sessions`,
         {
-          instanceName,
-          qrcode: true,
-          integration: 'WHATSAPP-BAILEYS',
-          webhook: webhookUrl
-            ? {
-                url: webhookUrl,
-                enabled: true,
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${process.env.WEBHOOK_TOKEN}`,
-                },
-                events: ['CONNECTION_UPDATE', 'MESSAGES_UPSERT'],
-              }
-            : undefined,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: apiKey,
+          name: instanceName,
+          config: {
+            debug: true,
+            webhooks: [
+              {
+                url: process.env.WAHA_WEBHOOK_URL,
+                events: ['session.status', 'message'],
+                customHeaders: [
+                  {
+                    name: 'Authorization',
+                    value: `Bearer ${process.env.WEBHOOK_TOKEN}`,
+                  },
+                ],
+              },
+            ],
           },
         }
+        // { // Maybe will be required in production to make request with auth
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //     apikey: apiKey,
+        //   },
+        // }
       );
 
       if (createResponse.status === 201 || createResponse.status === 200) {
@@ -510,32 +483,31 @@ export class EvolutionApiService {
     webhookUrl: string;
   }): Promise<any> {
     try {
-      const { instanceName, serverUrl, apiKey, webhookUrl } = options;
+      const { instanceName, serverUrl, webhookUrl } = options;
 
       this.logger.log(
         `Setting webhook URL for instance ${instanceName} to ${webhookUrl}`
       );
 
-      // According to Evolution API docs, the endpoint is /webhook/set/{instanceName}
-      const response = await axios.post(
-        `${serverUrl}/webhook/set/${instanceName}`,
+      const response = await axios.put(
+        `${serverUrl}/sessions/${instanceName}`,
         {
-          webhook: {
-            enabled: true,
-            url: webhookUrl,
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${process.env.WEBHOOK_TOKEN}`,
-            },
-            events: ['CONNECTION_UPDATE', 'MESSAGES_UPSERT'],
-          },
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: apiKey,
+          name: instanceName,
+          config: {
+            webhooks: [
+              {
+                url: webhookUrl,
+                events: ['message'],
+              },
+            ],
           },
         }
+        // {
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //     apikey: apiKey,
+        //   },
+        // }
       );
 
       if (response.status === 200 && response.data.success) {
@@ -561,22 +533,31 @@ export class EvolutionApiService {
    * Get QR code for instance connection
    */
   async getInstanceQR(
-    instanceName: string,
-    serverUrl: string,
-    apiKey: string
+    channelId: string,
+    instanceName: string = 'default',
+    serverUrl: string
+    // apiKey: string
   ): Promise<any> {
     try {
-      this.logger.log(`Getting QR code for instance ${instanceName}`);
+      this.logger.log(
+        `Getting QR code for instance ${instanceName} using channel ${channelId}`
+      );
 
-      // According to Evolution API docs, use the instance name here (not instance ID)
+      await this.prisma.channel.update({
+        where: { id: channelId },
+        data: {}, // qualquer update já atualiza o updatedAt automaticamente
+      });
+
+      // According to Waha API docs, use the instance name here (not instance ID)
+      this.logger.debug(`${serverUrl}/${instanceName}/auth/qr?format=raw`);
       const response = await axios.get(
-        `${serverUrl}/instance/connect/${instanceName}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: apiKey,
-          },
-        }
+        `${serverUrl}/${instanceName}/auth/qr?format=raw`
+        // {
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //     apikey: apiKey,
+        //   },
+        // }
       );
 
       if (response.status === 200) {
@@ -584,45 +565,8 @@ export class EvolutionApiService {
           `QR response received for instance ${instanceName}: ${JSON.stringify(response.data)}`
         );
 
-        // The Evolution API can return various response formats
-        // Let's handle different structures carefully
-        const responseData = {
-          qrcode: {
-            base64: null,
-            pairingCode: null,
-          },
-          ...response.data,
-        };
-
-        // If we have direct base64 in the response
-        if (response.data.base64) {
-          responseData.qrcode = {
-            base64: response.data.base64,
-            pairingCode: response.data.pairingCode || null,
-          };
-          this.logger.log(
-            `QR code retrieved successfully for instance ${instanceName}`
-          );
-        }
-        // If QR is nested under qrcode object
-        else if (response.data.qrcode && response.data.qrcode.base64) {
-          responseData.qrcode = response.data.qrcode;
-          this.logger.log(
-            `QR code retrieved successfully from qrcode object for instance ${instanceName}`
-          );
-        }
-        // If QR is in a different format
-        else if (response.data.data && response.data.data.qrcode) {
-          responseData.qrcode = {
-            base64: response.data.data.qrcode,
-            pairingCode: response.data.data.pairingCode || null,
-          };
-          this.logger.log(
-            `QR code retrieved from data.qrcode for instance ${instanceName}`
-          );
-        }
-
-        return responseData;
+        // The Waha API can return various response formats
+        return response.data;
       } else {
         throw new Error(
           `Failed to get QR code: ${JSON.stringify(response.data)}`
@@ -635,7 +579,7 @@ export class EvolutionApiService {
   }
 
   /**
-   * Logout from WhatsApp on an Evolution API instance without deleting the instance
+   * Logout from WhatsApp on an Waha API instance without deleting the instance
    */
   async logoutInstance(options: {
     instanceName: string;
@@ -643,25 +587,24 @@ export class EvolutionApiService {
     apiKey: string;
   }): Promise<any> {
     try {
-      const { instanceName, serverUrl, apiKey } = options;
+      const { instanceName, serverUrl } = options;
 
       this.logger.log(
         `Logging out WhatsApp session for instance ${instanceName}`
       );
 
-      // According to Evolution API docs, use logout endpoint with instance name
-      const response = await axios.delete(
-        `${serverUrl}/instance/logout/${instanceName}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: apiKey,
-          },
-          timeout: 10000, // 10 second timeout
-        }
+      // According to Waha API docs, use logout endpoint with instance name
+      const response = await axios.post(
+        `${serverUrl}/sessions/${instanceName}/logout`
+        // {
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //     apikey: apiKey,
+        //   },
+        // }
       );
 
-      if (response.status === 200) {
+      if (response.data.status === 'STARTING') {
         this.logger.log(
           `WhatsApp logout successful for instance ${instanceName}`
         );
@@ -676,7 +619,7 @@ export class EvolutionApiService {
         );
         return {
           success: false,
-          message: 'Unexpected response from Evolution API',
+          message: 'Unexpected response from Waha API',
           data: response.data,
         };
       }
@@ -699,7 +642,7 @@ export class EvolutionApiService {
         // The request was made but no response was received
         return {
           success: false,
-          message: 'No response from Evolution API server',
+          message: 'No response from Waha API server',
           error: error.message,
         };
       } else {
@@ -714,7 +657,7 @@ export class EvolutionApiService {
   }
 
   /**
-   * Delete an Evolution API instance
+   * Delete an Waha API instance
    */
   async deleteInstance(options: {
     instanceName: string;
@@ -722,19 +665,19 @@ export class EvolutionApiService {
     apiKey: string;
   }): Promise<any> {
     try {
-      const { instanceName, serverUrl, apiKey } = options;
+      const { instanceName, serverUrl } = options;
 
-      this.logger.log(`Deleting instance ${instanceName} from Evolution API`);
+      this.logger.log(`Deleting instance ${instanceName} from Waha API`);
 
-      // According to Evolution API docs, use the instance name here (not instance ID)
+      // According to Waha API docs, use the instance name here (not instance ID)
       const response = await axios.delete(
-        `${serverUrl}/instance/delete/${instanceName}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: apiKey,
-          },
-        }
+        `${serverUrl}/sessions/${instanceName}`
+        // {
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //     apikey: apiKey,
+        //   },
+        // }
       );
 
       if (response.status === 200 && response.data.success) {
@@ -776,12 +719,15 @@ export class EvolutionApiService {
     agentId: string,
     phoneNumber: string,
     message: string,
-    media?: {
-      url: string;
-      type: 'image' | 'video' | 'audio' | 'document';
-      caption: string;
-      filename: string;
-    }
+
+    // THESE OPTIONAL VARIABLES ARE CURRENTLY UNUSED SINCE WE NEVER SEND MEDIA MESSAGES TO USERS, ONLY TEXT
+    // THIS METHOD IS BEING USED BY AGENTS RESPONDING TO USER MESSAGES AND BY THE SYSTEM ITSELF.
+
+    mediaUrl?: string,
+    mediaType?: 'image' | 'video' | 'audio' | 'document',
+    mediaMimeType?: string,
+    fileName?: string,
+    caption?: string
   ): Promise<any> {
     // Find the first WhatsApp channel for this agent
     const channel = await this.prisma.channel.findFirst({
@@ -802,24 +748,22 @@ export class EvolutionApiService {
       // If no config found but we have environment variables, create a minimal config using env vars
       if (!config) {
         this.logger.warn(
-          `No Evolution API config found for channel ${channel.id}, trying to use environment variables`
+          `No Waha API config found for channel ${channel.id}, trying to use environment variables`
         );
 
         try {
-          const { serverUrl, apiKey } = this.getEvolutionApiConfig();
+          const { serverUrl, apiKey } = this.getWahaConfig();
 
           if (
             !channel.config ||
-            !channel.config['evolutionApi'] ||
-            !channel.config['evolutionApi']['instanceName']
+            !channel.config['wahaApi'] ||
+            !channel.config['wahaApi']['instanceName']
           ) {
-            throw new Error(
-              'Missing Evolution API instance name in channel config'
-            );
+            throw new Error('Missing Waha API instance name in channel config');
           }
 
           // Extract just the instanceName from channel config
-          const instanceName = channel.config['evolutionApi']['instanceName'];
+          const instanceName = channel.config['wahaApi']['instanceName'];
 
           this.logger.log(
             `Using environment variables with instance ${instanceName} to send WhatsApp message`
@@ -832,10 +776,10 @@ export class EvolutionApiService {
           };
         } catch (error) {
           this.logger.error(
-            `Failed to get Evolution API config from environment: ${error.message}`
+            `Failed to get Waha API config from environment: ${error.message}`
           );
           throw new Error(
-            `No Evolution API configuration available for channel ${channel.id}`
+            `No Waha API configuration available for channel ${channel.id}`
           );
         }
       }
@@ -846,16 +790,17 @@ export class EvolutionApiService {
         : phoneNumber;
 
       this.logger.log(
-        `Sending ${media ? 'media' : 'text'} message to ${formattedPhone} using instance ${config.instanceName}`
+        `Sending ${mediaUrl ? 'media' : 'text'} message to ${formattedPhone} using instance ${config.instanceName}`
       );
 
-      if (media) {
+      if (mediaUrl && mediaType) {
         return this.sendMediaMessage({
           phoneNumber: formattedPhone,
-          mediaUrl: media.url,
-          mediaType: media.type,
-          caption: media.caption || message,
-          fileName: media.filename,
+          mediaUrl,
+          mediaType,
+          mediaMimeType,
+          fileName,
+          caption: caption || message,
           ...config,
         });
       } else {

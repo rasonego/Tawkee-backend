@@ -68,28 +68,6 @@ export class ChannelsController {
     return this.channelsService.create(agentId, createChannelDto);
   }
 
-  @Get('channel/:channelId/qr-code')
-  @ApiOperation({ summary: 'Get WhatsApp QR code for a channel' })
-  @ApiParam({ name: 'channelId', description: 'The ID of the channel' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'QR code retrieved successfully',
-    type: ChannelQrCodeDto,
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Channel not found',
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Not a WhatsApp channel',
-  })
-  async getWhatsAppQrCode(
-    @Param('channelId') channelId: string
-  ): Promise<ChannelQrCodeDto> {
-    return this.channelsService.getWhatsAppQrCode(channelId);
-  }
-
   @Put('channel/:channelId/refresh-qr-code')
   @ApiOperation({ summary: 'Refresh WhatsApp QR code for a channel' })
   @ApiParam({ name: 'channelId', description: 'The ID of the channel' })

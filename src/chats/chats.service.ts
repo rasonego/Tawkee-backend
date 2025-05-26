@@ -305,7 +305,7 @@ export class ChatsService {
 
   async sendMessage(
     chatId: string,
-    { message }: SendMessageDto
+    { message, media }: SendMessageDto
   ): Promise<{ success: boolean }> {
     // Ensure chat exists
     const chat = await this.prisma.chat.findUnique({
@@ -342,7 +342,8 @@ export class ChatsService {
         const response = await this.evolutionApiService.sendWhatsAppMessage(
           chat.agentId,
           chat.whatsappPhone,
-          message
+          message,
+          media
         );
 
         // Update the message with the response data

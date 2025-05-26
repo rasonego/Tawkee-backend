@@ -1,7 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentsService } from '../agents/agents.service';
 import { QdrantService } from '../qdrant/qdrant.service';
+import { DocumentsService } from '../documents/documents.service';
 import { CreateTrainingDto } from './dto/create-training.dto';
 import { UpdateTrainingDto } from './dto/update-training.dto';
 import { TrainingDto, TrainingType } from './dto/training.dto';
@@ -16,29 +22,32 @@ export class TrainingsService {
     private readonly prisma: PrismaService,
     private readonly agentsService: AgentsService,
     private readonly qdrantService: QdrantService,
+    private readonly documentsService: DocumentsService
   ) {}
 
   async findAll(
     agentId: string,
     paginationDto: PaginationDto,
-    type?: TrainingType,
+    type?: TrainingType
   ): Promise<PaginatedResult<TrainingDto>> {
     // Ensure agent exists
     await this.agentsService.findOne(agentId);
 
     const { page, pageSize, query } = paginationDto;
-    
+
     const skip = (page - 1) * pageSize;
-    
+
     const where = {
       agentId,
       ...(type ? { type } : {}),
-      ...(query ? {
-        OR: [
-          { text: { contains: query, mode: 'insensitive' as any } },
-          { documentName: { contains: query, mode: 'insensitive' as any } },
-        ],
-      } : {}),
+      ...(query
+        ? {
+            OR: [
+              { text: { contains: query, mode: 'insensitive' as any } },
+              { documentName: { contains: query, mode: 'insensitive' as any } },
+            ],
+          }
+        : {}),
     };
 
     // Get total count for pagination metadata
@@ -60,17 +69,14 @@ export class TrainingsService {
         page,
         pageSize,
         totalPages: Math.ceil(total / pageSize),
-      }
+      },
     };
   }
 
   async create(
     agentId: string,
-    createTrainingDto: CreateTrainingDto,
-  ): Promise<{ success: boolean }> {
-    // Ensure agent exists
-    await this.agentsService.findOne(agentId);
-
+    createTrainingDto: CreateTrainingDto
+  ): Promise<TrainingDto> {
     // Validate training data based on type
     this.validateTrainingData(createTrainingDto);
 
@@ -82,74 +88,84 @@ export class TrainingsService {
       },
     });
 
-    // For text-based trainings, store in vector database for RAG
     try {
-      if (createTrainingDto.type === TrainingType.TEXT && createTrainingDto.text) {
+      // For text-based trainings, store in vector database for RAG
+      if (
+        createTrainingDto.type === TrainingType.TEXT &&
+        createTrainingDto.text
+      ) {
+        // First a small check: if there is image URL, extract text describing them before sending info into vector database
+        let imageDescription: string = '';
+        if (createTrainingDto.image) {
+          const mimetype = await this.documentsService.getMimeTypeFromHeaders(
+            createTrainingDto.image
+          );
+          imageDescription =
+            await this.documentsService.extractTextFromDocument(
+              createTrainingDto.image,
+              mimetype
+            );
+        }
+
+        const textWithImageDescription =
+          createTrainingDto.text +
+          (imageDescription
+            ? `\nImage related to the content: ${imageDescription}`
+            : '');
+
         this.logger.log(`Storing training ${training.id} in vector database`);
         await this.qdrantService.storeTraining(
-          training.id, 
-          agentId, 
-          createTrainingDto.text,
-          { documentName: createTrainingDto.documentName || 'Untitled training' }
+          training.id,
+          agentId,
+          textWithImageDescription,
+          {
+            documentName: createTrainingDto.documentName || 'Untitled training',
+          }
         );
+        // For document-based trainings, extract text first then store in vector database for RAG
+      } else if (
+        createTrainingDto.type === TrainingType.DOCUMENT &&
+        createTrainingDto.documentUrl &&
+        createTrainingDto.documentName &&
+        createTrainingDto.documentMimetype
+      ) {
+        this.logger.log(
+          `About to extract text from ${createTrainingDto.documentUrl} ${createTrainingDto.documentMimetype}`
+        );
+        const text = await this.documentsService.extractTextFromDocument(
+          createTrainingDto.documentUrl,
+          createTrainingDto.documentMimetype
+        );
+
+        this.logger.log(`Storing training ${training.id} in vector database`);
+        await this.qdrantService.storeTraining(training.id, agentId, text, {
+          documentName: createTrainingDto.documentName,
+        });
+      } else if (
+        createTrainingDto.type === TrainingType.WEBSITE &&
+        createTrainingDto.website
+      ) {
+        const text = await this.documentsService.extractTextFromWebsite(
+          createTrainingDto.website
+        );
+        await this.qdrantService.storeTraining(training.id, agentId, text, {
+          documentName: 'website',
+        });
       }
     } catch (error) {
-      this.logger.error(`Failed to store training in vector database: ${error.message}`);
-      // Continue execution even if vector storage fails - database record is still created
+      this.logger.error(
+        `Failed to store training in vector database: ${error}`
+      );
+      // Remove database record if vector storage failed
+      await this.prisma.training.delete({
+        where: {
+          id: training.id,
+        },
+      });
+      throw error;
     }
 
-    return { success: true };
-  }
-
-  async update(
-    id: string,
-    updateTrainingDto: UpdateTrainingDto,
-  ): Promise<{ success: boolean }> {
-    // Ensure training exists
-    const training = await this.prisma.training.findUnique({
-      where: { id },
-    });
-
-    if (!training) {
-      throw new NotFoundException(`Training with ID ${id} not found`);
-    }
-
-    // Currently only TEXT type is available for update
-    if (updateTrainingDto.type !== TrainingType.TEXT) {
-      throw new BadRequestException('Only TEXT type trainings can be updated');
-    }
-
-    // Validate training data based on type
-    this.validateTrainingData(updateTrainingDto);
-
-    // Update the training record in the database
-    const updatedTraining = await this.prisma.training.update({
-      where: { id },
-      data: updateTrainingDto,
-    });
-
-    // For text-based trainings, update in vector database
-    try {
-      if (updateTrainingDto.type === TrainingType.TEXT && updateTrainingDto.text) {
-        this.logger.log(`Updating training ${id} in vector database`);
-        
-        // Delete old vectors first (to avoid duplicates)
-        await this.qdrantService.deleteTraining(id);
-        
-        // Store updated text as new vectors
-        await this.qdrantService.storeTraining(
-          id,
-          training.agentId,
-          updateTrainingDto.text,
-          { documentName: training.documentName || 'Updated training' }
-        );
-      }
-    } catch (error) {
-      this.logger.error(`Failed to update training in vector database: ${error.message}`);
-      // Continue execution even if vector storage fails - database record is still updated
-    }
-
-    return { success: true };
+    return training;
   }
 
   async remove(id: string): Promise<{ success: boolean }> {
@@ -162,25 +178,25 @@ export class TrainingsService {
       throw new NotFoundException(`Training with ID ${id} not found`);
     }
 
-    // Delete from database
+    // Delete content from vector database
+    try {
+      this.logger.log(`Deleting training ${id} from vector database`);
+      await this.qdrantService.deleteTraining(id);
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete training from vector database: ${error.message}`
+      );
+      // Continue execution even if vector deletion fails - database record is still deleted
+    }
+
+    // Then delete from database
     await this.prisma.training.delete({
       where: { id },
     });
 
-    // Also delete from vector database if it's a TEXT type training
-    if (training.type === TrainingType.TEXT) {
-      try {
-        this.logger.log(`Deleting training ${id} from vector database`);
-        await this.qdrantService.deleteTraining(id);
-      } catch (error) {
-        this.logger.error(`Failed to delete training from vector database: ${error.message}`);
-        // Continue execution even if vector deletion fails - database record is still deleted
-      }
-    }
-
     return { success: true };
   }
-  
+
   /**
    * Search for relevant training materials using RAG
    * @param agentId The agent ID to search trainings for
@@ -191,45 +207,71 @@ export class TrainingsService {
   async searchRelevantTrainings(
     agentId: string,
     query: string,
-    limit: number = 5,
-  ): Promise<{
-    text: string;
-    trainingId: string;
-    similarity: number;
-  }[]> {
+    limit: number = 5
+  ): Promise<
+    {
+      text: string;
+      trainingId: string;
+      similarity: number;
+    }[]
+  > {
     try {
-      this.logger.log(`Searching for relevant trainings for agent ${agentId} with query: ${query}`);
-      return await this.qdrantService.findSimilarTrainings(query, agentId, limit);
+      this.logger.log(
+        `Searching for relevant trainings for agent ${agentId} with query: ${query}`
+      );
+      return await this.qdrantService.findSimilarTrainings(
+        query,
+        agentId,
+        limit
+      );
     } catch (error) {
       this.logger.error(`Error searching relevant trainings: ${error.message}`);
       return [];
     }
   }
 
-  private validateTrainingData(trainingData: CreateTrainingDto | UpdateTrainingDto) {
+  private validateTrainingData(
+    trainingData: CreateTrainingDto | UpdateTrainingDto
+  ) {
     switch (trainingData.type) {
       case TrainingType.TEXT:
         if (!trainingData.text) {
-          throw new BadRequestException('Text is required for TEXT type training');
+          throw new BadRequestException(
+            'Text is required for TEXT type training'
+          );
         }
         break;
       case TrainingType.WEBSITE:
         // Only check 'website' for CreateTrainingDto
         if ('website' in trainingData && !trainingData.website) {
-          throw new BadRequestException('Website URL is required for WEBSITE type training');
+          throw new BadRequestException(
+            'Website URL is required for WEBSITE type training'
+          );
         }
         break;
       case TrainingType.VIDEO:
         // Only check 'video' for CreateTrainingDto
         if ('video' in trainingData && !trainingData.video) {
-          throw new BadRequestException('Video URL is required for VIDEO type training');
+          throw new BadRequestException(
+            'Video URL is required for VIDEO type training'
+          );
         }
         break;
       case TrainingType.DOCUMENT:
         // Only check document props for CreateTrainingDto
-        if ('documentUrl' in trainingData && 'documentName' in trainingData && 'documentMimetype' in trainingData) {
-          if (!trainingData.documentUrl || !trainingData.documentName || !trainingData.documentMimetype) {
-            throw new BadRequestException('Document URL, name, and MIME type are required for DOCUMENT type training');
+        if (
+          'documentUrl' in trainingData &&
+          'documentName' in trainingData &&
+          'documentMimetype' in trainingData
+        ) {
+          if (
+            !trainingData.documentUrl ||
+            !trainingData.documentName ||
+            !trainingData.documentMimetype
+          ) {
+            throw new BadRequestException(
+              'Document URL, name, and MIME type are required for DOCUMENT type training'
+            );
           }
         }
         break;

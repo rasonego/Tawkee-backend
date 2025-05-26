@@ -1,3 +1,4 @@
+import { json, urlencoded } from 'express';
 import { randomUUID } from 'crypto';
 
 // Polyfill for older Node.js versions
@@ -16,6 +17,9 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(json({ limit: '150mb' }));
+  app.use(urlencoded({ extended: true, limit: '150mb' }));
 
   // Global validation pipe - strict for regular API endpoints
   app.useGlobalPipes(

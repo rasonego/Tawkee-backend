@@ -314,6 +314,18 @@ export class AgentsService {
         jobSite: true,
         jobDescription: true,
         isActive: true,
+
+        channels: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            connected: true,
+            config: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
       },
     });
 
@@ -366,34 +378,7 @@ export class AgentsService {
   }
 
   async remove(id: string): Promise<{ success: boolean; message?: string }> {
-    // Ensure agent exists
-    await this.findOne(id);
-
     try {
-      // Check if there are any related chats
-      const relatedChats = await this.prisma.chat.count({
-        where: { agentId: id },
-      });
-
-      if (relatedChats > 0) {
-        return {
-          success: false,
-          message: `Cannot delete this agent because it has ${relatedChats} associated chat(s). You must delete these chats first.`,
-        };
-      }
-
-      // Check if there are any related interactions
-      const relatedInteractions = await this.prisma.interaction.count({
-        where: { agentId: id },
-      });
-
-      if (relatedInteractions > 0) {
-        return {
-          success: false,
-          message: `Cannot delete this agent because it has ${relatedInteractions} associated interaction(s). You must delete these interactions first.`,
-        };
-      }
-
       // If there are no related records, delete the agent
       await this.prisma.agent.delete({
         where: { id },
@@ -419,9 +404,6 @@ export class AgentsService {
   }
 
   async deactivate(id: string): Promise<{ success: boolean }> {
-    // Ensure agent exists
-    await this.findOne(id);
-
     await this.prisma.agent.update({
       where: { id },
       data: { isActive: false },
@@ -431,9 +413,6 @@ export class AgentsService {
   }
 
   async activate(id: string): Promise<{ success: boolean }> {
-    // Ensure agent exists
-    await this.findOne(id);
-
     await this.prisma.agent.update({
       where: { id },
       data: { isActive: true },

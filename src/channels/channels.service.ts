@@ -5,7 +5,7 @@ import { ChannelDto } from './dto/channel.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import { Prisma } from '@prisma/client';
-import { EvolutionApiService } from '../evolution-api/evolution-api.service';
+import { WahaApiService } from '../waha-api/waha-api.service';
 import { ConfigService } from '@nestjs/config';
 import { ChannelQrCodeDto } from './dto/channel-qr-code.dto';
 
@@ -15,7 +15,7 @@ export class ChannelsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly evolutionApiService: EvolutionApiService,
+    private readonly wahaApiService: WahaApiService,
     private readonly configService: ConfigService
   ) {}
 
@@ -84,57 +84,57 @@ export class ChannelsService {
     let config = {};
     let connected = false;
 
-    // If channel type is WHATSAPP, set up Evolution API from environment variables
+    // If channel type is WHATSAPP, set up Waha API from environment variables
     if (createChannelDto.type === 'WHATSAPP') {
       this.logger.log(
-        `Creating WhatsApp channel for agent ${agentId} using Evolution API from environment variables`
+        `Creating WhatsApp channel for agent ${agentId} using Waha API from environment variables`
       );
 
-      // Get Evolution API credentials from environment variables
-      const evolutionApiUrl = process.env.EVOLUTION_API_URL;
-      const evolutionApiKey = process.env.EVOLUTION_API_KEY;
+      // Get Waha API credentials from environment variables
+      const wahaApiUrl = process.env.WAHA_API_URL;
+      const wahaApiKey = process.env.WAHA_API_KEY;
 
-      if (!evolutionApiUrl || !evolutionApiKey) {
+      if (!wahaApiUrl || !wahaApiKey) {
         throw new Error(
-          'Missing EVOLUTION_API_URL or EVOLUTION_API_KEY environment variables'
+          'Missing WAHA_API_URL or WAHA_API_KEY environment variables'
         );
       }
 
       try {
         // Generate a unique instance name based on agent and timestamp
-        const instanceName = `tawkee-agent-${agentId}-${Date.now()}`;
+        // const instanceName = `tawkee-agent-${agentId}-${Date.now()}`;
+        const instanceName = 'default';
 
         // Construct the webhook URL for this channel
         const baseUrl = process.env.OUR_ADDRESS || 'http://localhost:5000';
-        const webhookUrl = `${baseUrl}/webhooks/evolution`;
+        const webhookUrl = `${baseUrl}/webhooks/waha`;
 
         this.logger.log(
-          `Creating Evolution API instance with server URL: ${evolutionApiUrl}`
+          `Creating Waha API instance with server URL: ${wahaApiUrl}`
         );
 
-        // Create the instance on the Evolution API
-        const instanceResult = await this.evolutionApiService.createInstance({
+        // Create the instance on the Waha API
+        const instanceResult = await this.wahaApiService.createInstance({
+          agentId,
           instanceName,
-          serverUrl: evolutionApiUrl,
-          apiKey: evolutionApiKey,
+          serverUrl: wahaApiUrl,
+          apiKey: wahaApiKey,
           webhookUrl,
         });
 
-        this.logger.log(
-          `Instance created: ${instanceName} with ID ${instanceResult.instance.instanceId}`
-        );
+        this.logger.log(JSON.stringify(instanceResult));
 
-        // Store the Evolution API configuration with enhanced information
+        // Store the Waha API configuration with enhanced information
         config = {
-          evolutionApi: {
+          wahaApi: {
             instanceName,
-            serverUrl: evolutionApiUrl,
-            apiKey: evolutionApiKey,
+            serverUrl: wahaApiUrl,
+            apiKey: wahaApiKey,
             webhookToken: createChannelDto.webhookToken || '',
             webhookUrl,
-            status: instanceResult.instance.status || 'connecting',
-            qrCode: instanceResult.qrcode.base64,
-            instanceId: instanceResult.instance?.instanceId || '', // Store the instanceId provided by Evolution API
+            status: instanceResult.status,
+            config: instanceResult.config,
+            me: instanceResult.me,
             createdAt: new Date().toISOString(),
           },
         };
@@ -149,9 +149,9 @@ export class ChannelsService {
 
         // Store the basic configuration with error information
         config = {
-          evolutionApi: {
-            serverUrl: evolutionApiUrl,
-            apiKey: evolutionApiKey,
+          wahaApi: {
+            serverUrl: wahaApiUrl,
+            apiKey: wahaApiKey,
             webhookToken: createChannelDto.webhookToken || '',
             error: error.message,
             createdAt: new Date().toISOString(),
@@ -190,42 +190,6 @@ export class ChannelsService {
   }
 
   /**
-   * Get WhatsApp connection QR code for a specific channel
-   */
-  async getWhatsAppQrCode(channelId: string): Promise<ChannelQrCodeDto> {
-    const channel = await this.prisma.channel.findUnique({
-      where: { id: channelId },
-    });
-
-    if (!channel) {
-      throw new NotFoundException(`Channel with ID ${channelId} not found`);
-    }
-
-    if (channel.type !== 'WHATSAPP') {
-      throw new Error(`Channel ${channelId} is not a WhatsApp channel`);
-    }
-
-    const config = channel.config as any;
-    if (!config || !config.evolutionApi) {
-      throw new Error(
-        `Channel ${channelId} does not have Evolution API configuration`
-      );
-    }
-
-    const { evolutionApi } = config;
-
-    // Return the stored QR code and status from the channel configuration
-    return {
-      status: evolutionApi.status || 'unknown',
-      instanceName: evolutionApi.instanceName,
-      qrCode: evolutionApi.qrCode,
-      pairingCode: evolutionApi.pairingCode,
-      error: evolutionApi.error,
-      updatedAt: evolutionApi.updatedAt || evolutionApi.createdAt,
-    };
-  }
-
-  /**
    * Refresh WhatsApp QR code for a specific channel
    */
   async refreshWhatsAppQrCode(channelId: string): Promise<ChannelQrCodeDto> {
@@ -242,58 +206,31 @@ export class ChannelsService {
     }
 
     const config = channel.config as any;
-    if (!config || !config.evolutionApi) {
+    if (!config || !config.wahaApi) {
       throw new Error(
-        `Channel ${channelId} does not have Evolution API configuration`
+        `Channel ${channelId} does not have Waha API configuration`
       );
     }
 
-    const { evolutionApi } = config;
+    const { wahaApi } = config;
 
     try {
-      // First update the webhook URL to ensure it's using the correct URL and token
-      try {
-        this.logger.log(
-          `Updating webhook URL for instance ${evolutionApi.instanceName}`
-        );
-
-        // Use the updated OUR_ADDRESS environment variable
-        const baseUrl = process.env.OUR_ADDRESS || 'http://localhost:5000';
-        const webhookUrl = `${baseUrl}/webhooks/evolution`;
-
-        await this.evolutionApiService.updateInstanceWebhook(
-          evolutionApi.instanceName,
-          evolutionApi.serverUrl,
-          evolutionApi.apiKey,
-          webhookUrl
-        );
-
-        this.logger.log(`Webhook URL updated successfully to ${webhookUrl}`);
-
-        // Update the webhook URL in the channel config
-        evolutionApi.webhookUrl = webhookUrl;
-        evolutionApi.webhookToken = process.env.WEBHOOK_TOKEN;
-      } catch (error) {
-        this.logger.warn(`Error updating webhook URL: ${error.message}`);
-        // Continue with QR refresh even if webhook update fails
-      }
-
-      // Now fetch a fresh QR code from Evolution API
+      // Now fetch a fresh QR code from Waha API
       this.logger.log(
-        `Refreshing QR code for instance ${evolutionApi.instanceName}`
+        `Refreshing QR code for instance ${wahaApi.instanceName}`
       );
 
-      const qrResult = await this.evolutionApiService.getInstanceQR(
-        evolutionApi.instanceName, // Use instanceName, not instanceId as per Evolution API docs
-        evolutionApi.serverUrl,
-        evolutionApi.apiKey
+      const qrResult = await this.wahaApiService.getInstanceQR(
+        channel.id,
+        wahaApi.instanceName, // Use instanceName, not instanceId as per Waha API docs
+        wahaApi.serverUrl
       );
 
       this.logger.log(
         `QR code refresh response structure: ${JSON.stringify(qrResult, null, 2)}`
       );
 
-      if (!qrResult.qrcode) {
+      if (!qrResult.value) {
         this.logger.warn(
           `QR code not found in expected format during refresh, using fallback`
         );
@@ -302,15 +239,10 @@ export class ChannelsService {
       // Create updated config with fresh QR code and webhook information
       const updatedConfig = {
         ...config,
-        evolutionApi: {
-          ...evolutionApi,
-          qrCode: qrResult.qrcode?.base64 || null,
-          pairingCode: qrResult.qrcode?.pairingCode || null,
-          status: 'connecting',
-          error: null,
-          updatedAt: new Date().toISOString(),
-          webhookUrl: process.env.OUR_ADDRESS + '/webhooks/evolution',
-          webhookToken: process.env.WEBHOOK_TOKEN,
+        wahaApi: {
+          ...wahaApi,
+          status: 'SCAN_QR_CODE',
+          qrCode: qrResult.value || null,
         },
       };
 
@@ -324,11 +256,9 @@ export class ChannelsService {
 
       // Return the fresh QR code info
       return {
-        status: 'connecting',
-        instanceName: evolutionApi.instanceName,
-        qrCode: qrResult.qrcode?.base64 || null,
-        pairingCode: qrResult.qrcode?.pairingCode || null,
-        updatedAt: new Date().toISOString(),
+        instanceName: wahaApi.instanceName,
+        status: 'SCAN_QR_CODE',
+        qrCode: qrResult.value || null,
       };
     } catch (error) {
       this.logger.error(
@@ -339,8 +269,8 @@ export class ChannelsService {
       // Update channel with error information
       const updatedConfig = {
         ...config,
-        evolutionApi: {
-          ...evolutionApi,
+        wahaApi: {
+          ...wahaApi,
           status: 'error',
           error: error.message,
           updatedAt: new Date().toISOString(),
@@ -354,13 +284,8 @@ export class ChannelsService {
         },
       });
 
-      // Return error information
-      return {
-        status: 'error',
-        instanceName: evolutionApi.instanceName,
-        error: error.message,
-        updatedAt: new Date().toISOString(),
-      };
+      // Throw error information
+      throw error;
     }
   }
 
@@ -391,8 +316,8 @@ export class ChannelsService {
       const channelConfig = channel.config as any;
       if (
         !channelConfig ||
-        !channelConfig.evolutionApi ||
-        !channelConfig.evolutionApi.instanceName
+        !channelConfig.wahaApi ||
+        !channelConfig.wahaApi.instanceName
       ) {
         return {
           success: false,
@@ -401,37 +326,35 @@ export class ChannelsService {
       }
 
       // Extract the necessary configuration
-      const { evolutionApi } = channelConfig;
-      const instanceName = evolutionApi.instanceName;
+      const { wahaApi } = channelConfig;
+      const instanceName = wahaApi.instanceName;
 
-      // Get Evolution API configuration from channel or environment
-      let serverUrl = evolutionApi.serverUrl;
-      let apiKey = evolutionApi.apiKey;
+      // Get Waha API configuration from channel or environment
+      let serverUrl = wahaApi.serverUrl;
+      let apiKey = wahaApi.apiKey;
 
       // If not in channel config, try environment variables
       if (!serverUrl || !apiKey) {
-        const evolutionApiUrl =
-          this.configService.get<string>('EVOLUTION_API_URL');
-        const evolutionApiKey =
-          this.configService.get<string>('EVOLUTION_API_KEY');
+        const wahaApiUrl = this.configService.get<string>('EVOLUTION_API_URL');
+        const wahaApiKey = this.configService.get<string>('EVOLUTION_API_KEY');
 
-        if (!evolutionApiUrl || !evolutionApiKey) {
+        if (!wahaApiUrl || !wahaApiKey) {
           return {
             success: false,
-            message: 'Evolution API configuration is missing',
+            message: 'Waha API configuration is missing',
           };
         }
 
-        serverUrl = evolutionApiUrl;
-        apiKey = evolutionApiKey;
+        serverUrl = wahaApiUrl;
+        apiKey = wahaApiKey;
       }
 
       this.logger.log(
         `Disconnecting WhatsApp for channel ${channelId} (instance: ${instanceName})`
       );
 
-      // Logout from Evolution API instance
-      const result = await this.evolutionApiService.logoutInstance({
+      // Logout from Waha API instance
+      const result = await this.wahaApiService.logoutInstance({
         instanceName,
         serverUrl,
         apiKey,
@@ -441,8 +364,8 @@ export class ChannelsService {
         // Update channel status in database
         const updatedConfig = {
           ...channelConfig,
-          evolutionApi: {
-            ...evolutionApi,
+          wahaApi: {
+            ...wahaApi,
             connected: false,
             status: 'close',
             disconnectedAt: new Date().toISOString(),
@@ -483,7 +406,7 @@ export class ChannelsService {
   }
 
   /**
-   * Delete a channel and potentially its Evolution API instance if no other channels are using it
+   * Delete a channel and potentially its Waha API instance if no other channels are using it
    */
   async deleteChannel(channelId: string): Promise<{ success: boolean }> {
     // Start a transaction to ensure data consistency
@@ -499,7 +422,7 @@ export class ChannelsService {
 
       this.logger.log(`Deleting channel ${channelId} of type ${channel.type}`);
 
-      // Check if it's a WhatsApp channel with Evolution API configuration
+      // Check if it's a WhatsApp channel with Waha API configuration
       if (channel.type === 'WHATSAPP') {
         const config = channel.config as any;
 
@@ -507,11 +430,9 @@ export class ChannelsService {
           const { evolutionApi } = config;
           const instanceName = evolutionApi.instanceName;
 
-          this.logger.log(
-            `Channel uses Evolution API instance ${instanceName}`
-          );
+          this.logger.log(`Channel uses Waha API instance ${instanceName}`);
 
-          // Check if there are other channels using the same Evolution API instance
+          // Check if there are other channels using the same Waha API instance
           const otherChannelsCount = await prisma.channel.count({
             where: {
               id: { not: channelId },
@@ -523,28 +444,28 @@ export class ChannelsService {
             },
           });
 
-          // If no other channels are using this Evolution API instance, delete it
+          // If no other channels are using this Waha API instance, delete it
           if (otherChannelsCount === 0) {
             this.logger.log(
               `No other channels using instance ${instanceName}, deleting it`
             );
 
             try {
-              await this.evolutionApiService.deleteInstance({
+              await this.wahaApiService.deleteInstance({
                 instanceName,
                 serverUrl: evolutionApi.serverUrl,
                 apiKey: evolutionApi.apiKey,
               });
 
               this.logger.log(
-                `Evolution API instance ${instanceName} deleted successfully`
+                `Waha API instance ${instanceName} deleted successfully`
               );
             } catch (error) {
               this.logger.error(
-                `Error deleting Evolution API instance: ${error.message}`,
+                `Error deleting Waha API instance: ${error.message}`,
                 error.stack
               );
-              // Continue with channel deletion even if Evolution API instance deletion fails
+              // Continue with channel deletion even if Waha API instance deletion fails
             }
           } else {
             this.logger.log(
@@ -573,9 +494,9 @@ export class ChannelsService {
 
     const sanitizedConfig = { ...config };
 
-    // If there's Evolution API config, sanitize it
+    // If there's Waha API config, sanitize it
     if (sanitizedConfig.evolutionApi) {
-      // Create a sanitized version of Evolution API config with only safe fields
+      // Create a sanitized version of Waha API config with only safe fields
       sanitizedConfig.evolutionApi = {
         instanceName: config.evolutionApi.instanceName,
         status: config.evolutionApi.status,

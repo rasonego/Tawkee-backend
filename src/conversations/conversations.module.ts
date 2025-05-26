@@ -8,7 +8,13 @@ import { OpenAiModule } from '../openai/openai.module';
 import { TrainingsModule } from '../trainings/trainings.module';
 
 @Module({
-  imports: [AuthModule, AgentsModule, ChatsModule, OpenAiModule, TrainingsModule],
+  imports: [
+    AuthModule,
+    AgentsModule,
+    ChatsModule,
+    OpenAiModule,
+    TrainingsModule,
+  ],
   controllers: [ConversationsController],
   providers: [ConversationsService],
   exports: [ConversationsService],

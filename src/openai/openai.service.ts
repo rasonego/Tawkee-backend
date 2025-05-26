@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
-import { CreateEmbeddingResponse } from "openai/resources";
-
+import { CreateEmbeddingResponse } from 'openai/resources';
 
 @Injectable()
 export class OpenAiService {
@@ -118,9 +117,7 @@ export class OpenAiService {
 
       return response.choices[0].message.content;
     } catch (error) {
-      this.logger.error(
-        `Error generating response from OpenAI: ${error.message}`
-      );
+      this.logger.error(`Error generating response from OpenAI: ${error}`);
       throw error;
     }
   }
@@ -140,14 +137,14 @@ export class OpenAiService {
     goalGuide: string,
     agent: any,
     conversationContext?: string,
-    retrievedContext?: string,
+    retrievedContext?: string
   ): string {
     // Base system instruction
-    let prompt = `You are an AI assistant named ${agent.name || "Assistant"}.`;
+    let prompt = `You are an AI assistant named ${agent.name || 'Assistant'}.`;
 
     // Add professional context if available
     if (agent.jobName || agent.jobSite || agent.jobDescription) {
-      prompt += "\n\n## PROFESSIONAL CONTEXT";
+      prompt += '\n\n## PROFESSIONAL CONTEXT';
 
       if (agent.jobName) {
         prompt += `\n- Role: ${agent.jobName}`;
@@ -167,35 +164,39 @@ export class OpenAiService {
 
     // Add goal guide
     prompt += `\n\n## GOAL GUIDE\n${goalGuide}`;
-    
+
     // Add behavioral settings if available
     if (agent.settings) {
-      prompt += "\n\n## BEHAVIOR SETTINGS";
-      
+      prompt += '\n\n## BEHAVIOR SETTINGS';
+
       // Emoji usage
       if (agent.settings.enabledEmoji === false) {
-        prompt += "\n- Do not use emojis in your responses.";
+        prompt += '\n- Do not use emojis in your responses.';
       } else {
-        prompt += "\n- Feel free to use appropriate emojis in your responses when suitable.";
+        prompt +=
+          '\n- Feel free to use appropriate emojis in your responses when suitable.';
       }
-      
+
       // Subject limitations
       if (agent.settings.limitSubjects === true) {
-        prompt += "\n- Only discuss topics directly related to the company, product, or your specific role. Politely decline to discuss unrelated subjects.";
+        prompt +=
+          '\n- Only discuss topics directly related to the company, product, or your specific role. Politely decline to discuss unrelated subjects.';
       }
-      
+
       // Human transfer capability
       if (agent.settings.enabledHumanTransfer === true) {
-        prompt += "\n- If you can't resolve an issue or if the user explicitly asks for a human, acknowledge that you can transfer them to a human agent.";
+        prompt +=
+          "\n- If you can't resolve an issue or if the user explicitly asks for a human, acknowledge that you can transfer them to a human agent.";
       }
-      
+
       // Message splitting preference
       if (agent.settings.splitMessages === true) {
-        prompt += "\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs.";
+        prompt +=
+          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs.';
       } else {
-        prompt += "\n- Aim to provide complete answers in a single response.";
+        prompt += '\n- Aim to provide complete answers in a single response.';
       }
-      
+
       // Timezone awareness
       if (agent.settings.timezone) {
         prompt += `\n- When discussing time-related matters, consider the user's timezone (${agent.settings.timezone}).`;
@@ -204,7 +205,7 @@ export class OpenAiService {
 
     // Add any specific training or intentions if available
     if (agent.trainings && agent.trainings.length > 0) {
-      prompt += "\n\n## SPECIFIC KNOWLEDGE AND TRAINING";
+      prompt += '\n\n## SPECIFIC KNOWLEDGE AND TRAINING';
       agent.trainings.forEach((training) => {
         prompt += `\n- ${training.title}: ${training.content}`;
       });
@@ -212,7 +213,7 @@ export class OpenAiService {
 
     // Add any specific intentions if available
     if (agent.intentions && agent.intentions.length > 0) {
-      prompt += "\n\n## BEHAVIOR INTENTIONS";
+      prompt += '\n\n## BEHAVIOR INTENTIONS';
       agent.intentions.forEach((intention) => {
         prompt += `\n- ${intention.title}: ${intention.content}`;
       });
@@ -220,9 +221,10 @@ export class OpenAiService {
 
     // Add retrieved context from RAG if available
     if (retrievedContext && retrievedContext.length > 0) {
-      prompt += "\n\n## RETRIEVED KNOWLEDGE";
+      prompt += '\n\n## RETRIEVED KNOWLEDGE';
       prompt += `\n${retrievedContext}`;
-      prompt += "\n\nUse the above retrieved knowledge to inform your response when relevant to the user's query.";
+      prompt +=
+        "\n\nUse the above retrieved knowledge to inform your response when relevant to the user's query.";
     }
 
     // Add conversation history if available
@@ -254,7 +256,7 @@ export class OpenAiService {
     communicationGuide: string,
     goalGuide: string,
     conversationContext?: string,
-    retrievedContext?: string, // New parameter for RAG context
+    retrievedContext?: string // New parameter for RAG context
   ): Promise<string> {
     // Build the prompt incorporating all agent settings and guides
     const prompt = this.buildPrompt(
@@ -263,26 +265,25 @@ export class OpenAiService {
       goalGuide,
       agent,
       conversationContext,
-      retrievedContext, // Pass retrieved context to buildPrompt
+      retrievedContext // Pass retrieved context to buildPrompt
     );
 
     this.logger.debug(
-      `Generated prompt for OpenAI: ${prompt.substring(0, 100)}...`,
+      `Generated prompt for OpenAI: ${prompt.substring(0, 100)}...`
     );
 
     // Determine the model to use
-    let modelPreference = "GPT_4_O"; // Default to GPT-4o
-    
+    let modelPreference = 'GPT_4_O'; // Default to GPT-4o
+
     // If agent has settings with a preferred model, use that instead
     if (agent.settings && agent.settings.preferredModel) {
       modelPreference = agent.settings.preferredModel;
       this.logger.debug(`Using agent's preferred model: ${modelPreference}`);
     }
-    
+
     // Generate the response from OpenAI using the appropriate model
     return this.generateResponse(prompt, modelPreference);
   }
-
 
   /**
    * Generate embeddings for text using OpenAI
@@ -291,20 +292,209 @@ export class OpenAiService {
    */
   async generateEmbedding(text: string): Promise<number[]> {
     try {
-      this.logger.debug(`Generating embedding for text: ${text.substring(0, 50)}...`);
-      
-      const response: CreateEmbeddingResponse = await this.openai.embeddings.create({
-        model: "text-embedding-3-small", // Using OpenAI's latest embedding model
-        input: text,
-        encoding_format: "float",
-      });
-      
-      this.logger.debug(`Generated embedding with ${response.data[0].embedding.length} dimensions`);
-      
+      this.logger.debug(
+        `Generating embedding for text: ${text.substring(0, 50)}...`
+      );
+
+      const response: CreateEmbeddingResponse =
+        await this.openai.embeddings.create({
+          model: 'text-embedding-3-small', // Using OpenAI's latest embedding model
+          input: text,
+          encoding_format: 'float',
+        });
+
+      this.logger.debug(
+        `Generated embedding with ${response.data[0].embedding.length} dimensions`
+      );
+
       return response.data[0].embedding;
     } catch (error) {
       this.logger.error(`Error generating embedding: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * Generate image descriptions using OpenAI
+   * @param imageUrl the URL from the target image to generate text description
+   * @returns A description of the image given
+   */
+  async describeImage(
+    imageUrl: string,
+    customPrompt?: string,
+    detailLevel: 'low' | 'high' = 'high'
+  ): Promise<string> {
+    try {
+      this.logger.log(`About to describe image: ${imageUrl}`);
+
+      // Default prompt for image description
+      const defaultPrompt =
+        'Please describe this image in detail, including any text you can see, objects, people, settings, and overall context.';
+      const prompt = customPrompt || defaultPrompt;
+
+      // Prepare the messages for OpenAI API
+      const messages: Array<{
+        role: 'user';
+        content: Array<
+          | { type: 'text'; text: string }
+          | {
+              type: 'image_url';
+              image_url: { url: string; detail: 'low' | 'high' };
+            }
+        >;
+      }> = [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: prompt,
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: imageUrl,
+                detail: detailLevel,
+              },
+            },
+          ],
+        },
+      ];
+
+      console.log(JSON.stringify(messages, null, 3));
+
+      // Make the API call to OpenAI
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o', // Explicitly use GPT-4o for vision capabilities
+        messages: messages,
+        max_tokens: 1000, // Adjust based on your needs
+        temperature: 0.3, // Lower temperature for more consistent descriptions
+      });
+
+      const description = response.choices[0]?.message?.content;
+
+      if (!description) {
+        throw new Error('No description received from OpenAI');
+      }
+
+      this.logger.log(
+        `Successfully described image: ${description.substring(0, 100)}...`
+      );
+      return description;
+    } catch (error) {
+      this.logger.error(
+        `Error describing image: ${error.message}`,
+        error.stack
+      );
+      throw new Error(`Failed to describe image: ${error.message}`);
+    }
+  }
+
+  // Alternative method for describing images from buffer/base64
+  async describeImageFromBuffer(
+    imageBuffer: Buffer,
+    mimeType: string,
+    customPrompt?: string,
+    detailLevel: 'low' | 'high' = 'high'
+  ): Promise<string> {
+    try {
+      this.logger.log(
+        `About to describe image from buffer, mime type: ${mimeType}`
+      );
+
+      // Convert buffer to base64
+      const base64Image = imageBuffer.toString('base64');
+      const dataUrl = `data:${mimeType};base64,${base64Image}`;
+
+      // Default prompt for image description
+      const defaultPrompt =
+        'Please describe this image in detail, including any text you can see, objects, people, settings, and overall context.';
+      const prompt = customPrompt || defaultPrompt;
+
+      // Prepare the messages for OpenAI API
+      const messages: Array<{
+        role: 'user';
+        content: Array<
+          | { type: 'text'; text: string }
+          | {
+              type: 'image_url';
+              image_url: { url: string; detail: 'low' | 'high' };
+            }
+        >;
+      }> = [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: prompt,
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: dataUrl,
+                detail: detailLevel,
+              },
+            },
+          ],
+        },
+      ];
+
+      // Make the API call to OpenAI
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: messages,
+        max_tokens: 1000,
+        temperature: 0.3,
+      });
+
+      const description = response.choices[0]?.message?.content;
+
+      if (!description) {
+        throw new Error('No description received from OpenAI');
+      }
+
+      this.logger.log(
+        `Successfully described image from buffer: ${description.substring(0, 100)}...`
+      );
+      return description;
+    } catch (error) {
+      this.logger.error(
+        `Error describing image from buffer: ${error.message}`,
+        error.stack
+      );
+      throw new Error(`Failed to describe image from buffer: ${error.message}`);
+    }
+  }
+
+  // Enhanced method that can handle scanned documents by describing them
+  async extractTextFromScannedDocument(
+    imageUrl: string,
+    customPrompt?: string
+  ): Promise<string> {
+    try {
+      this.logger.log(
+        `About to extract text from scanned document: ${imageUrl}`
+      );
+
+      // Specific prompt for text extraction from scanned documents
+      const textExtractionPrompt =
+        customPrompt ||
+        'Please extract and transcribe all visible text from this scanned document. ' +
+          'Maintain the original formatting as much as possible, including paragraphs, ' +
+          'headings, and any structured elements. If there are tables, preserve their structure. ' +
+          'Only return the extracted text content, not a description of the document.' +
+          'If the document is an image, then describe it in high detail, as much as possible.';
+
+      return this.describeImage(imageUrl, textExtractionPrompt, 'high');
+    } catch (error) {
+      this.logger.error(
+        `Error extracting text from scanned document: ${error.message}`,
+        error.stack
+      );
+      throw new Error(
+        `Failed to extract text from scanned document: ${error.message}`
+      );
     }
   }
 }
