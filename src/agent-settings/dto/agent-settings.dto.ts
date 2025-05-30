@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsBoolean, IsEnum } from 'class-validator';
+import { IsString, IsBoolean, IsEnum, IsOptional } from 'class-validator';
 import { AIModel, GroupingTime } from '@prisma/client';
 
 export class AgentSettingsDto {
@@ -13,7 +13,7 @@ export class AgentSettingsDto {
 
   @ApiProperty({
     description: 'Agent timezone',
-    example: 'UTC',
+    example: '(GMT+00:00) London',
   })
   @IsString()
   timezone: string;
@@ -59,7 +59,9 @@ export class AgentSettingsDto {
     description: 'Message grouping time setting',
     enum: GroupingTime,
     example: GroupingTime.NO_GROUP,
+    required: false
   })
   @IsEnum(GroupingTime)
-  messageGroupingTime: GroupingTime;
+  @IsOptional()
+  messageGroupingTime?: GroupingTime;
 }

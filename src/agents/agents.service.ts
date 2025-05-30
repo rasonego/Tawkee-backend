@@ -98,7 +98,7 @@ export class AgentsService {
         },
         settings: settings || {
           preferredModel: AIModel.GPT_4_1,
-          timezone: 'UTC',
+          timezone: '(GMT+00:00) London',
           enabledHumanTransfer: true,
           enabledReminder: true,
           splitMessages: true,
@@ -161,7 +161,7 @@ export class AgentsService {
         data: {
           agentId: agent.id,
           preferredModel: AIModel.GPT_4_1,
-          timezone: 'UTC',
+          timezone: '(GMT+00:00) London',
           enabledHumanTransfer: true,
           enabledReminder: true,
           splitMessages: true,
@@ -274,7 +274,7 @@ export class AgentsService {
       },
       settings: settings || {
         preferredModel: AIModel.GPT_4_1,
-        timezone: 'UTC',
+        timezone: '(GMT+00:00) London',
         enabledHumanTransfer: true,
         enabledReminder: true,
         splitMessages: true,
@@ -360,7 +360,7 @@ export class AgentsService {
       agent: updatedAgent,
       settings: settings || {
         preferredModel: AIModel.GPT_4_1,
-        timezone: 'UTC',
+        timezone: '(GMT+00:00) London',
         enabledHumanTransfer: true,
         enabledReminder: true,
         splitMessages: true,

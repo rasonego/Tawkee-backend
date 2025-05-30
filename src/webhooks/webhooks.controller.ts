@@ -23,7 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
 import { ConfigService } from '@nestjs/config';
-import { OpenAiService } from '../openai/openai.service';
+import { DeepseekService } from '../deepseek/deepseek.service';
 
 @ApiTags('Webhooks')
 @Controller('webhooks')
@@ -33,7 +33,7 @@ export class WebhooksController {
   constructor(
     private readonly webhooksService: WebhooksService,
     private readonly configService: ConfigService,
-    private readonly openAiService: OpenAiService
+    private readonly deepseekAiService: DeepseekService
   ) {}
 
   @Post('evolution')
@@ -355,89 +355,6 @@ export class WebhooksController {
     }
   }
 
-  @Get('test-send/:agentId')
-  @UseGuards(AuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Test sending a WhatsApp message via Evolution API',
-  })
-  @ApiParam({ name: 'agentId', description: 'The agent ID' })
-  @ApiQuery({
-    name: 'phone',
-    description: 'The WhatsApp phone number to send to',
-  })
-  @ApiQuery({ name: 'message', description: 'The message to send' })
-  @ApiResponse({
-    status: 200,
-    description: 'Message sent successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean', example: true },
-        message: {
-          type: 'string',
-          example: 'Message sent successfully to 5511912345678',
-        },
-        data: {
-          type: 'object',
-          description: 'The full response from Evolution API',
-          example: {
-            key: {
-              remoteJid: '5511912345678@s.whatsapp.net',
-              fromMe: true,
-              id: '3EB0774B447FCF09ED774469267B32A48D38351E',
-            },
-            message: {
-              conversation: 'Test message',
-            },
-            messageTimestamp: 1746431871,
-            instanceId: '48dfda89-d955-46ea-994e-b7f056907890',
-          },
-        },
-      },
-    },
-  })
-  async testSendMessage(
-    @Param('agentId') agentId: string,
-    @Query('phone') phone: string,
-    @Query('message') message: string
-  ): Promise<{ success: boolean; message: string; data?: any }> {
-    this.logger.log(
-      `Testing WhatsApp message to ${phone} via agent ${agentId}`
-    );
-
-    try {
-      // Get the response from Evolution API
-      const response = await this.webhooksService.testSendMessage(
-        agentId,
-        phone,
-        message
-      );
-
-      // If we have a key in the response, it means the message was sent successfully
-      if (response && response.key) {
-        return {
-          success: true,
-          message: `Message sent successfully to ${phone}`,
-          data: response, // Include the full response for debugging
-        };
-      } else {
-        // Something went wrong but no exception was thrown
-        return {
-          success: false,
-          message: `Unexpected response from Evolution API`,
-          data: response,
-        };
-      }
-    } catch (error) {
-      this.logger.error(`Error sending test message: ${error.message}`);
-      return {
-        success: false,
-        message: `Failed to send message: ${error.message}`,
-      };
-    }
-  }
-
   @Get('test-connection-update')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
@@ -526,168 +443,6 @@ export class WebhooksController {
         message: `Failed to process connection update: ${error.message}`,
         connectionState: state,
         isConnected: state === 'open',
-      };
-    }
-  }
-
-  @Get('test-openai')
-  @UseGuards(AuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Test OpenAI integration with communication and goal guides',
-  })
-  @ApiQuery({
-    name: 'prompt',
-    description: 'The prompt to send to OpenAI',
-    required: true,
-  })
-  @ApiQuery({
-    name: 'communicationType',
-    description: 'Communication style (FORMAL, NORMAL, RELAXED)',
-    required: false,
-    default: 'NORMAL',
-  })
-  @ApiQuery({
-    name: 'agentType',
-    description: 'Agent type (SUPPORT, SALE, PERSONAL)',
-    required: false,
-    default: 'SUPPORT',
-  })
-  @ApiQuery({
-    name: 'isActive',
-    description: 'Whether the test agent should be considered active',
-    required: false,
-    default: 'true',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'AI response generated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean', example: true },
-        prompt: {
-          type: 'string',
-          example: 'How can I help you with your issue?',
-        },
-        response: {
-          type: 'string',
-          example:
-            'I understand you need help with your issue. Let me assist you step by step...',
-        },
-        communicationType: { type: 'string', example: 'NORMAL' },
-        agentType: { type: 'string', example: 'SUPPORT' },
-        isActive: { type: 'boolean', example: true },
-      },
-    },
-  })
-  async testOpenAI(
-    @Query('prompt') prompt: string,
-    @Query('communicationType') communicationType: string = 'NORMAL',
-    @Query('agentType') agentType: string = 'SUPPORT',
-    @Query('isActive') isActive: string = 'true'
-  ): Promise<{
-    success: boolean;
-    prompt: string;
-    response: string;
-    communicationType: string;
-    agentType: string;
-    isActive: boolean;
-  }> {
-    this.logger.log(`Testing OpenAI integration with prompt: ${prompt}`);
-
-    // Parse isActive query parameter (defaults to true if not valid)
-    const agentIsActive = isActive?.toLowerCase() !== 'false';
-
-    // Check if mock agent is inactive
-    if (!agentIsActive) {
-      this.logger.warn('Test agent is inactive, cannot generate response');
-      return {
-        success: false,
-        prompt,
-        response: 'Agent is inactive and cannot process messages',
-        communicationType: communicationType || 'NORMAL',
-        agentType: agentType || 'SUPPORT',
-        isActive: false,
-      };
-    }
-
-    try {
-      // Import the utilities
-      const { getCommunicationGuide } = await import(
-        '../common/utils/communication-guides'
-      );
-      const { getGoalGuide } = await import('../common/utils/goal-guides');
-
-      // Get guides based on provided types
-      const communicationGuide = getCommunicationGuide(
-        communicationType || 'NORMAL'
-      );
-      const goalGuide = getGoalGuide(agentType || 'SUPPORT');
-
-      // Create a mock agent
-      const mockAgent = {
-        id: 'test-agent-id',
-        name: 'Test Agent',
-        type: agentType || 'SUPPORT',
-        communicationType: communicationType || 'NORMAL',
-        jobName: 'Technical Support Specialist',
-        jobSite: 'https://tawkee.ai',
-        jobDescription:
-          'Provides expert technical support for our AI-powered WhatsApp automation platform, helping customers resolve issues and maximize the benefits of our service.',
-        isActive: agentIsActive,
-        trainings: [
-          {
-            title: 'Product Knowledge',
-            content:
-              'Our product is designed to help users automate customer service.',
-          },
-        ],
-        intentions: [
-          {
-            title: 'Be helpful',
-            content:
-              'Always aim to resolve user issues efficiently and accurately.',
-          },
-        ],
-        // Add agent settings to test the behavior settings integration
-        settings: {
-          preferredModel: 'GPT_4_O', // Using the newest model
-          timezone: 'UTC',
-          enabledHumanTransfer: true,
-          enabledReminder: true,
-          splitMessages: true,
-          enabledEmoji: true,
-          limitSubjects: true,
-          messageGroupingTime: 'NO_GROUP',
-        },
-      };
-
-      // Generate response using OpenAI
-      const response = await this.openAiService.generateAgentResponse(
-        prompt,
-        mockAgent,
-        communicationGuide,
-        goalGuide
-      );
-
-      return {
-        success: true,
-        prompt,
-        response,
-        communicationType: communicationType || 'NORMAL',
-        agentType: agentType || 'SUPPORT',
-        isActive: agentIsActive,
-      };
-    } catch (error) {
-      this.logger.error(`Error generating OpenAI response: ${error.message}`);
-      return {
-        success: false,
-        prompt,
-        response: `Failed to generate response: ${error.message}`,
-        communicationType: communicationType || 'NORMAL',
-        agentType: agentType || 'SUPPORT',
-        isActive: agentIsActive,
       };
     }
   }

@@ -18,8 +18,10 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { EvolutionApiModule } from './evolution-api/evolution-api.module';
 import { WahaApiModule } from './waha-api/waha-api.module';
 import { OpenAiModule } from './openai/openai.module';
+import { DeepseekModule } from './deepseek/deepseek.module';
 import { QdrantModule } from './qdrant/qdrant.module';
 import { DocumentsModule } from './documents/documents.module';
+import { WebsocketModule } from './websocket/websocket.module';
 import { UsersModule } from './users/users.module';
 import * as Joi from 'joi';
 
@@ -86,8 +88,10 @@ import * as Joi from 'joi';
     EvolutionApiModule,
     WahaApiModule,
     OpenAiModule,
+    DeepseekModule,
     QdrantModule,
     DocumentsModule,
+    WebsocketModule
   ],
 })
 export class AppModule {}

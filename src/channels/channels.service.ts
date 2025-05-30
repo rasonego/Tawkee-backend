@@ -84,6 +84,19 @@ export class ChannelsService {
     let config = {};
     let connected = false;
 
+    // Create the channel
+    const channel = await this.prisma.channel.create({
+      data: {
+        name: createChannelDto.name,
+        type: createChannelDto.type,
+        connected,
+        config,
+        agent: {
+          connect: { id: agentId },
+        },
+      },
+    });
+
     // If channel type is WHATSAPP, set up Waha API from environment variables
     if (createChannelDto.type === 'WHATSAPP') {
       this.logger.log(
@@ -115,7 +128,9 @@ export class ChannelsService {
 
         // Create the instance on the Waha API
         const instanceResult = await this.wahaApiService.createInstance({
+          workspaceId: agent.workspaceId,
           agentId,
+          channelId: channel.id,
           instanceName,
           serverUrl: wahaApiUrl,
           apiKey: wahaApiKey,
@@ -162,17 +177,14 @@ export class ChannelsService {
       }
     }
 
-    // Create the channel
-    const channel = await this.prisma.channel.create({
-      data: {
-        name: createChannelDto.name,
-        type: createChannelDto.type,
-        connected,
-        config,
-        agent: {
-          connect: { id: agentId },
-        },
+    // Update the channel with config
+    await this.prisma.channel.update({
+      where: {
+        id: channel.id,
       },
+      data: {
+        config
+      }
     });
 
     // Create a sanitized version of config that doesn't expose sensitive data

@@ -59,10 +59,46 @@ export class ChatsService {
       skip,
       take: pageSize,
       orderBy: { createdAt: 'desc' },
+      include: {
+        agent: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        interactions: {
+          orderBy: { startAt: 'desc' },
+          take: 1,
+          include: {
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 1
+            }
+          }
+        }
+      }
     });
 
+    // Helper function to safely convert BigInt fields to string
+    const mapMessageToDto = (message: any) => {
+      if (!message) return null;
+      return {
+        ...message,
+        whatsappTimestamp: message.whatsappTimestamp ? message.whatsappTimestamp.toString() : null,
+        time: message.time ? message.time.toString() : null,
+      };
+    };
+
     // Format the response to match the expected structure
-    const formattedChats = chats.map((chat) => this.formatChatResponse(chat));
+    const formattedChats = chats.map((chat) => {
+      const latestInteraction = chat.interactions?.[0];
+      const latestMessage = latestInteraction?.messages?.[0];
+
+      return {
+        ...this.formatChatResponse(chat),
+        latestMessage: mapMessageToDto(latestMessage),
+      };
+    });
 
     return {
       data: formattedChats,
@@ -73,6 +109,44 @@ export class ChatsService {
         totalPages: Math.ceil(total / pageSize),
       },
     };
+  }
+
+  async finishChat(id: string): Promise<{ success: boolean }> {
+    await this.prisma.chat.update({
+      where: { id },
+      data: {
+        finished: true,
+        read: true,
+        updatedAt: new Date()
+      },
+    });
+
+    return { success: true };
+  }
+
+  async unfinishChat(id: string): Promise<{ success: boolean }> {
+    await this.prisma.chat.update({
+      where: { id },
+      data: {
+        finished: false,
+        read: false,
+        updatedAt: new Date()
+      },
+    });
+
+    return { success: true };
+  }
+
+  async readChat(id: string): Promise<{ success: boolean }> {
+    await this.prisma.chat.update({
+      where: { id },
+      data: {
+        read: true,
+        unReadCount: 0
+      },
+    });
+
+    return { success: true };
   }
 
   async deleteChat(id: string): Promise<{ success: boolean }> {
@@ -172,6 +246,7 @@ export class ChatsService {
       where: { id: chatId },
       data: {
         humanTalk: true,
+        finished: false,
         updatedAt: new Date(),
       },
     });
@@ -397,7 +472,7 @@ export class ChatsService {
       messageUserName: chat.messageUserName || 'User',
       read: chat.read || false,
       role: chat.role || 'user',
-      agentName: chat.agentName || 'Agent',
+      agentName: chat.agent.name || 'Agent',
       agentId: chat.agentId,
       whatsappPhone: chat.whatsappPhone || '',
       finished: chat.finished || false,

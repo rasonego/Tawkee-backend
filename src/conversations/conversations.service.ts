@@ -1,9 +1,11 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentsService } from '../agents/agents.service';
+import { DeepseekService } from '../deepseek/deepseek.service';
 import { OpenAiService } from '../openai/openai.service';
 import { TrainingsService } from '../trainings/trainings.service';
 import { ConversationDto } from './dto/conversation.dto';
+import { AIModel } from '@prisma/client';
 
 @Injectable()
 export class ConversationsService {
@@ -12,6 +14,7 @@ export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly agentsService: AgentsService,
+    private readonly deepseekAiService: DeepseekService,
     private readonly openAiService: OpenAiService,
     private readonly trainingsService: TrainingsService
   ) {}
@@ -169,13 +172,13 @@ export class ConversationsService {
   }
 
   private async generateAgentResponse(
-    enhancedAgentDto: any,
+    d: any,
     chat: any,
     interaction: any,
     conversationDto: ConversationDto
   ) {
     // Extract the agent data from the enhanced DTO
-    const agent = enhancedAgentDto.agent;
+    const agent = d.agent;
     try {
       // Import the communication guide and goal guide utilities
       const { getCommunicationGuide } = await import(
@@ -225,10 +228,10 @@ export class ConversationsService {
       const trainings = agent.trainings || [];
       const intentions = agent.intentions || [];
 
-      // Add additional agent information to be passed to OpenAI
+      // Add additional agent information to be passed to the model
       const enhancedAgent = {
         ...agent,
-        settings: enhancedAgentDto.settings,
+        settings: d.settings,
         trainings,
         intentions,
         // Ensure job-related attributes are included
@@ -237,7 +240,7 @@ export class ConversationsService {
         jobDescription: agent.jobDescription || '',
       };
 
-      // Generate AI response using OpenAI with RAG
+      // Generate AI response using the preferred model with RAG
       let responseText = '';
       try {
         // Search for relevant training materials using RAG
@@ -272,15 +275,40 @@ export class ConversationsService {
           // Continue without RAG if there's an error
         }
 
-        // Use OpenAI to generate the response with RAG context
-        responseText = await this.openAiService.generateAgentResponse(
-          conversationDto.prompt,
-          enhancedAgent,
-          communicationGuide,
-          goalGuide,
-          conversationContext,
-          retrievedContext // Include retrieved context from RAG
-        );
+        // Use the preferred model to generate the response with RAG context
+
+        const preferredModel: AIModel = enhancedAgent.settings.preferredModel;
+        const openAIModels: AIModel[] = [
+          AIModel.GPT_4,
+          AIModel.GPT_4_1,
+          AIModel.GPT_4_1_MINI,
+          AIModel.GPT_4_O,
+          AIModel.GPT_4_O_MINI,
+          AIModel.OPEN_AI_O1,
+          AIModel.OPEN_AI_O3,
+          AIModel.OPEN_AI_O3_MINI,
+          AIModel.OPEN_AI_O4_MINI
+        ];
+
+        if (preferredModel == AIModel.DEEPSEEK_CHAT) {
+          responseText = await this.deepseekAiService.generateAgentResponse(
+            conversationDto.prompt,
+            enhancedAgent,
+            communicationGuide,
+            goalGuide,
+            conversationContext,
+            retrievedContext // Include retrieved context from RAG
+          );
+        } else if (openAIModels.includes(preferredModel as AIModel)) {
+          responseText = await this.openAiService.generateAgentResponse(
+            conversationDto.prompt,
+            enhancedAgent,
+            communicationGuide,
+            goalGuide,
+            conversationContext,
+            retrievedContext // Include retrieved context from RAG
+          );          
+        }
 
         this.logger.debug(`Generated AI response for agent ${agent.name}`);
       } catch (error) {

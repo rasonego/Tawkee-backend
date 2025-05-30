@@ -3,7 +3,7 @@
 # Base stage with common dependencies
 FROM node:20-alpine AS base
 WORKDIR /app
-# Install dependencies required for Prisma
+# Install dependencies required for Prisma and basic Chromium operation
 RUN apk add --no-cache python3 make g++ openssl
 
 # Development stage
@@ -31,12 +31,30 @@ RUN npm run build
 FROM node:20-alpine AS production
 ENV NODE_ENV=production
 WORKDIR /app
+
+# Install Chromium and dependencies needed by Puppeteer on Alpine
+# See https://pptr.dev/troubleshooting#chrome-doesnt-launch-on-linux
+# Dependencies list might vary based on exact usage, this covers common ones.
+RUN apk add --no-cache \
+    chromium \
+    udev \
+    ttf-freefont \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    && rm -rf /var/cache/apk/*
+
+# Tell Puppeteer to skip downloading Chrome and use the system-installed Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Copy only necessary files from the builder stage
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
-# O Prisma Client é gerado em node_modules, que já foi copiado acima
+
 EXPOSE ${PORT:-5003}
 # Executa as migrações e inicia a aplicação
 CMD sh -c "npx prisma migrate deploy && node dist/main.js"

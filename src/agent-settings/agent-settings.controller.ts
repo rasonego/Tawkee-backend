@@ -97,7 +97,7 @@ export class AgentSettingsController {
   async updateSettings(
     @Param('agentId') agentId: string,
     @Body() agentSettingsDto: AgentSettingsDto
-  ): Promise<{ success: boolean; message?: string }> {
+  ): Promise<{ updatedSettingsDto: AgentSettingsDto }> {
     return this.agentSettingsService.updateSettings(agentId, agentSettingsDto);
   }
 }

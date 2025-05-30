@@ -75,7 +75,7 @@ model Agent {
 model AgentSettings {
   id                   String       @id @default(uuid())
   preferredModel       AIModel      @default(GPT_4_1)
-  timezone             String       @default("UTC")
+  timezone             String       
   enabledHumanTransfer Boolean      @default(true)
   enabledReminder      Boolean      @default(true)
   splitMessages        Boolean      @default(true)

@@ -32,7 +32,7 @@ async function main() {
       data: {
         agentId: agent.id,
         preferredModel: 'GPT_4_1',
-        timezone: 'UTC',
+        timezone: '(GMT+00:00) London',
       },
     });
     

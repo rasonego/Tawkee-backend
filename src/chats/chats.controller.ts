@@ -67,7 +67,79 @@ export class ChatsController {
     );
   }
 
-  @Delete('chat/:chatId')
+  // Endpoint to mark chat as finished
+  @Put('chats/:chatId/finish')
+  @ApiOperation({ summary: 'Mark a chat as finished' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Chat marked as finished successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+          example: true,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Chat not found' })
+  @ApiParam({ name: 'chatId', description: 'Chat ID' })
+  async markAsFinished(@Param('chatId') chatId: string): Promise<{ success: boolean }> {
+    // Assuming the service method handles the logic and potential errors (like not found)
+    await this.chatsService.finishChat(chatId);
+    return { success: true }; // Return success if no error is thrown by the service
+  }
+
+  // Endpoint to mark chat as unfinished
+  @Put('chats/:chatId/unfinish')
+  @ApiOperation({ summary: 'Mark a chat as unfinished' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Chat marked as unfinished successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+          example: true,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Chat not found' })
+  @ApiParam({ name: 'chatId', description: 'Chat ID' })
+  async markAsUnfinished(@Param('chatId') chatId: string): Promise<{ success: boolean }> {
+    // Assuming the service method handles the logic and potential errors (like not found)
+    await this.chatsService.unfinishChat(chatId);
+    return { success: true }; // Return success if no error is thrown by the service
+  }  
+
+  // Endpoint to mark chat as read
+  @Put('chats/:chatId/read')
+  @ApiOperation({ summary: 'Mark a chat as read' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Chat marked as read successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+          example: true,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Chat not found' })
+  @ApiParam({ name: 'chatId', description: 'Chat ID' })
+  async markAsRead(@Param('chatId') chatId: string): Promise<{ success: boolean }> {
+    // Assuming the service method handles the logic and potential errors (like not found)
+    await this.chatsService.readChat(chatId);
+    return { success: true }; // Return success if no error is thrown by the service
+  }
+
+  @Delete('chats/:chatId')
   @ApiOperation({ summary: 'Delete a chat' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -88,7 +160,7 @@ export class ChatsController {
     return this.chatsService.deleteChat(chatId);
   }
 
-  @Get('chat/:chatId/messages')
+  @Get('chats/:chatId/messages')
   @ApiOperation({ summary: 'List messages for a chat' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -105,7 +177,7 @@ export class ChatsController {
     return this.chatsService.findMessagesByChatId(chatId, paginationDto);
   }
 
-  @Delete('chat/:chatId/messages')
+  @Delete('chats/:chatId/messages')
   @ApiOperation({ summary: 'Delete all messages from a chat' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -128,7 +200,7 @@ export class ChatsController {
     return this.chatsService.deleteMessages(chatId);
   }
 
-  @Put('chat/:chatId/start-human')
+  @Put('chats/:chatId/start-human')
   @ApiOperation({ summary: 'Start human attendance for a chat' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -151,7 +223,7 @@ export class ChatsController {
     return this.chatsService.startHumanAttendance(chatId);
   }
 
-  @Put('chat/:chatId/stop-human')
+  @Put('chats/:chatId/stop-human')
   @ApiOperation({ summary: 'Stop human attendance for a chat' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -174,7 +246,7 @@ export class ChatsController {
     return this.chatsService.stopHumanAttendance(chatId);
   }
 
-  @Post('chat/:chatId/send-message')
+  @Post('chats/:chatId/send-message')
   @ApiOperation({ summary: 'Send a message in a chat' })
   @ApiResponse({
     status: HttpStatus.OK,

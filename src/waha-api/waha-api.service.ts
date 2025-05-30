@@ -3,7 +3,9 @@ import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface CreateInstanceOptions {
+  workspaceId: string;
   agentId: string;
+  channelId: string;
   instanceName: string;
   serverUrl: string;
   apiKey: string;
@@ -390,7 +392,7 @@ export class WahaApiService {
    */
   async createInstance(options: CreateInstanceOptions): Promise<any> {
     try {
-      const { agentId, instanceName, serverUrl, apiKey, webhookUrl } = options;
+      const { workspaceId, agentId, channelId, instanceName, serverUrl, apiKey, webhookUrl } = options;
 
       this.logger.log(
         `Creating instance ${instanceName} of ${agentId} on Waha API at ${serverUrl} with apiKey ${apiKey} and webhookUrl ${webhookUrl}`
@@ -433,7 +435,11 @@ export class WahaApiService {
         {
           name: instanceName,
           config: {
-            debug: true,
+            metadata: {
+              workspaceId,
+              agentId,
+              channelId,
+            },
             webhooks: [
               {
                 url: process.env.WAHA_WEBHOOK_URL,

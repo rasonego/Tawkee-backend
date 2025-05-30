@@ -88,7 +88,7 @@ CREATE TABLE "Agent" (
 CREATE TABLE "AgentSettings" (
     "id" TEXT NOT NULL,
     "preferredModel" "AIModel" NOT NULL DEFAULT 'GPT_4_1',
-    "timezone" TEXT NOT NULL DEFAULT 'UTC',
+    "timezone" TEXT NOT NULL DEFAULT '(GMT+00:00) London',
     "enabledHumanTransfer" BOOLEAN NOT NULL DEFAULT true,
     "enabledReminder" BOOLEAN NOT NULL DEFAULT true,
     "splitMessages" BOOLEAN NOT NULL DEFAULT true,

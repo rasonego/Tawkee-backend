@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Message } from '@prisma/client';
 
 export class ChatDto {
   @ApiProperty({
@@ -139,4 +140,10 @@ export class ChatDto {
     example: 'Hello, how can I help you?',
   })
   conversation: string;
+
+  @ApiProperty({
+    description: 'Latest message',
+    example: 'Yes, thanks...'
+  })
+  latestMessage?: Message;
 }

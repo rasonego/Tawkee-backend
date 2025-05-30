@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
-import { EvolutionApiService } from '../evolution-api/evolution-api.service';
 import { WahaApiService } from 'src/waha-api/waha-api.service';
 import { DocumentsService } from 'src/documents/documents.service';
+import { WebsocketService } from 'src/websocket/websocket.service';
 
 @Injectable()
 export class WebhooksService {
@@ -12,8 +12,8 @@ export class WebhooksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversationsService: ConversationsService,
-    private readonly evolutionApiService: EvolutionApiService,
     private readonly wahaApiService: WahaApiService,
+    private readonly websocketService: WebsocketService,
     private readonly documentsService: DocumentsService
   ) {}
 
@@ -202,6 +202,7 @@ export class WebhooksService {
     try {
       const event = webhookData?.event || 'unknown';
       const instance = webhookData?.session || 'unknown';
+      const metadata = webhookData?.metadata;
 
       this.logger.log(`Received webhook: ${event} from instance ${instance}`);
 
@@ -215,29 +216,12 @@ export class WebhooksService {
       // - message: New message received
       // - session.status: Connection status changed
 
-      // // Extract common data for all event types
-      // const dataObject = webhookData?.payload || {};
-      const connectionState = webhookData?.payload?.status || '';
-
-      // Try to find the matching channel
-      let eventChannel;
-      if (connectionState === 'WORKING') {
-        // If state is WORKING, look for the most recent channel that is not connected
-        eventChannel = await this.prisma.channel.findFirst({
-          where: {
-            connected: false,
-          },
-          orderBy: {
-            updatedAt: 'desc',
-          },
-        });
-      } else {
-        eventChannel = await this.prisma.channel.findFirst({
-          orderBy: {
-            updatedAt: 'desc',
-          },
-        });
-      }
+      // Find the matching channel
+      const eventChannel = await this.prisma.channel.findUnique({
+        where: {
+          id: metadata.channelId
+        }
+      });
 
       // Process session.status events to update channel status
       if (event === 'session.status') {
@@ -281,6 +265,17 @@ export class WebhooksService {
             this.logger.log(
               `Updated channel ${eventChannel.id} connection status to: ${isConnected ? 'connected' : 'disconnected'}`
             );
+           
+            this.websocketService.sendToClient(
+              metadata.workspaceId,
+              'channelConnectionStatusUpdate',
+              {
+                agentId: metadata.agentId,
+                channelId: metadata.channelId,
+                connectionStatus: connectionState
+              }
+            );
+
           } catch (error) {
             this.logger.error(
               `Failed to update channel connection status: ${error.message}`
@@ -1412,44 +1407,5 @@ export class WebhooksService {
       );
       return { success: false };
     }
-  }
-
-  /**
-   * Test method to send a WhatsApp message using Evolution API
-   * @param agentId Agent ID to use for sending the message
-   * @param phone WhatsApp phone number to send to (with country code)
-   * @param message Message text to send
-   */
-  async testSendMessage(
-    agentId: string,
-    phone: string,
-    message: string
-  ): Promise<any> {
-    this.logger.log(
-      `Testing WhatsApp message to ${phone} via agent ${agentId}`
-    );
-
-    // Check if the agent is active
-    const agent = await this.prisma.agent.findUnique({
-      where: { id: agentId },
-      select: { isActive: true },
-    });
-
-    if (agent?.isActive === false) {
-      this.logger.warn(
-        `Cannot send test message - agent ${agentId} is inactive`
-      );
-      throw new Error('Agent is inactive and cannot send messages');
-    }
-
-    // Send message via the Evolution API service and return the response
-    const response = await this.wahaApiService.sendWhatsAppMessage(
-      agentId,
-      phone,
-      message
-    );
-
-    this.logger.log(`Message sent to ${phone}, response received`);
-    return response;
   }
 }

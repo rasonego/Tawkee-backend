@@ -11,6 +11,8 @@ import { InteractionMessageDto } from './dto/interaction-message.dto';
 import { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import { EvolutionApiService } from '../evolution-api/evolution-api.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { InteractionWithMessagesDto } from './dto/interaction-with-messages.dto';
+import { PaginatedInteractionsWithMessagesResponseDto } from './paginated-interactions-with-messages-response.dto';
 
 @Injectable()
 export class InteractionsService {
@@ -44,39 +46,157 @@ export class InteractionsService {
     }
   }
 
-  async findAllByWorkspace(
-    workspaceId: string,
+  // async findAllByWorkspace(
+  //   workspaceId: string,
+  //   paginationDto: PaginationDto,
+  //   agentId?: string
+  // ): Promise<PaginatedResult<InteractionDto>> {
+  //   const { page, pageSize, query } = paginationDto;
+  //   const skip = (page - 1) * pageSize;
+
+  //   // Build where condition based on parameters
+  //   const where: any = { workspace: { id: workspaceId } };
+
+  //   // Add agent filter if provided
+  //   if (agentId) {
+  //     where.agentId = agentId;
+  //   }
+
+  //   // Add search query if provided
+  //   if (query) {
+  //     where.OR = [
+  //       { agent: { name: { contains: query, mode: 'insensitive' } } },
+  //       { chat: { name: { contains: query, mode: 'insensitive' } } },
+  //     ];
+  //   }
+
+  //   // Get total count
+  //   const total = await this.prisma.interaction.count({ where });
+
+  //   // Get interactions with pagination
+  //   const interactions = await this.prisma.interaction.findMany({
+  //     where,
+  //     skip,
+  //     take: pageSize,
+  //     orderBy: { startAt: 'desc' },
+  //     include: {
+  //       agent: {
+  //         select: {
+  //           name: true,
+  //           avatar: true,
+  //         },
+  //       },
+  //       chat: {
+  //         select: {
+  //           name: true,
+  //         },
+  //       },
+  //     },
+  //   });
+
+  //   // Map to DTOs
+  //   const data = interactions.map((interaction) => ({
+  //     id: interaction.id,
+  //     agentId: interaction.agentId,
+  //     agentName: interaction.agent.name,
+  //     agentAvatar: interaction.agent.avatar || null,
+  //     chatId: interaction.chatId,
+  //     chatName: interaction.chat?.name || null,
+  //     status: interaction.status as InteractionStatus,
+  //     startAt: interaction.startAt,
+  //     transferAt: interaction.transferAt || null,
+  //     resolvedAt: interaction.resolvedAt || null,
+  //     userId: interaction.userId || null,
+  //   }));
+
+  //   return {
+  //     data,
+  //     meta: {
+  //       total,
+  //       page,
+  //       pageSize,
+  //       totalPages: Math.ceil(total / pageSize),
+  //     },
+  //   };
+  // }
+
+  // async findMessagesById(
+  //   interactionId: string
+  // ): Promise<InteractionMessageDto[]> {
+  //   // First verify the interaction exists
+  //   const interaction = await this.prisma.interaction.findUnique({
+  //     where: { id: interactionId },
+  //   });
+
+  //   if (!interaction) {
+  //     throw new NotFoundException(
+  //       `Interaction with ID ${interactionId} not found`
+  //     );
+  //   }
+
+  //   // Get all messages for this interaction
+  //   const messages = await this.prisma.message.findMany({
+  //     where: { interactionId },
+  //     orderBy: { createdAt: 'asc' },
+  //   });
+
+  //   // Map to DTOs
+  //   return messages.map((message) => ({
+  //     id: message.id,
+  //     text: message.text || null,
+  //     role: message.role,
+  //     userName: message.userName || null,
+  //     userId: null, // No userId in the schema
+  //     userPicture: message.userPicture || null,
+  //     time:
+  //       Number(message.time) || Math.floor(message.createdAt.getTime() / 1000), // Use existing time or convert createdAt
+  //     type: message.type || 'text',
+  //     imageUrl: message.imageUrl || null,
+  //     audioUrl: message.audioUrl || null,
+  //     documentUrl: message.documentUrl || null,
+  //     fileName: message.fileName || null,
+  //     midiaContent: message.midiaContent || null,
+  //     width: message.width || null,
+  //     height: message.height || null,
+  //   }));
+  // }
+
+  async findInteractionsByChatWithMessages(
+    chatId: string,
     paginationDto: PaginationDto,
-    agentId?: string
-  ): Promise<PaginatedResult<InteractionDto>> {
-    const { page, pageSize, query } = paginationDto;
+  ): Promise<PaginatedInteractionsWithMessagesResponseDto> {
+    const { page, pageSize } = paginationDto;
     const skip = (page - 1) * pageSize;
 
-    // Build where condition based on parameters
-    const where: any = { workspace: { id: workspaceId } };
+    // Define the where condition for filtering by chatId
+    const whereCondition = { chatId: chatId };
 
-    // Add agent filter if provided
-    if (agentId) {
-      where.agentId = agentId;
+    // Get total count of interactions for the specific chat
+    const total = await this.prisma.interaction.count({
+      where: whereCondition,
+    });
+
+    if (total === 0) {
+      // Optional: Handle case where chat has no interactions
+      // You could throw NotFoundException or return empty paginated result
+      // throw new NotFoundException(`No interactions found for chat ID: ${chatId}`);
+       return {
+         data: [],
+         meta: {
+           total: 0,
+           page,
+           pageSize,
+           totalPages: 0,
+         },
+       };
     }
 
-    // Add search query if provided
-    if (query) {
-      where.OR = [
-        { agent: { name: { contains: query, mode: 'insensitive' } } },
-        { chat: { name: { contains: query, mode: 'insensitive' } } },
-      ];
-    }
-
-    // Get total count
-    const total = await this.prisma.interaction.count({ where });
-
-    // Get interactions with pagination
+    // Get interactions with pagination and include agent and messages
     const interactions = await this.prisma.interaction.findMany({
-      where,
+      where: whereCondition,
       skip,
       take: pageSize,
-      orderBy: { startAt: 'desc' },
+      orderBy: { startAt: 'asc' }, // Or any other order you prefer
       include: {
         agent: {
           select: {
@@ -84,29 +204,46 @@ export class InteractionsService {
             avatar: true,
           },
         },
-        chat: {
+        messages: { // Include messages related to the interaction
           select: {
-            name: true,
+            id: true,
+            text: true,
+            role: true,
+            userName: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'asc', // Order messages chronologically
           },
         },
+        // No need to include chat again as we are filtering by chatId
       },
     });
 
-    // Map to DTOs
-    const data = interactions.map((interaction) => ({
+    // Map Prisma Interaction objects to InteractionWithMessagesDto
+    const data: InteractionWithMessagesDto[] = interactions.map((interaction) => ({
       id: interaction.id,
       agentId: interaction.agentId,
       agentName: interaction.agent.name,
       agentAvatar: interaction.agent.avatar || null,
       chatId: interaction.chatId,
-      chatName: interaction.chat?.name || null,
+      chatName: null, // Chat name is not directly available here unless included
       status: interaction.status as InteractionStatus,
       startAt: interaction.startAt,
       transferAt: interaction.transferAt || null,
       resolvedAt: interaction.resolvedAt || null,
       userId: interaction.userId || null,
+      // Map Prisma Message objects to MessageDto
+      messages: interaction.messages.map((message) => ({
+        id: message.id,
+        text: message.text ?? null, // Handle potential null text
+        role: message.role,
+        userName: message.userName ?? null, // Handle potential null userName
+        createdAt: message.createdAt,
+      })),
     }));
 
+    // Return the paginated result using the new DTO
     return {
       data,
       meta: {
@@ -116,47 +253,6 @@ export class InteractionsService {
         totalPages: Math.ceil(total / pageSize),
       },
     };
-  }
-
-  async findMessagesById(
-    interactionId: string
-  ): Promise<InteractionMessageDto[]> {
-    // First verify the interaction exists
-    const interaction = await this.prisma.interaction.findUnique({
-      where: { id: interactionId },
-    });
-
-    if (!interaction) {
-      throw new NotFoundException(
-        `Interaction with ID ${interactionId} not found`
-      );
-    }
-
-    // Get all messages for this interaction
-    const messages = await this.prisma.message.findMany({
-      where: { interactionId },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    // Map to DTOs
-    return messages.map((message) => ({
-      id: message.id,
-      text: message.text || null,
-      role: message.role,
-      userName: message.userName || null,
-      userId: null, // No userId in the schema
-      userPicture: message.userPicture || null,
-      time:
-        Number(message.time) || Math.floor(message.createdAt.getTime() / 1000), // Use existing time or convert createdAt
-      type: message.type || 'text',
-      imageUrl: message.imageUrl || null,
-      audioUrl: message.audioUrl || null,
-      documentUrl: message.documentUrl || null,
-      fileName: message.fileName || null,
-      midiaContent: message.midiaContent || null,
-      width: message.width || null,
-      height: message.height || null,
-    }));
   }
 
   /**

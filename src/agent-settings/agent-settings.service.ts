@@ -79,33 +79,15 @@ export class AgentSettingsService {
   async updateSettings(
     agentId: string,
     agentSettingsDto: AgentSettingsDto
-  ): Promise<{ success: boolean; message?: string }> {
+  ): Promise<{ updatedSettingsDto: AgentSettingsDto }> {
     try {
-      // Ensure agent exists
-      await this.agentsService.findOne(agentId);
-
-      // Check if settings exist
-      const existingSettings = await this.prisma.agentSettings.findUnique({
+      // Update existing settings
+      const updatedSettingsDto = await this.prisma.agentSettings.update({
         where: { agentId },
+        data: agentSettingsDto,
       });
 
-      if (existingSettings) {
-        // Update existing settings
-        await this.prisma.agentSettings.update({
-          where: { agentId },
-          data: agentSettingsDto,
-        });
-      } else {
-        // Create new settings
-        await this.prisma.agentSettings.create({
-          data: {
-            ...agentSettingsDto,
-            agentId,
-          },
-        });
-      }
-
-      return { success: true, message: 'Agent settings updated successfully' };
+      return { updatedSettingsDto };
     } catch (error) {
       this.logger.error(
         `Error updating agent settings: ${error.message}`,
@@ -143,7 +125,7 @@ export class AgentSettingsService {
     try {
       const defaultSettings: AgentSettingsDto = {
         preferredModel: 'GPT_4_1',
-        timezone: 'UTC',
+        timezone: '(GMT+00:00) London',
         enabledHumanTransfer: true,
         enabledReminder: true,
         splitMessages: true,

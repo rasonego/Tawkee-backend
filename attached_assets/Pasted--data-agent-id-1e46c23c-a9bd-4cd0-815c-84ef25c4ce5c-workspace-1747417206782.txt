@@ -26,7 +26,7 @@
 			},
 			"settings": {
 				"preferredModel": "GPT_4_1",
-				"timezone": "UTC",
+				"timezone": '(GMT+00:00) London',
 				"enabledHumanTransfer": false,
 				"enabledReminder": false,
 				"splitMessages": false,
@@ -67,7 +67,7 @@
 			},
 			"settings": {
 				"preferredModel": "GPT_4_O_MINI",
-				"timezone": "UTC",
+				"timezone": '(GMT+00:00) London',
 				"enabledHumanTransfer": false,
 				"enabledReminder": true,
 				"splitMessages": false,
@@ -108,7 +108,7 @@
 			},
 			"settings": {
 				"preferredModel": "GPT_4_1",
-				"timezone": "UTC",
+				"timezone": '(GMT+00:00) London',
 				"enabledHumanTransfer": true,
 				"enabledReminder": true,
 				"splitMessages": true,

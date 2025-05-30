@@ -19,13 +19,12 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
-import { InteractionMessageDto } from './dto/interaction-message.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ApiPaginationQueries } from '../common/decorators/api-pagination.decorator';
-import { PaginatedInteractionsResponseDto } from './dto/paginated-interactions-response.dto';
 import { ResolveInteractionDto } from './dto/resolve-interaction.dto';
 import { WarnInteractionDto } from './dto/warn-interaction.dto';
 import { FindIdleInteractionsDto } from './dto/find-idle-interactions.dto';
+import { PaginatedInteractionsWithMessagesResponseDto } from './paginated-interactions-with-messages-response.dto';
 
 @ApiTags('Interactions')
 @ApiBearerAuth()
@@ -34,59 +33,87 @@ import { FindIdleInteractionsDto } from './dto/find-idle-interactions.dto';
 export class InteractionsController {
   constructor(private readonly interactionsService: InteractionsService) {}
 
-  @Get('workspace/:workspaceId/interactions')
+  // @Get('workspace/:workspaceId/interactions')
+  // @ApiOperation({
+  //   summary: 'List interactions for a workspace',
+  //   description:
+  //     'Returns all interactions for a workspace with optional filtering by agent ID and pagination',
+  // })
+  // @ApiParam({
+  //   name: 'workspaceId',
+  //   description: 'ID of the workspace to list interactions for',
+  //   required: true,
+  // })
+  // @ApiQuery({
+  //   name: 'agentId',
+  //   description: 'Optional agent ID to filter interactions',
+  //   required: false,
+  // })
+  // @ApiPaginationQueries()
+  // @ApiResponse({
+  //   status: HttpStatus.OK,
+  //   description: 'The interactions have been successfully retrieved',
+  //   type: PaginatedInteractionsResponseDto,
+  // })
+  // async findAll(
+  //   @Param('workspaceId') workspaceId: string,
+  //   @Query() paginationDto: PaginationDto,
+  //   @Query('agentId') agentId?: string
+  // ): Promise<PaginatedInteractionsResponseDto> {
+  //   return this.interactionsService.findAllByWorkspace(
+  //     workspaceId,
+  //     paginationDto,
+  //     agentId
+  //   );
+  // }
+
+  // @Get('interaction/:interactionId/messages')
+  // @ApiOperation({
+  //   summary: 'Get messages for an interaction',
+  //   description: 'Returns all messages associated with a specific interaction',
+  // })
+  // @ApiParam({
+  //   name: 'interactionId',
+  //   description: 'ID of the interaction to get messages for',
+  //   required: true,
+  // })
+  // @ApiResponse({
+  //   status: HttpStatus.OK,
+  //   description: 'The messages have been successfully retrieved',
+  //   type: [InteractionMessageDto],
+  // })
+  // async getMessages(
+  //   @Param('interactionId') interactionId: string
+  // ): Promise<InteractionMessageDto[]> {
+  //   return this.interactionsService.findMessagesById(interactionId);
+  // }
+
+  @Get('chats/:chatId/interactions')
   @ApiOperation({
-    summary: 'List interactions for a workspace',
+    summary: 'List interactions for a specific chat, including messages',
     description:
-      'Returns all interactions for a workspace with optional filtering by agent ID and pagination',
+      'Returns paginated interactions for a given chat ID, with associated messages included for each interaction.',
   })
   @ApiParam({
-    name: 'workspaceId',
-    description: 'ID of the workspace to list interactions for',
+    name: 'chatId',
+    description: 'ID of the chat to list interactions for',
     required: true,
-  })
-  @ApiQuery({
-    name: 'agentId',
-    description: 'Optional agent ID to filter interactions',
-    required: false,
+    type: String,
   })
   @ApiPaginationQueries()
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'The interactions have been successfully retrieved',
-    type: PaginatedInteractionsResponseDto,
+    description: 'The interactions and their messages have been successfully retrieved.',
+    type: PaginatedInteractionsWithMessagesResponseDto
   })
-  async findAll(
-    @Param('workspaceId') workspaceId: string,
-    @Query() paginationDto: PaginationDto,
-    @Query('agentId') agentId?: string
-  ): Promise<PaginatedInteractionsResponseDto> {
-    return this.interactionsService.findAllByWorkspace(
-      workspaceId,
-      paginationDto,
-      agentId
+  async findInteractionsByChat(
+    @Param('chatId') chatId: string,
+    @Query() paginationDto: PaginationDto
+  ): Promise<PaginatedInteractionsWithMessagesResponseDto> {
+    return this.interactionsService.findInteractionsByChatWithMessages(
+      chatId,
+      paginationDto
     );
-  }
-
-  @Get('interaction/:interactionId/messages')
-  @ApiOperation({
-    summary: 'Get messages for an interaction',
-    description: 'Returns all messages associated with a specific interaction',
-  })
-  @ApiParam({
-    name: 'interactionId',
-    description: 'ID of the interaction to get messages for',
-    required: true,
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'The messages have been successfully retrieved',
-    type: [InteractionMessageDto],
-  })
-  async getMessages(
-    @Param('interactionId') interactionId: string
-  ): Promise<InteractionMessageDto[]> {
-    return this.interactionsService.findMessagesById(interactionId);
   }
 
   @Post('interaction/:interactionId/resolve')
