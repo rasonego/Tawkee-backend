@@ -419,6 +419,8 @@ export class WebhooksService {
       return;
     }
 
+    let agentIsInactive: boolean = false;
+
     // Check if the agent is active before processing the message
     if (webhookEvent.channel.agent.isActive === false) {
       this.logger.log(
@@ -435,9 +437,7 @@ export class WebhooksService {
         },
       });
 
-      // TODO somehow send warning that inactive agent is receiving messages?
-
-      return;
+      agentIsInactive = true;
     }
 
     // Validate required fields for message processing
@@ -690,6 +690,45 @@ export class WebhooksService {
 
           // Re-throw the error to be caught by the outer try-catch
           throw new Error(`Failed to create message: ${error.message}`);
+        }
+
+        // Send system message and skip triggering agent response is it is inactive
+        if (agentIsInactive) {
+          // Create a new message indicating the start of human attendance
+          const systemMessage = await this.prisma.message.create({
+            data: {
+              text: `${ webhookEvent.channel.agent.name } is inactive and will not respond to messages.`,
+              role: 'system',
+              type: 'notification',
+              chatId: chat.id,
+              interactionId: latestInteraction.id,
+              time: Date.now(),
+            },
+          });
+        
+          // Fetch latest data to send to socket clients
+          const updatedChat = await this.prisma.chat.findUnique({
+            where: { id: chat.id }
+          });
+          
+          const paginatedInteractions = await this.interactionsService.findLatestInteractionByChatWithMessages(chat.id);
+          
+          // Send system message to frontend clients via websocket
+          this.websocketService.sendToClient(
+            webhookEvent.channel.agent.workspaceId,
+            'messageChatUpdate',
+            {
+              ...updatedChat,
+              paginatedInteractions: paginatedInteractions,
+              latestMessage: {
+                ...systemMessage,
+                whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
+                time: systemMessage?.time?.toString()
+              }
+            }
+          );
+
+          return;
         }
 
         // Get agent response (only if not in human talk mode)
