@@ -750,12 +750,21 @@ export class WebhooksService {
             // Call agent API to process the message
             // TODO: Use the DocumentsService to extract text from media, if not text only and append the prompt
             // with the result too
-            let prompt: string = webhookEvent.messageContent;
-            if (webhookEvent.messageType != 'chat') {
+            const serializedWebhookEvent = {
+              ...webhookEvent,
+              messageTimestamp: webhookEvent?.messageTimestamp.toString()
+            }
+
+            let prompt: string = serializedWebhookEvent.messageContent;
+            if (serializedWebhookEvent.messageType != 'chat') {
+
+              const { apiKey } = this.wahaApiService.getWahaConfig();
+
               const documentTextContent =
                 await this.documentsService.extractTextFromDocument(
-                  webhookEvent.mediaUrl,
-                  JSON.parse(webhookEvent.rawData as string)?.mimetype
+                  serializedWebhookEvent.mediaUrl,
+                  JSON.parse(serializedWebhookEvent.rawData as string)?.mimetype,
+                  apiKey
                 );
 
               prompt += `\nMedia content as text:\n${documentTextContent}`;
@@ -1175,19 +1184,21 @@ export class WebhooksService {
         `Processing webhook: ${event} for channel ${channel.id} with message: "${messageContent}"`
       );
 
+
+
       // Build the webhook event data object
       const webhookEventData = {
         event: event,
         instance: instance,
         instanceId: instanceId,
-        rawData: dataObject,
+        rawData: JSON.stringify(dataObject),
         remoteJid: remoteJid,
         fromMe: fromMe,
         messageId: messageId,
         pushName: pushName,
         messageType: messageType,
         messageContent: messageContent,
-        messageTimestamp: BigInt(messageTimestamp),
+        messageTimestamp: messageTimestamp.toString(),
         dateTime: dateTime,
         destination: destination,
         sender: sender,
@@ -1242,7 +1253,7 @@ export class WebhooksService {
           try {
             const simplifiedData = {
               ...webhookEventData,
-              rawData: { message_too_large: true },
+              rawData: JSON.stringify({ message_too_large: true }),
             };
             webhookEvent = await this.prisma.webhookEvent.create({
               data: simplifiedData,
@@ -1457,7 +1468,7 @@ export class WebhooksService {
         event: event,
         instance: instance,
         instanceId: 'undefined',
-        rawData: dataObject?.media,
+        rawData: JSON.stringify(dataObject?.media),
         remoteJid: remoteJid,
         fromMe: fromMe,
         messageId: messageId,
@@ -1520,7 +1531,7 @@ export class WebhooksService {
           try {
             const simplifiedData = {
               ...webhookEventData,
-              rawData: { message_too_large: true },
+              rawData: JSON.stringify({ message_too_large: true }),
             };
             webhookEvent = await this.prisma.webhookEvent.create({
               data: simplifiedData,

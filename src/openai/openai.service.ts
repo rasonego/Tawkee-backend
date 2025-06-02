@@ -325,7 +325,7 @@ export class OpenAiService {
     detailLevel: 'low' | 'high' = 'high'
   ): Promise<string> {
     try {
-      this.logger.log(`About to describe image: ${imageUrl}`);
+      // this.logger.log(`About to describe image: ${imageUrl}`);
 
       // Default prompt for image description
       const defaultPrompt =
@@ -361,7 +361,7 @@ export class OpenAiService {
         },
       ];
 
-      console.log(JSON.stringify(messages, null, 3));
+      // console.log(JSON.stringify(messages, null, 3));
 
       // Make the API call to OpenAI
       const response = await this.openai.chat.completions.create({
@@ -473,9 +473,9 @@ export class OpenAiService {
     customPrompt?: string
   ): Promise<string> {
     try {
-      this.logger.log(
-        `About to extract text from scanned document: ${imageUrl}`
-      );
+      // this.logger.log(
+      //   `About to extract text from scanned document: ${imageUrl}`
+      // );
 
       // Specific prompt for text extraction from scanned documents
       const textExtractionPrompt =

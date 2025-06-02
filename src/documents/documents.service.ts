@@ -10,15 +10,31 @@ import { OpenAiService } from 'src/openai/openai.service';
 export class DocumentsService {
   private readonly logger = new Logger(DocumentsService.name);
 
-  constructor(private readonly openAiService: OpenAiService) {}
+  constructor(
+    private readonly openAiService: OpenAiService
+  ) {}
 
-  // --- extractTextFromDocument, getMimeTypeFromHeaders, inferMimeTypeFromUrl remain the same ---
   async extractTextFromDocument(
     url: string,
-    mimetype: string
+    mimetype: string,
+    apiKey?: string
   ): Promise<string> {
     this.logger.log('About to fetch PDF content through HTTP request...');
-    const response = await axios.get(url, { responseType: 'arraybuffer' });
+
+    let response;
+    if (!apiKey) {
+      response = await axios.get(url, { 
+        responseType: 'arraybuffer'
+      });
+    } else {
+      response = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 60000,
+        headers: {
+          'x-api-key': apiKey
+        }
+      });
+    }
     const buffer = Buffer.from(response.data);
     this.logger.log('Got a resulting buffer');
 
@@ -26,7 +42,7 @@ export class DocumentsService {
       case 'application/pdf': {
         this.logger.log('About to parse PDF...');
         const pdfData = await pdfParse(buffer);
-        this.logger.log(`Got a result: ${pdfData}`);
+        // this.logger.log(`Got a result: ${pdfData}`);
         return pdfData.text;
       }
       case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': {
@@ -55,7 +71,13 @@ export class DocumentsService {
       case 'image/jpeg':
       case 'image/png':
       case 'image/tiff': {
-        return this.openAiService.extractTextFromScannedDocument(url);
+        if (apiKey) {
+          const base64Image = buffer.toString('base64');
+          const dataUrl = `data:image/png;base64,${base64Image}`;
+          return this.openAiService.extractTextFromScannedDocument(dataUrl);
+        } else {
+          return this.openAiService.extractTextFromScannedDocument(url);
+        }
       }
 
       default: {
@@ -66,7 +88,7 @@ export class DocumentsService {
 
   async getMimeTypeFromHeaders(url: string): Promise<string> {
     try {
-      this.logger.debug(`Fetching headers to determine MIME type for: ${url}`);
+      // this.logger.debug(`Fetching headers to determine MIME type for: ${url}`);
 
       // Make a HEAD request to get headers without downloading the full image
       const response = await axios.head(url, {
@@ -76,7 +98,7 @@ export class DocumentsService {
 
       const contentType = response.headers['content-type'];
       if (contentType && contentType.startsWith('image/')) {
-        this.logger.debug(`Got MIME type from headers: ${contentType}`);
+        // this.logger.debug(`Got MIME type from headers: ${contentType}`);
         return contentType.split(';')[0]; // Remove any additional parameters
       }
 
