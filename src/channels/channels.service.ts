@@ -115,8 +115,8 @@ export class ChannelsService {
 
       try {
         // Generate a unique instance name based on agent and timestamp
-        // const instanceName = `tawkee-agent-${agentId}-${Date.now()}`;
-        const instanceName = 'default';
+        // const instanceName = 'default';
+        const instanceName = `TA-${channel.id}`;
 
         // Construct the webhook URL for this channel
         const baseUrl = process.env.OUR_ADDRESS || 'http://localhost:5000';
@@ -235,7 +235,8 @@ export class ChannelsService {
       const qrResult = await this.wahaApiService.getInstanceQR(
         channel.id,
         wahaApi.instanceName, // Use instanceName, not instanceId as per Waha API docs
-        wahaApi.serverUrl
+        wahaApi.serverUrl,
+        wahaApi.apiKey
       );
 
       this.logger.log(

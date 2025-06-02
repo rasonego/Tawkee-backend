@@ -5,11 +5,11 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { WahaApiService } from '../waha-api/waha-api.service';
+import { WebsocketService } from 'src/websocket/websocket.service';
+
 import { PaginationDto } from '../common/dto/pagination.dto';
-import { InteractionDto, InteractionStatus } from './dto/interaction.dto';
-import { InteractionMessageDto } from './dto/interaction-message.dto';
-import { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import { EvolutionApiService } from '../evolution-api/evolution-api.service';
+import { InteractionStatus } from './dto/interaction.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InteractionWithMessagesDto } from './dto/interaction-with-messages.dto';
 import { PaginatedInteractionsWithMessagesResponseDto } from './paginated-interactions-with-messages-response.dto';
@@ -20,7 +20,8 @@ export class InteractionsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly evolutionApiService: EvolutionApiService
+    private readonly wahaApiService: WahaApiService,
+    private readonly websocketService: WebsocketService
   ) {}
 
   /**
@@ -32,8 +33,8 @@ export class InteractionsService {
     this.logger.log('Running scheduled idle interactions processor...');
 
     try {
-      // Default idle times: warn after 30 minutes of inactivity, close after 5 more minutes
-      const result = await this.processIdleInteractions(30, 5);
+      // Default idle times: warn after 30 minutes of inactivity, close after 10 more minutes
+      const result = await this.processIdleInteractions(30, 10);
 
       this.logger.log(
         `Scheduled task completed: ${result.warned} interactions warned, ${result.closed} interactions closed`
@@ -45,121 +46,6 @@ export class InteractionsService {
       );
     }
   }
-
-  // async findAllByWorkspace(
-  //   workspaceId: string,
-  //   paginationDto: PaginationDto,
-  //   agentId?: string
-  // ): Promise<PaginatedResult<InteractionDto>> {
-  //   const { page, pageSize, query } = paginationDto;
-  //   const skip = (page - 1) * pageSize;
-
-  //   // Build where condition based on parameters
-  //   const where: any = { workspace: { id: workspaceId } };
-
-  //   // Add agent filter if provided
-  //   if (agentId) {
-  //     where.agentId = agentId;
-  //   }
-
-  //   // Add search query if provided
-  //   if (query) {
-  //     where.OR = [
-  //       { agent: { name: { contains: query, mode: 'insensitive' } } },
-  //       { chat: { name: { contains: query, mode: 'insensitive' } } },
-  //     ];
-  //   }
-
-  //   // Get total count
-  //   const total = await this.prisma.interaction.count({ where });
-
-  //   // Get interactions with pagination
-  //   const interactions = await this.prisma.interaction.findMany({
-  //     where,
-  //     skip,
-  //     take: pageSize,
-  //     orderBy: { startAt: 'desc' },
-  //     include: {
-  //       agent: {
-  //         select: {
-  //           name: true,
-  //           avatar: true,
-  //         },
-  //       },
-  //       chat: {
-  //         select: {
-  //           name: true,
-  //         },
-  //       },
-  //     },
-  //   });
-
-  //   // Map to DTOs
-  //   const data = interactions.map((interaction) => ({
-  //     id: interaction.id,
-  //     agentId: interaction.agentId,
-  //     agentName: interaction.agent.name,
-  //     agentAvatar: interaction.agent.avatar || null,
-  //     chatId: interaction.chatId,
-  //     chatName: interaction.chat?.name || null,
-  //     status: interaction.status as InteractionStatus,
-  //     startAt: interaction.startAt,
-  //     transferAt: interaction.transferAt || null,
-  //     resolvedAt: interaction.resolvedAt || null,
-  //     userId: interaction.userId || null,
-  //   }));
-
-  //   return {
-  //     data,
-  //     meta: {
-  //       total,
-  //       page,
-  //       pageSize,
-  //       totalPages: Math.ceil(total / pageSize),
-  //     },
-  //   };
-  // }
-
-  // async findMessagesById(
-  //   interactionId: string
-  // ): Promise<InteractionMessageDto[]> {
-  //   // First verify the interaction exists
-  //   const interaction = await this.prisma.interaction.findUnique({
-  //     where: { id: interactionId },
-  //   });
-
-  //   if (!interaction) {
-  //     throw new NotFoundException(
-  //       `Interaction with ID ${interactionId} not found`
-  //     );
-  //   }
-
-  //   // Get all messages for this interaction
-  //   const messages = await this.prisma.message.findMany({
-  //     where: { interactionId },
-  //     orderBy: { createdAt: 'asc' },
-  //   });
-
-  //   // Map to DTOs
-  //   return messages.map((message) => ({
-  //     id: message.id,
-  //     text: message.text || null,
-  //     role: message.role,
-  //     userName: message.userName || null,
-  //     userId: null, // No userId in the schema
-  //     userPicture: message.userPicture || null,
-  //     time:
-  //       Number(message.time) || Math.floor(message.createdAt.getTime() / 1000), // Use existing time or convert createdAt
-  //     type: message.type || 'text',
-  //     imageUrl: message.imageUrl || null,
-  //     audioUrl: message.audioUrl || null,
-  //     documentUrl: message.documentUrl || null,
-  //     fileName: message.fileName || null,
-  //     midiaContent: message.midiaContent || null,
-  //     width: message.width || null,
-  //     height: message.height || null,
-  //   }));
-  // }
 
   async findInteractionsByChatWithMessages(
     chatId: string,
@@ -255,6 +141,85 @@ export class InteractionsService {
     };
   }
 
+  async findLatestInteractionByChatWithMessages(
+    chatId: string,
+  ): Promise<PaginatedInteractionsWithMessagesResponseDto> {
+    
+    // Conta total de interações para esse chat
+    const total = await this.prisma.interaction.count({
+      where: { chatId },
+    });
+
+    if (total === 0) {
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page: 1,
+          pageSize: 1,
+          totalPages: 0,
+        },
+      };
+    }
+
+    // Busca a interação mais recente
+    const latestInteraction = await this.prisma.interaction.findFirst({
+      where: { chatId },
+      orderBy: { startAt: 'desc' },
+      include: {
+        agent: {
+          select: {
+            name: true,
+            avatar: true,
+          },
+        },
+        messages: {
+          select: {
+            id: true,
+            text: true,
+            role: true,
+            userName: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    const data: InteractionWithMessagesDto[] = latestInteraction
+      ? [{
+          id: latestInteraction.id,
+          agentId: latestInteraction.agentId,
+          agentName: latestInteraction.agent.name,
+          agentAvatar: latestInteraction.agent.avatar || null,
+          chatId: latestInteraction.chatId,
+          chatName: null,
+          status: latestInteraction.status as InteractionStatus,
+          startAt: latestInteraction.startAt,
+          transferAt: latestInteraction.transferAt || null,
+          resolvedAt: latestInteraction.resolvedAt || null,
+          userId: latestInteraction.userId || null,
+          messages: latestInteraction.messages.map((message) => ({
+            id: message.id,
+            text: message.text ?? null,
+            role: message.role,
+            userName: message.userName ?? null,
+            createdAt: message.createdAt,
+          })),
+        }]
+      : [];
+
+    return {
+      data,
+      meta: {
+        total,
+        page: 1,
+        pageSize: 1,
+        totalPages: Math.ceil(total / 1),
+      },
+    };
+  }
+
   /**
    * Resolve an interaction (mark as completed)
    * @param interactionId ID of the interaction to resolve
@@ -303,25 +268,11 @@ export class InteractionsService {
 
     // Prepare notification messages
     let internalResolutionMessage = 'Conversation closed';
-    let userNotificationMessage =
-      'This conversation has been closed. Thank you for your time.';
-
-    if (resolution) {
-      internalResolutionMessage = `Resolution: ${resolution}`;
-      // Only include resolution in user message if it's not sensitive
-      if (
-        !resolution.toLowerCase().includes('internal') &&
-        !resolution.toLowerCase().includes('private') &&
-        !resolution.toLowerCase().includes('sensitive')
-      ) {
-        userNotificationMessage = `This conversation has been closed: ${resolution}. Thank you for your time.`;
-      }
-    }
 
     // Add a system message indicating resolution for internal use
-    await this.prisma.message.create({
+    const systemMessage = await this.prisma.message.create({
       data: {
-        text: internalResolutionMessage,
+        text: resolution || internalResolutionMessage,
         role: 'system',
         chatId: interaction.chatId,
         interactionId: interaction.id,
@@ -329,65 +280,43 @@ export class InteractionsService {
         time: Date.now(),
       },
     });
+    
+    // Mark chat as unread
+    this.logger.log(`Updating chat ${chat.id} as unread`);
+    await this.prisma.chat.update({
+      where: { id: chat.id },
+      data: {
+        read: false,
+        unReadCount: { increment: 1 },
+      }
+    });
+    
+    // Fetch latest data to send to socket clients
+    const updatedChat = await this.prisma.chat.findUnique({
+      where: { id: chat.id }
+    });
+    
+    const paginatedInteractions = await this.findLatestInteractionByChatWithMessages(chat.id);
+    
+    const agent = await this.prisma.agent.findFirst({
+      where: { id: chat.id },
+      select: { workspaceId: true }
+    })
 
-    // Add a notification message for the user and send it via external channel when available
-    if (chat) {
-      // Create the message in the database
-      const newMessage = await this.prisma.message.create({
-        data: {
-          text: userNotificationMessage,
-          role: 'assistant',
-          chatId: interaction.chatId,
-          interactionId: interaction.id,
-          type: 'text',
-          time: Date.now(),
-          sentToEvolution: false,
-        },
-      });
-
-      // Send via WhatsApp if available
-      if (chat.whatsappPhone) {
-        try {
-          this.logger.log(
-            `Sending resolution message to WhatsApp number ${chat.whatsappPhone}`
-          );
-
-          const response = await this.evolutionApiService.sendWhatsAppMessage(
-            chat.agentId,
-            chat.whatsappPhone,
-            userNotificationMessage
-          );
-
-          // Update the message with the response data
-          await this.prisma.message.update({
-            where: { id: newMessage.id },
-            data: {
-              sentToEvolution: true,
-              sentAt: new Date(),
-              whatsappMessageId: response?.key?.id,
-            },
-          });
-
-          this.logger.log(
-            `Resolution message sent successfully to ${chat.whatsappPhone}`
-          );
-        } catch (error) {
-          this.logger.error(
-            `Failed to send resolution message: ${error.message}`,
-            error.stack
-          );
-
-          // Mark the message as failed
-          await this.prisma.message.update({
-            where: { id: newMessage.id },
-            data: {
-              failedAt: new Date(),
-              failReason: error.message,
-            },
-          });
+    // Send system message to frontend clients via websocket
+    this.websocketService.sendToClient(
+      agent.workspaceId,
+      'messageChatUpdate',
+      {
+        ...updatedChat,
+        paginatedInteractions: paginatedInteractions,
+        latestMessage: {
+          ...systemMessage,
+          whatsappTimestamp: systemMessage?.whatsappTimestamp.toString(),
+          time: systemMessage?.time.toString()
         }
       }
-    }
+    );
 
     return { success: true };
   }
@@ -431,6 +360,9 @@ export class InteractionsService {
       );
     }
 
+    // TODO fetch a natural language message from AI warning user instead of an automatic one.
+    // warningMessage will be personal and spoken in the context of the current interaction.
+
     // Add the warning message to the database first
     const newMessage = await this.prisma.message.create({
       data: {
@@ -451,7 +383,7 @@ export class InteractionsService {
           `Sending warning message to WhatsApp number ${chat.whatsappPhone}`
         );
 
-        const response = await this.evolutionApiService.sendWhatsAppMessage(
+        const response = await this.wahaApiService.sendWhatsAppMessage(
           chat.agentId,
           chat.whatsappPhone,
           warningMessage
@@ -487,14 +419,42 @@ export class InteractionsService {
       }
     }
 
-    // Set the interaction to WAITING status and record the transfer time
-    await this.prisma.interaction.update({
-      where: { id: interactionId },
+    // Mark chat as unread
+    this.logger.log(`Updating chat ${chat.id} as unread`);
+    await this.prisma.chat.update({
+      where: { id: chat.id },
       data: {
-        status: 'WAITING',
-        transferAt: new Date(), // Record when it was moved to WAITING state
-      },
+        read: false,
+        unReadCount: { increment: 1 },
+      }
     });
+    
+    // Fetch latest data to send to socket clients
+    const updatedChat = await this.prisma.chat.findUnique({
+      where: { id: chat.id }
+    });
+    
+    const paginatedInteractions = await this.findLatestInteractionByChatWithMessages(chat.id);
+    
+    const agent = await this.prisma.agent.findFirst({
+      where: { id: chat.id },
+      select: { workspaceId: true }
+    })
+
+    // Send system message to frontend clients via websocket
+    this.websocketService.sendToClient(
+      agent.workspaceId,
+      'messageChatUpdate',
+      {
+        ...updatedChat,
+        paginatedInteractions: paginatedInteractions,
+        latestMessage: {
+          ...newMessage,
+          whatsappTimestamp: newMessage?.whatsappTimestamp.toString(),
+          time: newMessage?.time.toString()
+        }
+      }
+    );
 
     return { success: true };
   }
@@ -506,8 +466,9 @@ export class InteractionsService {
    * @returns Lists of interactions that need warnings and closures
    */
   async findIdleInteractions(
+    waitingIdleMinutes: number = 10,
     runningIdleMinutes: number = 30,
-    waitingIdleMinutes: number = 5
+    warningGracePeriodSeconds: number = 10
   ): Promise<{
     warningNeeded: { id: string; chatId: string }[];
     closureNeeded: { id: string; chatId: string }[];
@@ -515,19 +476,17 @@ export class InteractionsService {
     const now = new Date();
 
     // Calculate cutoff times
-    const runningIdleCutoff = new Date(
-      now.getTime() - runningIdleMinutes * 60 * 1000
-    );
     const waitingIdleCutoff = new Date(
       now.getTime() - waitingIdleMinutes * 60 * 1000
     );
+    const runningIdleCutoff = new Date(
+      now.getTime() - runningIdleMinutes * 60 * 1000
+    );
 
-    // Use a transaction to ensure consistent results
     const result = await this.prisma.$transaction(async (tx) => {
-      // Find WAITING interactions that need to be closed
-      // Since there's no updatedAt field in the model, we'll rely on transferAt
-      // which indicates when the interaction was set to WAITING status
-      const waitingInteractions = await tx.interaction.findMany({
+      // Find WAITING interactions that need warnings
+      // These are chats where the agent responded but client hasn't replied
+      const waitingForWarning = await tx.interaction.findMany({
         where: {
           status: 'WAITING',
           transferAt: {
@@ -537,10 +496,32 @@ export class InteractionsService {
         select: {
           id: true,
           chatId: true,
+          transferAt: true,
         },
       });
 
-      // Find RUNNING interactions with their chats and the most recent message
+      // Find interactions that need to be closed
+      // Use a separate query to find WAITING interactions that were "warned" 
+      // (by checking if transferAt is older than grace period + idle time)
+      const totalWaitTime = new Date(
+        now.getTime() - (waitingIdleMinutes * 60 + warningGracePeriodSeconds) * 1000
+      );
+      
+      const waitingForClosure = await tx.interaction.findMany({
+        where: {
+          status: 'WAITING',
+          transferAt: {
+            lt: totalWaitTime, // Been waiting longer than idle time + grace period
+          },
+        },
+        select: {
+          id: true,
+          chatId: true,
+        },
+      });
+
+      // Find RUNNING interactions that have been idle too long
+      // These should be closed immediately (no warning needed for running state)
       const runningInteractions = await tx.interaction.findMany({
         where: {
           status: 'RUNNING',
@@ -564,15 +545,14 @@ export class InteractionsService {
         },
       });
 
-      // Filter running interactions to find those that need warnings
-      const warningNeeded = runningInteractions
+      // Filter running interactions based on most recent message time
+      const runningForClosure = runningInteractions
         .filter((interaction) => {
-          // If no messages or the most recent message is older than the cutoff
           const messages = interaction.chat?.messages || [];
+          // Close if no messages or most recent message is older than cutoff
           return (
             messages.length === 0 ||
-            (messages[0]?.createdAt &&
-              messages[0].createdAt < runningIdleCutoff)
+            (messages[0]?.createdAt && messages[0].createdAt < runningIdleCutoff)
           );
         })
         .map((interaction) => ({
@@ -580,9 +560,25 @@ export class InteractionsService {
           chatId: interaction.chatId,
         }));
 
+      // Separate warning needed vs closure needed
+      const warningNeeded = waitingForWarning
+        .filter(interaction => 
+          // Only warn interactions that haven't exceeded the total wait time yet
+          interaction.transferAt >= totalWaitTime
+        )
+        .map(interaction => ({
+          id: interaction.id,
+          chatId: interaction.chatId,
+        }));
+
+      const closureNeeded = [
+        ...waitingForClosure,
+        ...runningForClosure,
+      ];
+
       return {
         warningNeeded,
-        closureNeeded: waitingInteractions,
+        closureNeeded,
       };
     });
 
@@ -597,7 +593,7 @@ export class InteractionsService {
    */
   async processIdleInteractions(
     runningIdleMinutes: number = 30,
-    waitingIdleMinutes: number = 5
+    waitingIdleMinutes: number = 10
   ): Promise<{
     warned: number;
     closed: number;
@@ -661,7 +657,7 @@ export class InteractionsService {
               );
 
               const response =
-                await this.evolutionApiService.sendWhatsAppMessage(
+                await this.wahaApiService.sendWhatsAppMessage(
                   chat.agentId,
                   chat.whatsappPhone,
                   closureMessage

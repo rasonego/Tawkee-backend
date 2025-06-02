@@ -68,7 +68,7 @@ export class ChatsController {
   }
 
   // Endpoint to mark chat as finished
-  @Put('chats/:chatId/finish')
+  @Put('chats/:chatId/finish/:userId')
   @ApiOperation({ summary: 'Mark a chat as finished' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -85,14 +85,18 @@ export class ChatsController {
   })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Chat not found' })
   @ApiParam({ name: 'chatId', description: 'Chat ID' })
-  async markAsFinished(@Param('chatId') chatId: string): Promise<{ success: boolean }> {
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  async markAsFinished(
+    @Param('chatId') chatId: string,
+    @Param('userId') userId: string,
+  ): Promise<{ success: boolean }> {
     // Assuming the service method handles the logic and potential errors (like not found)
-    await this.chatsService.finishChat(chatId);
+    await this.chatsService.finishChat(chatId, userId);
     return { success: true }; // Return success if no error is thrown by the service
   }
 
   // Endpoint to mark chat as unfinished
-  @Put('chats/:chatId/unfinish')
+  @Put('chats/:chatId/unfinish/:userId')
   @ApiOperation({ summary: 'Mark a chat as unfinished' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -109,9 +113,13 @@ export class ChatsController {
   })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Chat not found' })
   @ApiParam({ name: 'chatId', description: 'Chat ID' })
-  async markAsUnfinished(@Param('chatId') chatId: string): Promise<{ success: boolean }> {
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  async markAsUnfinished(
+    @Param('chatId') chatId: string,
+    @Param('userId') userId: string,
+  ): Promise<{ success: boolean }> {
     // Assuming the service method handles the logic and potential errors (like not found)
-    await this.chatsService.unfinishChat(chatId);
+    await this.chatsService.unfinishChat(chatId, userId);
     return { success: true }; // Return success if no error is thrown by the service
   }  
 
@@ -200,7 +208,7 @@ export class ChatsController {
     return this.chatsService.deleteMessages(chatId);
   }
 
-  @Put('chats/:chatId/start-human')
+  @Put('chats/:chatId/start-human/:userId')
   @ApiOperation({ summary: 'Start human attendance for a chat' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -217,13 +225,15 @@ export class ChatsController {
   })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Chat not found' })
   @ApiParam({ name: 'chatId', description: 'Chat ID' })
+  @ApiParam({ name: 'userId', description: 'User ID' })
   async startHumanAttendance(
-    @Param('chatId') chatId: string
+    @Param('chatId') chatId: string,
+    @Param('userId') userId: string
   ): Promise<{ success: boolean }> {
-    return this.chatsService.startHumanAttendance(chatId);
+    return this.chatsService.startHumanAttendance(chatId, userId);
   }
 
-  @Put('chats/:chatId/stop-human')
+  @Put('chats/:chatId/stop-human/:userId')
   @ApiOperation({ summary: 'Stop human attendance for a chat' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -240,10 +250,12 @@ export class ChatsController {
   })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Chat not found' })
   @ApiParam({ name: 'chatId', description: 'Chat ID' })
+  @ApiParam({ name: 'userId', description: 'User ID' })
   async stopHumanAttendance(
-    @Param('chatId') chatId: string
+    @Param('chatId') chatId: string,
+    @Param('userId') userId: string
   ): Promise<{ success: boolean }> {
-    return this.chatsService.stopHumanAttendance(chatId);
+    return this.chatsService.stopHumanAttendance(chatId, userId);
   }
 
   @Post('chats/:chatId/send-message')

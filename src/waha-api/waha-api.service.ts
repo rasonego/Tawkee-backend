@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import { MediaDto } from 'src/chats/dto/send-message.dto';
+import { start } from 'repl';
 
 interface CreateInstanceOptions {
   workspaceId: string;
@@ -77,7 +79,12 @@ export class WahaApiService {
         `Checking actual ${finalPhoneNumber} chatId value using instance ${instanceName} on ${serverUrl}`
       );
       let response = await axios.get(
-        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`
+        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+        }
       );
 
       const chatId = response.data.chatId;
@@ -96,7 +103,7 @@ export class WahaApiService {
       response = await axios.post(`${serverUrl}/sendText`, payload, {
         headers: {
           'Content-Type': 'application/json',
-          apikey: apiKey,
+          'x-api-key': apiKey,
         },
         timeout: 10000, // 10 second timeout
       });
@@ -176,6 +183,7 @@ export class WahaApiService {
         fileName,
         instanceName,
         serverUrl,
+        apiKey
       } = options;
 
       // Ensure phone number is properly formatted - remove any non-numeric characters except +
@@ -191,7 +199,11 @@ export class WahaApiService {
         `Checking actual ${finalPhoneNumber} chatId value using instance ${instanceName}`
       );
       let response = await axios.get(
-        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`
+        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`, {
+          headers: {
+            'x-api-key': apiKey
+          }
+        }
       );
 
       const chatId = response.data.chatId;
@@ -258,14 +270,14 @@ export class WahaApiService {
       // According to Waha API docs, use instanceName instead of instanceId
       response = await axios.post(
         `${serverUrl}/${endpoint}`,
-        payload
-        // {
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //     apikey: apiKey,
-        //   },
-        //   timeout: 15000, // 15 second timeout for media (larger than text timeout)
-        // }
+        payload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+          timeout: 15000, // 15 second timeout for media (larger than text timeout)
+        }
       );
 
       // Apply the same improved validation logic as for text messages
@@ -394,20 +406,16 @@ export class WahaApiService {
     try {
       const { workspaceId, agentId, channelId, instanceName, serverUrl, apiKey, webhookUrl } = options;
 
-      this.logger.log(
-        `Creating instance ${instanceName} of ${agentId} on Waha API at ${serverUrl} with apiKey ${apiKey} and webhookUrl ${webhookUrl}`
-      );
-
       // First, check if the instance already exists
       try {
         const response = await axios.get(
-          `${serverUrl}/sessions`
-          // {
-          //   headers: {
-          //     'Content-Type': 'application/json',
-          //     apikey: apiKey,
-          //   },
-          // }
+          `${serverUrl}/sessions`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+            },
+          }
         );
 
         // If the instance already exists, return it
@@ -429,11 +437,16 @@ export class WahaApiService {
         this.logger.warn(`Error checking existing instances: ${error.message}`);
       }
 
+      this.logger.log(
+        `Creating instance ${instanceName} of ${agentId} on Waha API at ${serverUrl} with apiKey ${apiKey} and webhookUrl ${webhookUrl}`
+      );
+
       // Create the instance
       const createResponse = await axios.post(
         `${serverUrl}/sessions`,
         {
           name: instanceName,
+          start: true,
           config: {
             metadata: {
               workspaceId,
@@ -453,13 +466,13 @@ export class WahaApiService {
               },
             ],
           },
+        },
+        { // Maybe will be required in production to make request with auth
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
         }
-        // { // Maybe will be required in production to make request with auth
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //     apikey: apiKey,
-        //   },
-        // }
       );
 
       if (createResponse.status === 201 || createResponse.status === 200) {
@@ -480,69 +493,13 @@ export class WahaApiService {
   }
 
   /**
-   * Set webhook URL for an instance
-   */
-  private async setInstanceWebhook(options: {
-    instanceName: string; // Changed from instanceId to instanceName for clarity
-    serverUrl: string;
-    apiKey: string;
-    webhookUrl: string;
-  }): Promise<any> {
-    try {
-      const { instanceName, serverUrl, webhookUrl } = options;
-
-      this.logger.log(
-        `Setting webhook URL for instance ${instanceName} to ${webhookUrl}`
-      );
-
-      const response = await axios.put(
-        `${serverUrl}/sessions/${instanceName}`,
-        {
-          name: instanceName,
-          config: {
-            webhooks: [
-              {
-                url: webhookUrl,
-                events: ['message'],
-              },
-            ],
-          },
-        }
-        // {
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //     apikey: apiKey,
-        //   },
-        // }
-      );
-
-      if (response.status === 200 && response.data.success) {
-        this.logger.log(
-          `Webhook URL set successfully for instance ${instanceName}`
-        );
-        return response.data;
-      } else {
-        throw new Error(
-          `Failed to set webhook URL: ${JSON.stringify(response.data)}`
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        `Error setting webhook URL: ${error.message}`,
-        error.stack
-      );
-      throw error;
-    }
-  }
-
-  /**
    * Get QR code for instance connection
    */
   async getInstanceQR(
     channelId: string,
     instanceName: string = 'default',
-    serverUrl: string
-    // apiKey: string
+    serverUrl: string,
+    apiKey: string
   ): Promise<any> {
     try {
       this.logger.log(
@@ -557,13 +514,13 @@ export class WahaApiService {
       // According to Waha API docs, use the instance name here (not instance ID)
       this.logger.debug(`${serverUrl}/${instanceName}/auth/qr?format=raw`);
       const response = await axios.get(
-        `${serverUrl}/${instanceName}/auth/qr?format=raw`
-        // {
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //     apikey: apiKey,
-        //   },
-        // }
+        `${serverUrl}/${instanceName}/auth/qr?format=raw`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+        }
       );
 
       if (response.status === 200) {
@@ -593,21 +550,21 @@ export class WahaApiService {
     apiKey: string;
   }): Promise<any> {
     try {
-      const { instanceName, serverUrl } = options;
+      const { instanceName, serverUrl, apiKey } = options;
 
       this.logger.log(
-        `Logging out WhatsApp session for instance ${instanceName}`
+        `Logging out WhatsApp session for instance ${instanceName} with ${JSON.stringify(options)}`
       );
 
       // According to Waha API docs, use logout endpoint with instance name
       const response = await axios.post(
-        `${serverUrl}/sessions/${instanceName}/logout`
-        // {
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //     apikey: apiKey,
-        //   },
-        // }
+        `${serverUrl}/sessions/${instanceName}/logout`, {},
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          }
+        }
       );
 
       if (response.data.status === 'STARTING') {
@@ -631,7 +588,7 @@ export class WahaApiService {
       }
     } catch (error) {
       this.logger.error(
-        `Error logging out from WhatsApp: ${error.message}`,
+        `Error logging out from WhatsApp: ${JSON.stringify(error, null, 3)}`,
         error.stack
       );
 
@@ -671,19 +628,19 @@ export class WahaApiService {
     apiKey: string;
   }): Promise<any> {
     try {
-      const { instanceName, serverUrl } = options;
+      const { instanceName, serverUrl, apiKey } = options;
 
       this.logger.log(`Deleting instance ${instanceName} from Waha API`);
 
       // According to Waha API docs, use the instance name here (not instance ID)
       const response = await axios.delete(
-        `${serverUrl}/sessions/${instanceName}`
-        // {
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //     apikey: apiKey,
-        //   },
-        // }
+        `${serverUrl}/sessions/${instanceName}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+        }
       );
 
       if (response.status === 200 && response.data.success) {
@@ -703,24 +660,6 @@ export class WahaApiService {
     }
   }
 
-  /**
-   * Update webhook URL for an existing instance
-   * Public wrapper for the private setInstanceWebhook method
-   */
-  async updateInstanceWebhook(
-    instanceName: string,
-    serverUrl: string,
-    apiKey: string,
-    webhookUrl: string
-  ): Promise<any> {
-    return this.setInstanceWebhook({
-      instanceName,
-      serverUrl,
-      apiKey,
-      webhookUrl,
-    });
-  }
-
   async sendWhatsAppMessage(
     agentId: string,
     phoneNumber: string,
@@ -728,13 +667,30 @@ export class WahaApiService {
 
     // THESE OPTIONAL VARIABLES ARE CURRENTLY UNUSED SINCE WE NEVER SEND MEDIA MESSAGES TO USERS, ONLY TEXT
     // THIS METHOD IS BEING USED BY AGENTS RESPONDING TO USER MESSAGES AND BY THE SYSTEM ITSELF.
-
-    mediaUrl?: string,
-    mediaType?: 'image' | 'video' | 'audio' | 'document',
-    mediaMimeType?: string,
-    fileName?: string,
-    caption?: string
+    media?: MediaDto
   ): Promise<any> {
+    let mediaUrl;
+    let mediaType;
+    let mediaMimeType;
+    let fileName;
+    let mediaCaption;
+
+    if (media) {
+      const { 
+        url,
+        type,
+        mimetype,
+        filename,
+        caption
+      } = media;
+
+      mediaUrl = url;
+      mediaType = type;
+      mediaMimeType = mimetype;
+      fileName = filename;
+      mediaCaption = caption;
+    }
+
     // Find the first WhatsApp channel for this agent
     const channel = await this.prisma.channel.findFirst({
       where: {
@@ -806,7 +762,7 @@ export class WahaApiService {
           mediaType,
           mediaMimeType,
           fileName,
-          caption: caption || message,
+          caption: mediaCaption || message,
           ...config,
         });
       } else {

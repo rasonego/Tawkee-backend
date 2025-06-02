@@ -54,17 +54,6 @@ export class ConversationsService {
       });
     }
 
-    // Create a user message
-    const userMessage = await this.prisma.message.create({
-      data: {
-        text: conversationDto.prompt,
-        role: 'user',
-        userName: conversationDto.chatName,
-        userPicture: conversationDto.chatPicture,
-        chatId: chat.id,
-      },
-    });
-
     // Create or find an interaction
     let interaction = await this.prisma.interaction.findFirst({
       where: {
@@ -83,12 +72,6 @@ export class ConversationsService {
         },
       });
     }
-
-    // Link the message to the interaction
-    await this.prisma.message.update({
-      where: { id: userMessage.id },
-      data: { interactionId: interaction.id },
-    });
 
     // Generate a response from the agent
     const response = await this.generateAgentResponse(
@@ -352,15 +335,16 @@ export class ConversationsService {
         responseText = `${stylePrefix} ${agent.name}. ${goalPrefix} "${conversationDto.prompt}". I'm currently experiencing some technical difficulties, but I'll do my best to assist you.`;
       }
 
-      // Create an assistant message
-      await this.prisma.message.create({
-        data: {
-          text: responseText,
-          role: 'assistant',
-          chatId: chat.id,
-          interactionId: interaction.id,
-        },
-      });
+      // DUPLICATE
+      // // Create an assistant message
+      // await this.prisma.message.create({
+      //   data: {
+      //     text: responseText,
+      //     role: 'assistant',
+      //     chatId: chat.id,
+      //     interactionId: interaction.id,
+      //   },
+      // });
 
       // Return the response in the expected format
       return {

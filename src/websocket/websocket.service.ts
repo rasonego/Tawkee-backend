@@ -54,67 +54,6 @@ export class WebsocketService {
     return result;
   }
 
-  /**
-   * Envia uma mensagem para todos os clientes em um chat (sala) específico.
-   * @param chatId O ID do chat (sala) de destino.
-   * @param eventName O nome do evento a ser emitido para o chat.
-   * @param payload O conteúdo da mensagem.
-   */
-  sendToChatRoom(chatId: string, eventName: string, payload: MessagePayload): void {
-    if (!this.server) {
-      this.logger.error('Socket.IO Server not initialized in WebsocketService. Call initialize() first.');
-      return;
-    }
-    this.server.to(chatId).emit(eventName, payload);
-    this.logger.log(`Message sent to chat room ${chatId} on event ${eventName}`);
-  }
-
-  /**
-   * Adiciona um cliente a uma sala (chat).
-   * @param client O socket do cliente.
-   * @param chatId O ID do chat (sala).
-   */
-  joinChatRoom(client: Socket, chatId: string): void {
-    if (!chatId) {
-        this.logger.warn(`Client ${client.id} attempted to join a chat without a chatId.`);
-        client.emit('error', { message: 'chatId é obrigatório para entrar no chat.' });
-        return;
-    }
-    client.join(chatId);
-    this.logger.log(`Client ${client.id} joined chat room: ${chatId}`);
-    client.emit('joinedChat', { chatId, message: `Você entrou no chat ${chatId}` });
-  }
-
-  /**
-   * Remove um cliente de uma sala (chat).
-   * @param client O socket do cliente.
-   * @param chatId O ID do chat (sala).
-   */
-  leaveChatRoom(client: Socket, chatId: string): void {
-    if (!chatId) {
-        this.logger.warn(`Client ${client.id} attempted to leave a chat without a chatId.`);
-        client.emit('error', { message: 'chatId é obrigatório para sair do chat.' });
-        return;
-    }
-    client.leave(chatId);
-    this.logger.log(`Client ${client.id} left chat room: ${chatId}`);
-    client.emit('leftChat', { chatId, message: `Você saiu do chat ${chatId}` });
-  }
-
-  /**
-   * Obtém todos os socket IDs dos clientes conectados a uma sala específica.
-   * @param chatId O ID da sala.
-   * @returns Uma Promise que resolve para um array de socket IDs ou undefined se a sala não existir.
-   */
-  async getClientsInRoom(chatId: string): Promise<string[] | undefined> {
-    if (!this.server) {
-      this.logger.error('Socket.IO Server not initialized in WebsocketService.');
-      return undefined;
-    }
-    const sockets = await this.server.in(chatId).allSockets();
-    return Array.from(sockets);
-  }
-
    /**
    * Desconecta um cliente específico pelo seu socketId.
    * @param clientId O ID do socket do cliente a ser desconectado.
@@ -133,8 +72,4 @@ export class WebsocketService {
       this.logger.warn(`Client ${clientId} not found for disconnection.`);
     }
   }
-
-  // Você pode adicionar mais métodos conforme necessário, por exemplo:
-  // - broadcastToAll(eventName: string, payload: any)
-  // - broadcastToAllExceptSender(senderSocket: Socket, eventName: string, payload: any)
 }

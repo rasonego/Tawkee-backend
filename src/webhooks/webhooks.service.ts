@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
-import { WahaApiService } from 'src/waha-api/waha-api.service';
-import { DocumentsService } from 'src/documents/documents.service';
-import { WebsocketService } from 'src/websocket/websocket.service';
+import { InteractionsService } from '../interactions/interactions.service';
+import { WahaApiService } from '../waha-api/waha-api.service';
+import { DocumentsService } from '../documents/documents.service';
+import { WebsocketService } from '../websocket/websocket.service';
 
 @Injectable()
 export class WebhooksService {
@@ -12,6 +13,7 @@ export class WebhooksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversationsService: ConversationsService,
+    private readonly interactionsService: InteractionsService,
     private readonly wahaApiService: WahaApiService,
     private readonly websocketService: WebsocketService,
     private readonly documentsService: DocumentsService
@@ -325,7 +327,7 @@ export class WebhooksService {
         return { success: true };
       }
 
-      // Skip messages from self (if we can determine that)
+      // Skip messages from self
       if (webhookData?.payload?.fromMe) {
         this.logger.debug('Skipping message from self');
         return { success: true };
@@ -433,6 +435,8 @@ export class WebhooksService {
         },
       });
 
+      // TODO somehow send warning that inactive agent is receiving messages?
+
       return;
     }
 
@@ -539,6 +543,30 @@ export class WebhooksService {
           throw new Error(`Failed to create or find chat: ${error.message}`);
         }
 
+        // Find latest unresolved interaction
+        let latestInteraction = await this.prisma.interaction.findFirst({
+          where: {
+            chatId: chat.id,
+            status: { not: 'RESOLVED' }
+          },
+          orderBy: { startAt: 'desc' },
+          select: {
+            id: true
+          }
+        });
+
+        // If no latest open interaction, start a new one and update chat to unfinished
+        if (!latestInteraction) {
+          latestInteraction = await this.prisma.interaction.create({
+            data: {
+              workspaceId: webhookEvent.channel.agent.workspaceId,
+              agentId: webhookEvent.channel.agentId,
+              chatId: chat.id,
+              status: 'RUNNING',
+            },
+          });
+        }
+
         // Create message from webhook
         let message;
         try {
@@ -561,6 +589,7 @@ export class WebhooksService {
             whatsappMessageId: webhookEvent.messageId,
             whatsappTimestamp: webhookEvent.messageTimestamp,
             chatId: chat.id,
+            interactionId: latestInteraction.id,
 
             imageUrl: undefined,
             audioUrl: undefined,
@@ -593,7 +622,8 @@ export class WebhooksService {
             data: {
               read: false,
               unReadCount: { increment: 1 },
-            },
+              finished: false
+            }
           });
 
           // Link message to webhook event
@@ -608,6 +638,40 @@ export class WebhooksService {
               processedAt: new Date(),
             },
           });
+
+          // Fetch latest data to send to socket clients
+          const updatedChat = await this.prisma.chat.findUnique({
+            where: { id: chat.id }
+          });
+
+          // Update interaction status to RUNNING
+          await this.prisma.interaction.update({
+            where: { id: latestInteraction.id },
+            data: { status: 'RUNNING' }
+          })
+
+          const paginatedInteractions = await this.interactionsService.findLatestInteractionByChatWithMessages(chat.id);
+
+          // Find this workspaceId to identify socket room
+          const agent = await this.prisma.agent.findFirst({
+            where: { id: chat.agentId },
+            select: { workspaceId: true }
+          });
+
+          this.websocketService.sendToClient(
+            agent.workspaceId,
+            'messageChatUpdate',
+            {
+              ...updatedChat,
+              paginatedInteractions: paginatedInteractions,
+              latestMessage: {
+                ...message,
+                whatsappTimestamp: message?.whatsappTimestamp.toString(),
+                time: message?.time.toString()
+              }
+            }
+          );
+
         } catch (error) {
           this.logger.error(
             `Error in message creation process: ${error.message}`,
@@ -681,9 +745,10 @@ export class WebhooksService {
               data: {
                 text: agentResponse.message,
                 role: 'assistant',
-                type: 'conversation',
+                type: 'chat',
                 chatId: chat.id,
                 sentToEvolution: false, // Will be set to true after sending. Not worthy changing legacy name to sentToWaha, should have had been a generic name as sentToApi
+                interactionId: latestInteraction.id
               },
             });
 
@@ -707,7 +772,6 @@ export class WebhooksService {
                 // Check if we have a successful response
                 if (responseData) {
                   const messageId: string = responseData.id.id;
-                  console.log({ what: messageId });
                   // Update message status with success
                   await this.prisma.message.update({
                     where: { id: botMessage.id },
@@ -721,6 +785,52 @@ export class WebhooksService {
                   this.logger.log(
                     `Message sent successfully to ${phoneNumber}`
                   );
+
+                  this.logger.log(`Updating chat ${chat.id} as unread (agent response)`);
+                  await this.prisma.chat.update({
+                    where: { id: chat.id },
+                    data: {
+                      read: false,
+                      unReadCount: { increment: 1 },
+                    }
+                  });
+
+                  // Fetch data to send to frontend socket clients
+                  const updatedChat = await this.prisma.chat.findUnique({
+                    where: { id: chat.id }
+                  });
+
+                  // Update interaction status to WAITING
+                  await this.prisma.interaction.update({
+                    where: { id: latestInteraction.id },
+                    data: {
+                      status: 'WAITING',
+                      transferAt: new Date()
+                    }
+                  })
+
+                  const paginatedInteractions = await this.interactionsService.findLatestInteractionByChatWithMessages(chat.id);
+
+                  // Find this workspaceId to identify socket room
+                  const agent = await this.prisma.agent.findFirst({
+                    where: { id: chat.agentId },
+                    select: { workspaceId: true }
+                  });
+
+                  this.websocketService.sendToClient(
+                    agent.workspaceId,
+                    'messageChatUpdate',
+                    {
+                      ...updatedChat,
+                      paginatedInteractions: paginatedInteractions,
+                      latestMessage: {
+                        ...botMessage,
+                        whatsappTimestamp: botMessage?.whatsappTimestamp?.toString(),
+                        time: botMessage?.time?.toString()
+                      }
+                    }
+                  );
+
                 } else {
                   // Log unusual response
                   this.logger.warn(
