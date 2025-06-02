@@ -12,6 +12,7 @@ export class DocumentsService {
 
   constructor(private readonly openAiService: OpenAiService) {}
 
+  // --- extractTextFromDocument, getMimeTypeFromHeaders, inferMimeTypeFromUrl remain the same ---
   async extractTextFromDocument(
     url: string,
     mimetype: string
@@ -133,82 +134,90 @@ export class DocumentsService {
       return 'image/jpeg';
     }
   }
+  // --- End of unchanged methods ---
 
   /**
-   * New method: Extract text content from a website (HTML)
-   */
-  /**
-   * Extract text content from a website (HTML), with Puppeteer fallback.
+   * Extract text content from a website using a more generic approach.
    */
   async extractTextFromWebsite(url: string): Promise<string> {
-    this.logger.log(`About to fetch website content from: ${url}`);
+    this.logger.log(`Attempting generic website content extraction from: ${url}`);
+
+    let browser = null;
+    const GENERIC_TIMEOUT = 120000; // 120 seconds total timeout for the operation
 
     try {
-      const response = await axios.get(url, {
-        responseType: 'text',
-        headers: {
-          'User-Agent': 'DocumentsServiceBot/1.0',
-        },
-      });
+      const puppeteer = await import('puppeteer');
 
-      this.logger.log(
-        `Fetched website content with Axios, about to convert HTML to text...`
-      );
-
-      const text = convert(response.data, {
-        wordwrap: 130,
-        selectors: [
-          { selector: 'img', format: 'skip' },
-          { selector: 'a', options: { ignoreHref: true } },
+      browser = await puppeteer.launch({
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+        headless: true,
+        protocolTimeout: GENERIC_TIMEOUT, // Use a generous protocol timeout
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--window-size=1920,1080'
         ],
       });
 
-      this.logger.log(
-        `Successfully converted website content to text. Length: ${text.length} characters`
-      );
-      return text;
-    } catch (axiosError) {
-      this.logger.warn(
-        `Axios failed to fetch website content: ${axiosError.message}. Attempting with Puppeteer...`
-      );
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1920, height: 1080 });
+      page.setDefaultNavigationTimeout(GENERIC_TIMEOUT);
+
+      this.logger.log(`Navigating to ${url}...`);
+      await page.goto(url, { waitUntil: 'load' });
+      this.logger.log(`Initial page load event fired for ${url}.`);
 
       try {
-        const puppeteer = await import('puppeteer');
-
-        const browser = await puppeteer.launch({
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        });
-
-        const page = await browser.newPage();
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
-
-        const html = await page.content();
-
-        await browser.close();
-
-        this.logger.log(
-          `Fetched website content with Puppeteer, about to convert HTML to text...`
-        );
-
-        const text = convert(html, {
-          wordwrap: 130,
-          selectors: [
-            { selector: 'img', format: 'skip' },
-            { selector: 'a', options: { ignoreHref: true } },
-          ],
-        });
-
-        this.logger.log(
-          `Successfully converted website content to text via Puppeteer. Length: ${text.length} characters`
-        );
-        return text;
-      } catch (puppeteerError) {
-        this.logger.error(`Puppeteer also failed: ${puppeteerError.message}`);
-        throw new Error(
-          `Could not extract text from website: ${puppeteerError.message}`
-        );
+          await page.waitForSelector('body', { timeout: 10000 });
+          this.logger.log('Body element found.');
+      } catch (bodyError) {
+          this.logger.warn('Body element not found quickly, proceeding anyway.');
       }
+
+      // **CORRECTION:** Use standard JS timeout instead of page.waitForTimeout
+      const dynamicWaitMs = 5000; // Wait 5 seconds
+      this.logger.log(`Waiting for ${dynamicWaitMs}ms for potential dynamic content...`);
+      await new Promise(resolve => setTimeout(resolve, dynamicWaitMs));
+
+      this.logger.log('Extracting page content...');
+      const html = await page.content();
+
+      await browser.close();
+      browser = null;
+
+      this.logger.log('Converting HTML to text...');
+      const text = convert(html, {
+        wordwrap: null,
+        selectors: [
+          { selector: 'img', format: 'skip' },
+          { selector: 'a', options: { ignoreHref: true } },
+          { selector: 'script', format: 'skip' },
+          { selector: 'style', format: 'skip' },
+          { selector: 'nav', format: 'skip' },
+          { selector: 'footer', format: 'skip' },
+          { selector: 'header', format: 'skip' },
+          { selector: 'aside', format: 'skip' },
+        ],
+      });
+
+      this.logger.log(`Generic extraction successful. Length: ${text.length} characters`);
+      return text;
+
+    } catch (error) {
+      this.logger.error(`Generic Puppeteer extraction failed: ${error.message}`);
+      if (browser) {
+        try {
+          await browser.close();
+        } catch (closeError) {
+          this.logger.error(`Failed to close browser after error: ${closeError.message}`);
+        }
+      }
+      throw new Error(`Could not extract text from website: ${error.message}`);
     }
   }
 }
