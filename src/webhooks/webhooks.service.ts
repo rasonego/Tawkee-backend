@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { InteractionsService } from '../interactions/interactions.service';
 import { WahaApiService } from '../waha-api/waha-api.service';
-import { DocumentsService } from '../documents/documents.service';
+import { MediaService } from '../media/media.service';
 import { WebsocketService } from '../websocket/websocket.service';
 
 @Injectable()
@@ -16,7 +16,7 @@ export class WebhooksService {
     private readonly interactionsService: InteractionsService,
     private readonly wahaApiService: WahaApiService,
     private readonly websocketService: WebsocketService,
-    private readonly documentsService: DocumentsService
+    private readonly mediaService: MediaService
   ) {}
 
   async handleEvolutionWebhook(
@@ -748,7 +748,7 @@ export class WebhooksService {
             );
 
             // Call agent API to process the message
-            // TODO: Use the DocumentsService to extract text from media, if not text only and append the prompt
+            // TODO: Use the MediaService to extract text from media, if not text only and append the prompt
             // with the result too
             const serializedWebhookEvent = {
               ...webhookEvent,
@@ -761,7 +761,7 @@ export class WebhooksService {
               const { apiKey } = this.wahaApiService.getWahaConfig();
 
               const documentTextContent =
-                await this.documentsService.extractTextFromDocument(
+                await this.mediaService.extractTextFromMedia(
                   serializedWebhookEvent.mediaUrl,
                   JSON.parse(serializedWebhookEvent.rawData as string)?.mimetype,
                   apiKey

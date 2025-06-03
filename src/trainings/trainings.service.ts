@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentsService } from '../agents/agents.service';
 import { QdrantService } from '../qdrant/qdrant.service';
-import { DocumentsService } from '../documents/documents.service';
+import { MediaService } from '../media/media.service';
 import { CreateTrainingDto } from './dto/create-training.dto';
 import { UpdateTrainingDto } from './dto/update-training.dto';
 import { TrainingDto, TrainingType } from './dto/training.dto';
@@ -22,7 +22,7 @@ export class TrainingsService {
     private readonly prisma: PrismaService,
     private readonly agentsService: AgentsService,
     private readonly qdrantService: QdrantService,
-    private readonly documentsService: DocumentsService
+    private readonly mediaService: MediaService
   ) {}
 
   async findAll(
@@ -97,11 +97,11 @@ export class TrainingsService {
         // First a small check: if there is image URL, extract text describing them before sending info into vector database
         let imageDescription: string = '';
         if (createTrainingDto.image) {
-          const mimetype = await this.documentsService.getMimeTypeFromHeaders(
+          const mimetype = await this.mediaService.getMimeTypeFromHeaders(
             createTrainingDto.image
           );
           imageDescription =
-            await this.documentsService.extractTextFromDocument(
+            await this.mediaService.extractTextFromMedia(
               createTrainingDto.image,
               mimetype
             );
@@ -132,7 +132,7 @@ export class TrainingsService {
         this.logger.log(
           `About to extract text from ${createTrainingDto.documentUrl} ${createTrainingDto.documentMimetype}`
         );
-        const text = await this.documentsService.extractTextFromDocument(
+        const text = await this.mediaService.extractTextFromMedia(
           createTrainingDto.documentUrl,
           createTrainingDto.documentMimetype
         );
@@ -145,7 +145,7 @@ export class TrainingsService {
         createTrainingDto.type === TrainingType.WEBSITE &&
         createTrainingDto.website
       ) {
-        const text = await this.documentsService.extractTextFromWebsite(
+        const text = await this.mediaService.extractTextFromWebsite(
           createTrainingDto.website
         );
         await this.qdrantService.storeTraining(training.id, agentId, text, {

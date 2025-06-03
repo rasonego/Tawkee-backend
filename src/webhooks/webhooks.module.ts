@@ -8,7 +8,7 @@ import { WahaApiModule } from '../waha-api/waha-api.module';
 import { AuthModule } from '../auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { DeepseekModule } from '../deepseek/deepseek.module';
-import { DocumentsModule } from '../documents/documents.module';
+import { MediaModule } from '../media/documents.module';
 import { WebsocketModule } from '../websocket/websocket.module';
 
 @Module({
@@ -20,7 +20,7 @@ import { WebsocketModule } from '../websocket/websocket.module';
     AuthModule,
     ConfigModule,
     DeepseekModule,
-    DocumentsModule,
+    MediaModule,
     WebsocketModule
   ],
   controllers: [WebhooksController],

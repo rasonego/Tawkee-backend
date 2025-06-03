@@ -20,7 +20,7 @@ import { WahaApiModule } from './waha-api/waha-api.module';
 import { OpenAiModule } from './openai/openai.module';
 import { DeepseekModule } from './deepseek/deepseek.module';
 import { QdrantModule } from './qdrant/qdrant.module';
-import { DocumentsModule } from './documents/documents.module';
+import { MediaModule } from './media/documents.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { UsersModule } from './users/users.module';
 import * as Joi from 'joi';
@@ -90,7 +90,7 @@ import * as Joi from 'joi';
     OpenAiModule,
     DeepseekModule,
     QdrantModule,
-    DocumentsModule,
+    MediaModule,
     WebsocketModule
   ],
 })

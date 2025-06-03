@@ -497,4 +497,124 @@ export class OpenAiService {
       );
     }
   }
+
+  async transcribeAudio(
+    formData: FormData,
+    language?: string,
+    prompt?: string
+  ): Promise<string> {
+    try {
+      this.logger.debug('Transcribing audio from FormData');
+
+      // Create the transcription request
+      const transcriptionParams: any = {
+        file: formData.get('file'),
+        model: 'whisper-1',
+      };
+
+      // Add optional parameters if provided
+      if (language) {
+        transcriptionParams.language = language;
+      }
+
+      if (prompt) {
+        transcriptionParams.prompt = prompt;
+      }
+
+      const response = await this.openai.audio.transcriptions.create(transcriptionParams);
+
+      this.logger.log(
+        `Successfully transcribed audio: ${response.text.substring(0, 100)}...`
+      );
+
+      return response.text;
+    } catch (error) {
+      this.logger.error(
+        `Error transcribing audio: ${error.message}`,
+        error.stack
+      );
+      throw new Error(`Failed to transcribe audio: ${error.message}`);
+    }
+  }
+
+  async transcribeAudioFromUrl(
+    audioUrl: string,
+    language?: string,
+    prompt?: string
+  ): Promise<string> {
+    try {
+      this.logger.debug(`Transcribing audio from URL: ${audioUrl}`);
+
+      // Download the audio file using axios (consistent with your existing pattern)
+      const axios = require('axios');
+      const response = await axios.get(audioUrl, { 
+        responseType: 'arraybuffer'
+      });
+      
+      const buffer = Buffer.from(response.data);
+
+      // Convert buffer to blob for OpenAI API
+      const audioBlob = new Blob([buffer]);
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'audio.mp3'); // Default filename
+
+      // Use the existing transcribeAudio method
+      return this.transcribeAudio(formData, language, prompt);
+    } catch (error) {
+      this.logger.error(
+        `Error transcribing audio from URL: ${error.message}`,
+        error.stack
+      );
+      throw new Error(`Failed to transcribe audio from URL: ${error.message}`);
+    }
+  }
+
+  async transcribeAudioFromBuffer(
+    audioBuffer: Buffer,
+    mimeType: string,
+    language?: string,
+    prompt?: string
+  ): Promise<string> {
+    try {
+      this.logger.log(
+        `About to transcribe audio from buffer, mime type: ${mimeType}`
+      );
+
+      // Convert buffer to blob
+      const audioBlob = new Blob([audioBuffer], { type: mimeType });
+
+      // Determine file extension from MIME type
+      const extensionMap = {
+        'audio/mpeg': 'mp3',
+        'audio/mp4': 'm4a',
+        'audio/wav': 'wav',
+        'audio/webm': 'webm',
+        'audio/ogg': 'ogg',
+        'audio/x-m4a': 'm4a',
+      };
+
+      const extension = extensionMap[mimeType] || 'mp3';
+      const filename = `audio.${extension}`;
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append('file', audioBlob, filename);
+
+      const transcription = await this.transcribeAudio(formData, language, prompt);
+
+      this.logger.log(
+        `Successfully transcribed audio from buffer: ${transcription.substring(0, 100)}...`
+      );
+
+      return transcription;
+    } catch (error) {
+      this.logger.error(
+        `Error transcribing audio from buffer: ${error.message}`,
+        error.stack
+      );
+      throw new Error(`Failed to transcribe audio from buffer: ${error.message}`);
+    }
+  }
 }

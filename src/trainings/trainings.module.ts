@@ -4,10 +4,10 @@ import { TrainingsService } from './trainings.service';
 import { AgentsModule } from '../agents/agents.module';
 import { AuthModule } from '../auth/auth.module';
 import { QdrantModule } from '../qdrant/qdrant.module';
-import { DocumentsModule } from '../documents/documents.module';
+import { MediaModule } from '../media/documents.module';
 
 @Module({
-  imports: [AuthModule, AgentsModule, QdrantModule, DocumentsModule],
+  imports: [AuthModule, AgentsModule, QdrantModule, MediaModule],
   controllers: [TrainingsController],
   providers: [TrainingsService],
   exports: [TrainingsService],

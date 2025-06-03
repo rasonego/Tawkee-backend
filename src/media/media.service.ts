@@ -7,19 +7,19 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OpenAiService } from 'src/openai/openai.service';
 
 @Injectable()
-export class DocumentsService {
-  private readonly logger = new Logger(DocumentsService.name);
+export class MediaService {
+  private readonly logger = new Logger(MediaService.name);
 
   constructor(
     private readonly openAiService: OpenAiService
   ) {}
 
-  async extractTextFromDocument(
+  async extractTextFromMedia(
     url: string,
     mimetype: string,
     apiKey?: string
   ): Promise<string> {
-    this.logger.log('About to fetch PDF content through HTTP request...');
+    this.logger.log('About to extract text from media...');
 
     let response;
     if (!apiKey) {
@@ -81,6 +81,25 @@ export class DocumentsService {
       }
 
       default: {
+        // Check for audio files first
+        if (mimetype.startsWith('audio/')) {
+          this.logger.log(`Processing audio file with mimetype: ${mimetype}`);
+          
+          if (apiKey) {
+            // WhatsApp case - use buffer approach
+            return this.openAiService.transcribeAudioFromBuffer(
+              buffer, 
+              mimetype
+            );
+          } else {
+            // Direct URL case
+            return this.openAiService.transcribeAudioFromUrl(
+              url,
+              'pt'
+            );
+          }
+        }
+        
         throw new Error(`Unsupported document mimetype: ${mimetype}`);
       }
     }
@@ -156,11 +175,7 @@ export class DocumentsService {
       return 'image/jpeg';
     }
   }
-  // --- End of unchanged methods ---
 
-  /**
-   * Extract text content from a website using a more generic approach.
-   */
   async extractTextFromWebsite(url: string): Promise<string> {
     this.logger.log(`Attempting generic website content extraction from: ${url}`);
 
