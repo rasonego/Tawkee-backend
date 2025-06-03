@@ -3,6 +3,28 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { CreateEmbeddingResponse } from 'openai/resources';
 
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { promisify } from 'util';
+
+// Import ffmpeg-static and fluent-ffmpeg
+const ffmpegStatic = require('ffmpeg-static');
+const ffmpeg = require('fluent-ffmpeg');
+
+// Set the ffmpeg path
+ffmpeg.setFfmpegPath(ffmpegStatic);
+
+interface ProcessingOptions {
+  language?: string;
+  prompt?: string;
+  maxKeyFrames?: number;
+  frameWidth?: number;
+  batchSize?: number;
+  detailLevel?: 'low' | 'high';
+  extractFrames?: boolean;
+}
+
 @Injectable()
 export class OpenAiService {
   private readonly openai: OpenAI;
@@ -615,6 +637,352 @@ export class OpenAiService {
         error.stack
       );
       throw new Error(`Failed to transcribe audio from buffer: ${error.message}`);
+    }
+  }
+
+  async transcribeVideoContentFromBuffer(
+    videoBuffer: Buffer,
+    mimeType: string,
+    options: ProcessingOptions = {}
+  ): Promise<string> {
+    const {
+      language,
+      prompt,
+      maxKeyFrames = 2, // Reduced from 15 to 2 (much less frames)
+      frameWidth = 512,
+      batchSize = 3, // Reduced batch size since we have fewer frames
+      detailLevel = 'high',
+      extractFrames = true // Default to true for backward compatibility
+    } = options;
+
+    let tempVideoPath: string;
+    let tempAudioPath: string;
+    let tempFramesDir: string;
+
+    try {
+      this.logger.log(`Extracting and transcribing video content from buffer, mime type: ${mimeType}`);
+
+      // Create temporary file paths
+      const tempDir = os.tmpdir();
+      const timestamp = Date.now();
+      tempVideoPath = path.join(tempDir, `video_${timestamp}.tmp`);
+      tempAudioPath = path.join(tempDir, `audio_${timestamp}.wav`);
+      tempFramesDir = path.join(tempDir, `frames_${timestamp}`);
+
+      // Create frames directory
+      if (!fs.existsSync(tempFramesDir)) {
+        fs.mkdirSync(tempFramesDir, { recursive: true });
+      }
+
+      // Write video buffer to temporary file
+      fs.writeFileSync(tempVideoPath, videoBuffer);
+
+      // Extract audio and optionally key frames
+      if (extractFrames) {
+        await new Promise<void>((resolve, reject) => {
+          const frameOutputPath = path.join(tempFramesDir, 'keyframe_%04d.jpg');
+          
+          ffmpeg(tempVideoPath)
+            // Audio extraction settings
+            .audioCodec('pcm_s16le')
+            .audioFrequency(16000)
+            .audioChannels(1)
+            .format('wav')
+            .output(tempAudioPath)
+            
+            // Key frame extraction settings with more selective filtering
+            .outputOptions([
+              '-vf', `select='key*gte(key\\,0)*not(mod(n\\,30))',scale=${frameWidth}:-1`, // More selective: key frames every 30 frames
+              '-vsync', 'vfr',
+              '-frames:v', maxKeyFrames.toString(),
+              '-q:v', '2' // High quality JPEG
+            ])
+            .output(frameOutputPath)
+            
+            .on('end', () => {
+              this.logger.debug('Audio and key frame extraction completed successfully');
+              resolve();
+            })
+            .on('error', (err) => {
+              this.logger.error(`FFmpeg error: ${err.message}`);
+              reject(new Error(`Content extraction failed: ${err.message}`));
+            })
+            .on('start', (commandLine) => {
+              this.logger.debug(`FFmpeg command: ${commandLine}`);
+            })
+            .run();
+        });
+      } else {
+        // Extract audio only
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg(tempVideoPath)
+            .audioCodec('pcm_s16le')
+            .audioFrequency(16000)
+            .audioChannels(1)
+            .format('wav')
+            .output(tempAudioPath)
+            
+            .on('end', () => {
+              this.logger.debug('Audio extraction completed successfully');
+              resolve();
+            })
+            .on('error', (err) => {
+              this.logger.error(`FFmpeg error: ${err.message}`);
+              reject(new Error(`Audio extraction failed: ${err.message}`));
+            })
+            .on('start', (commandLine) => {
+              this.logger.debug(`FFmpeg command: ${commandLine}`);
+            })
+            .run();
+        });
+      }
+
+      // Process audio and optionally frames
+      const audioTranscription = await this.processAudio(tempAudioPath, language, prompt);
+      
+      let frameDescriptions: Array<{ timestamp: number; description: string }> = [];
+      if (extractFrames) {
+        frameDescriptions = await this.processKeyFramesWithAI(tempFramesDir, batchSize, detailLevel, prompt);
+      }
+
+      // Combine audio and visual content into structured text
+      const combinedTranscription = this.createStructuredTranscription(
+        audioTranscription, 
+        frameDescriptions, 
+        prompt,
+        extractFrames
+      );
+
+      this.logger.log(
+        `Successfully transcribed video content: ${combinedTranscription.substring(0, 100)}...`
+      );
+
+      return combinedTranscription;
+
+    } catch (error) {
+      this.logger.error(
+        `Error transcribing video content from buffer: ${error.message}`,
+        error.stack
+      );
+      throw new Error(`Failed to transcribe video content: ${error.message}`);
+    } finally {
+      // Clean up temporary files
+      await this.cleanupTempFiles(tempVideoPath, tempAudioPath, tempFramesDir);
+    }
+  }
+
+  async transcribeVideoContentFromUrl(
+    videoUrl: string,
+    options: ProcessingOptions = {}
+  ): Promise<string> {
+    try {
+      this.logger.debug(`Transcribing video content from URL: ${videoUrl}`);
+
+      // Download the video file using axios
+      const axios = require('axios');
+      const response = await axios.get(videoUrl, { 
+        responseType: 'arraybuffer',
+        timeout: 180000 // Extended timeout for video files
+      });
+      
+      const videoBuffer = Buffer.from(response.data);
+
+      // Determine MIME type from URL or use default
+      const mimeType = this.determineMimeTypeFromUrl(videoUrl);
+
+      // Use the buffer method to extract content
+      return this.transcribeVideoContentFromBuffer(videoBuffer, mimeType, options);
+
+    } catch (error) {
+      this.logger.error(
+        `Error transcribing video content from URL: ${error.message}`,
+        error.stack
+      );
+      throw new Error(`Failed to transcribe video content from URL: ${error.message}`);
+    }
+  }
+
+  private async processAudio(
+    audioPath: string, 
+    language?: string, 
+    prompt?: string
+  ): Promise<string> {
+    try {
+      const audioBuffer = fs.readFileSync(audioPath);
+      return await this.transcribeAudioFromBuffer(
+        audioBuffer,
+        'audio/wav',
+        language,
+        prompt
+      );
+    } catch (error) {
+      this.logger.error(`Audio processing failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  private async processKeyFramesWithAI(
+    framesDir: string, 
+    batchSize: number = 5,
+    detailLevel: 'low' | 'high' = 'high',
+    contextPrompt?: string
+  ): Promise<Array<{ timestamp: number; description: string }>> {
+    try {
+      // Get all frame files sorted by name (which corresponds to timestamp)
+      const frameFiles = fs.readdirSync(framesDir)
+        .filter(file => file.endsWith('.jpg'))
+        .sort();
+
+      if (frameFiles.length === 0) {
+        this.logger.warn('No key frames extracted from video');
+        return [];
+      }
+
+      const frameDescriptions: Array<{ timestamp: number; description: string }> = [];
+
+      // Custom prompt for video frames
+      const framePrompt = contextPrompt 
+        ? `Describe this video frame in detail, focusing on visual elements that complement this context: "${contextPrompt}". Include any text, objects, people, actions, and settings visible.`
+        : 'Describe this video frame in detail, including any text you can see, objects, people, actions, settings, and overall visual context.';
+
+      // Process frames in batches to avoid overwhelming the API
+      for (let i = 0; i < frameFiles.length; i += batchSize) {
+        const batch = frameFiles.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (fileName) => {
+          const framePath = path.join(framesDir, fileName);
+          const frameNumber = parseInt(fileName.match(/\d+/)?.[0] || '0');
+          
+          // Estimate timestamp (approximate - based on key frame sequence)
+          const estimatedTimestamp = frameNumber * 10; // Increased interval since we have fewer frames
+          
+          try {
+            // Convert image file to base64 data URL for the API
+            const imageBuffer = fs.readFileSync(framePath);
+            const base64Image = imageBuffer.toString('base64');
+            const dataUrl = `data:image/jpeg;base64,${base64Image}`;
+            
+            // Use the existing describeImage method
+            const description = await this.describeImage(dataUrl, framePrompt, detailLevel);
+            
+            return {
+              timestamp: estimatedTimestamp,
+              description
+            };
+          } catch (error) {
+            this.logger.warn(`Failed to describe frame ${fileName}: ${error.message}`);
+            return {
+              timestamp: estimatedTimestamp,
+              description: `[Frame at ${estimatedTimestamp}s - Description unavailable]`
+            };
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        frameDescriptions.push(...batchResults);
+
+        // Add delay between batches to respect API rate limits
+        if (i + batchSize < frameFiles.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      this.logger.debug(`Processed ${frameDescriptions.length} key frames with AI descriptions`);
+      return frameDescriptions.sort((a, b) => a.timestamp - b.timestamp);
+
+    } catch (error) {
+      this.logger.error(`Key frame AI processing failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  private createStructuredTranscription(
+    audioTranscription: string,
+    frameDescriptions: Array<{ timestamp: number; description: string }>,
+    originalPrompt?: string,
+    includeFrames: boolean = true
+  ): string {
+    const sections = [];
+
+    // Add header with context
+    if (originalPrompt) {
+      sections.push(`CONTEXT: ${originalPrompt}\n`);
+    }
+
+    // Add audio transcription section
+    sections.push('=== AUDIO TRANSCRIPTION ===');
+    sections.push(audioTranscription);
+    sections.push('');
+
+    // Add visual content section only if frames were processed
+    if (includeFrames && frameDescriptions.length > 0) {
+      sections.push('=== VISUAL CONTENT (KEY FRAMES) ===');
+      
+      frameDescriptions.forEach((frame, index) => {
+        sections.push(`[${this.formatTimestamp(frame.timestamp)}] Frame ${index + 1}:`);
+        sections.push(frame.description);
+        sections.push('');
+      });
+    }
+
+    // Add summary section
+    sections.push('=== CONTENT SUMMARY ===');
+    sections.push(`Audio Length: ~${Math.ceil(audioTranscription.length / 100)} segments`);
+    if (includeFrames) {
+      sections.push(`Visual Frames: ${frameDescriptions.length} key moments captured`);
+      sections.push(`Total Content: Combined audio-visual transcription with temporal markers`);
+    } else {
+      sections.push(`Content Type: Audio-only transcription`);
+    }
+
+    return sections.join('\n');
+  }
+
+  private formatTimestamp(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  private determineMimeTypeFromUrl(videoUrl: string): string {
+    const urlLower = videoUrl.toLowerCase();
+    
+    if (urlLower.includes('.mov')) return 'video/quicktime';
+    if (urlLower.includes('.avi')) return 'video/x-msvideo';
+    if (urlLower.includes('.mkv')) return 'video/x-matroska';
+    if (urlLower.includes('.webm')) return 'video/webm';
+    if (urlLower.includes('.wmv')) return 'video/x-ms-wmv';
+    if (urlLower.includes('.flv')) return 'video/x-flv';
+    
+    return 'video/mp4'; // Default
+  }
+
+  private async cleanupTempFiles(
+    videoPath?: string, 
+    audioPath?: string, 
+    framesDir?: string
+  ): Promise<void> {
+    const cleanupTasks = [];
+
+    if (videoPath && fs.existsSync(videoPath)) {
+      cleanupTasks.push(fs.promises.unlink(videoPath));
+    }
+
+    if (audioPath && fs.existsSync(audioPath)) {
+      cleanupTasks.push(fs.promises.unlink(audioPath));
+    }
+
+    if (framesDir && fs.existsSync(framesDir)) {
+      cleanupTasks.push(
+        fs.promises.rm(framesDir, { recursive: true, force: true })
+      );
+    }
+
+    try {
+      await Promise.all(cleanupTasks);
+      this.logger.debug('Temporary files cleaned up successfully');
+    } catch (cleanupError) {
+      this.logger.warn(`Failed to clean up some temporary files: ${cleanupError.message}`);
     }
   }
 }

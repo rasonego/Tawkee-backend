@@ -77,7 +77,6 @@ export class ConversationsService {
     const response = await this.generateAgentResponse(
       agent,
       chat,
-      interaction,
       conversationDto
     );
 
@@ -157,7 +156,6 @@ export class ConversationsService {
   private async generateAgentResponse(
     d: any,
     chat: any,
-    interaction: any,
     conversationDto: ConversationDto
   ) {
     // Extract the agent data from the enhanced DTO

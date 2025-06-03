@@ -94,12 +94,36 @@ export class MediaService {
           } else {
             // Direct URL case
             return this.openAiService.transcribeAudioFromUrl(
-              url,
-              'pt'
+              url
             );
           }
         }
-        
+
+        // Then check for video files
+        if (mimetype.startsWith('video/')) {
+          this.logger.log(`Processing video file with mimetype: ${mimetype}`);
+          
+          if (apiKey) {
+            // WhatsApp case - use buffer approach
+            // Extract audio from video buffer and transcribe
+            return this.openAiService.transcribeVideoContentFromBuffer(
+              buffer, 
+              mimetype,
+              {
+                extractFrames: false
+              }
+            );
+          } else {
+            // Direct URL case - extract audio from video URL and transcribe
+            return this.openAiService.transcribeVideoContentFromUrl(
+              url,
+              {
+                extractFrames: false
+              }
+            );
+          }
+        }
+
         throw new Error(`Unsupported document mimetype: ${mimetype}`);
       }
     }
