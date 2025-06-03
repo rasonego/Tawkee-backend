@@ -280,87 +280,139 @@ export class QdrantService implements OnModuleInit {
     }
   }
 
-  /**
-   * Retrieve similar training materials
-   */
-  async findSimilarTrainings(
-    query: string,
-    agentId: string,
-    limit: number = 5
-  ): Promise<
-    {
+/**
+ * Retrieve similar training materials
+ */
+async findSimilarTrainings(
+  query: string,
+  agentId: string,
+  limit: number = 3
+): Promise<
+  {
+    text: string;
+    trainingId: string;
+    similarity: number;
+  }[]
+> {
+  try {
+    // Break down long query into chunks for better retrieval (max 2000 chars per chunk)
+    const queryChunks = this.chunkText(query, 2000);
+    
+    this.logger.log(`Query broken into ${queryChunks.length} chunks`);
+
+    // Check if Qdrant is available
+    const qdrantAvailable = await this.isQdrantAvailable();
+
+    // Store all results from all chunks
+    const allResults: {
       text: string;
       trainingId: string;
       similarity: number;
-    }[]
-  > {
-    try {
-      // Generate embedding for query
-      const embedding = await this.generateEmbedding(query);
+    }[] = [];
 
-      // Check if Qdrant is available
-      const qdrantAvailable = await this.isQdrantAvailable();
+    // Search for each query chunk
+    for (let i = 0; i < queryChunks.length; i++) {
+      const chunk = queryChunks[i];
+      this.logger.log(`Processing query chunk ${i + 1}/${queryChunks.length} (length: ${chunk.length})`);
 
-      if (qdrantAvailable) {
-        // Search for similar vectors in Qdrant
-        const searchResult = await this.client.search(this.collectionName, {
-          vector: embedding,
-          limit,
-          filter: {
-            must: [
-              {
-                key: 'agentId',
-                match: {
-                  value: agentId,
+      try {
+        // Generate embedding for this chunk
+        const embedding = await this.generateEmbedding(chunk);
+
+        if (qdrantAvailable) {
+          // Search for similar vectors in Qdrant
+          const searchResult = await this.client.search(this.collectionName, {
+            vector: embedding,
+            limit: limit * 2, // Get more results per chunk to have better overall selection
+            filter: {
+              must: [
+                {
+                  key: 'agentId',
+                  match: {
+                    value: agentId,
+                  },
                 },
-              },
-            ],
-          },
-          with_payload: true,
-        });
+              ],
+            },
+            with_payload: true,
+          });
 
-        // Format results
-        return searchResult.map((result) => ({
-          text: (result.payload?.text as string) || '',
-          trainingId: (result.payload?.trainingId as string) || '',
-          similarity: result.score,
-        }));
-      } else {
-        // Use in-memory fallback for similarity search
-        this.logger.log(
-          `Using in-memory fallback for similarity search for agent ${agentId}`
-        );
+          // Format and add results from this chunk
+          const chunkResults = searchResult.map((result) => ({
+            text: (result.payload?.text as string) || '',
+            trainingId: (result.payload?.trainingId as string) || '',
+            similarity: result.score,
+          }));
 
-        const agentVectors = this.inMemoryVectors.get(agentId) || [];
-
-        if (agentVectors.length === 0) {
-          return [];
-        }
-
-        // Compute cosine similarity between query embedding and all stored vectors
-        const results = agentVectors.map((vector) => {
-          const similarity = this.computeCosineSimilarity(
-            embedding,
-            vector.vector
+          allResults.push(...chunkResults);
+        } else {
+          // Use in-memory fallback for similarity search
+          this.logger.log(
+            `Using in-memory fallback for similarity search for agent ${agentId}, chunk ${i + 1}`
           );
-          return {
-            text: vector.text,
-            trainingId: vector.id.split('_')[0], // Extract training ID from the vector ID
-            similarity,
-          };
-        });
 
-        // Sort by similarity (highest first) and take top 'limit' results
-        return results
-          .sort((a, b) => b.similarity - a.similarity)
-          .slice(0, limit);
+          const agentVectors = this.inMemoryVectors.get(agentId) || [];
+
+          if (agentVectors.length === 0) {
+            continue; // Skip this chunk if no vectors available
+          }
+
+          // Compute cosine similarity between chunk embedding and all stored vectors
+          const chunkResults = agentVectors.map((vector) => {
+            const similarity = this.computeCosineSimilarity(
+              embedding,
+              vector.vector
+            );
+            return {
+              text: vector.text,
+              trainingId: vector.metadata?.trainingId || vector.id.split('_')[0], // Extract training ID
+              similarity,
+            };
+          });
+
+          allResults.push(...chunkResults);
+        }
+      } catch (chunkError) {
+        this.logger.error(`Error processing query chunk ${i + 1}: ${chunkError.message}`);
+        // Continue with other chunks even if one fails
+        continue;
       }
-    } catch (error) {
-      this.logger.error(`Error searching similar trainings: ${error.message}`);
+    }
+
+    if (allResults.length === 0) {
+      this.logger.log('No results found for any query chunks');
       return [];
     }
-  }
 
+    // Remove duplicates by trainingId and text, keeping the highest similarity score
+    const uniqueResults = new Map<string, {
+      text: string;
+      trainingId: string;
+      similarity: number;
+    }>();
+
+    allResults.forEach((result) => {
+      const key = `${result.trainingId}_${result.text}`;
+      const existing = uniqueResults.get(key);
+      
+      if (!existing || result.similarity > existing.similarity) {
+        uniqueResults.set(key, result);
+      }
+    });
+
+    // Convert back to array, sort by similarity (highest first) and take top 'limit' results
+    const finalResults = Array.from(uniqueResults.values())
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
+
+    this.logger.log(`Returning ${finalResults.length} unique results from ${allResults.length} total matches`);
+
+    return finalResults;
+  } catch (error) {
+    this.logger.error(`Error searching similar trainings: ${error.message}`);
+    return [];
+  }
+}
   /**
    * Compute cosine similarity between two vectors
    * Returns a value between 0 and 1

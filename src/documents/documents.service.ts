@@ -73,7 +73,7 @@ export class DocumentsService {
       case 'image/tiff': {
         if (apiKey) {
           const base64Image = buffer.toString('base64');
-          const dataUrl = `data:image/png;base64,${base64Image}`;
+          const dataUrl = `data:${mimetype};base64,${base64Image}`;
           return this.openAiService.extractTextFromScannedDocument(dataUrl);
         } else {
           return this.openAiService.extractTextFromScannedDocument(url);
