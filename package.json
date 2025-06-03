@@ -17,6 +17,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.11",
     "@nestjs/cli": "^11.0.7",
     "@nestjs/common": "^11.1.0",
     "@nestjs/config": "^4.0.2",

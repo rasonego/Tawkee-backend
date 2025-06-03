@@ -75,7 +75,7 @@ export class CreateTrainingDto {
   documentUrl?: string;
 
   @ApiProperty({
-    description: 'Document name (for DOCUMENT type)',
+    description: 'Document name (for DOCUMENT or VIDEO type)',
     example: 'product-manual.pdf',
     required: false,
   })
@@ -84,7 +84,7 @@ export class CreateTrainingDto {
   documentName?: string;
 
   @ApiProperty({
-    description: 'Document MIME type (for DOCUMENT type)',
+    description: 'Document MIME type (for DOCUMENT or VIDEO type)',
     example: 'application/pdf',
     required: false,
   })

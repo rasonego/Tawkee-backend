@@ -151,6 +151,17 @@ export class TrainingsService {
         await this.qdrantService.storeTraining(training.id, agentId, text, {
           documentName: 'website',
         });
+      } else if (
+        createTrainingDto.type === TrainingType.VIDEO &&
+        createTrainingDto.video
+      ) {       
+        const text = await this.mediaService.extractTextFromMedia(
+          createTrainingDto.video, createTrainingDto.documentMimetype
+        );
+        this.logger.log(`Storing training ${training.id} in vector database`);
+        await this.qdrantService.storeTraining(training.id, agentId, text, {
+          documentName: 'video'
+        });
       }
     } catch (error) {
       this.logger.error(
