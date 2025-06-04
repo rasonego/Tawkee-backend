@@ -327,11 +327,11 @@ export class UsersService {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
+          code: code,
           client_id: this.clientId,
           client_secret: this.clientSecret,
-          code: code,
-          grant_type: 'authorization_code',
           redirect_uri: this.redirectUri,
+          grant_type: 'authorization_code',
         }),
       });
 
