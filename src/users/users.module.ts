@@ -20,7 +20,7 @@ import { EmailModule } from '../email/email.module';
         signOptions: { expiresIn: '7d' },
       }),
       inject: [ConfigService],
-    }),
+    })
   ],
   controllers: [UsersController],
   providers: [UsersService],

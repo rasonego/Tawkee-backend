@@ -9,24 +9,34 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { User } from './types/user.types';
-import { scrypt, randomBytes, timingSafeEqual, randomUUID } from 'crypto';
+import { scrypt, randomBytes, timingSafeEqual, randomUUID, scryptSync, createHmac, createCipheriv } from 'crypto';
 import { promisify } from 'util';
 import { JwtService } from '@nestjs/jwt';
 import { VerificationService } from '../email/verification.service';
 import { ConfigService } from '@nestjs/config';
+import { GoogleTokens, TokenExchangeResponse } from 'src/intentions/google-calendar/google-calendar-oauth.service';
 
 const scryptAsync = promisify(scrypt);
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
+  private readonly clientId: string;
+  private readonly clientSecret: string;
+  private readonly redirectUri: string;
+  private readonly stateSecret: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly verificationService: VerificationService,
     private readonly configService: ConfigService
-  ) {}
+  ) {
+    this.clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    this.clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
+    this.redirectUri = this.configService.get<string>('GOOGLE_CALLBACK_URL');
+    this.stateSecret = this.configService.get<string>('GOOGLE_STATE_SECRET');
+  }
 
   async create(
     createUserDto: CreateUserDto
@@ -301,5 +311,128 @@ export class UsersService {
       this.logger.error(`Error finding user with ID ${id}: ${error.message}`);
       throw error;
     }
+  }
+
+  async exchangeCodeForTokens(code: string, state: string): Promise<TokenExchangeResponse> {
+    try {
+      // Verify and extract user ID from state
+      const userId = this.verifyState(state);
+
+      // Ensure user exists
+      await this.findOne(userId);
+
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: this.clientId,
+          client_secret: this.clientSecret,
+          code: code,
+          grant_type: 'authorization_code',
+          redirect_uri: this.redirectUri,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new BadRequestException(`Token exchange failed: ${errorData.error_description || response.status}`);
+      }
+
+      const tokenData = await response.json();
+      
+      const tokens: GoogleTokens = {
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        expires_at: Date.now() + (tokenData.expires_in * 1000),
+        scope: tokenData.scope,
+        token_type: tokenData.token_type || 'Bearer',
+      };
+
+      // Store tokens securely
+      await this.storeUserTokens(userId, tokens);
+
+      return {
+        success: true,
+        tokens,
+      };
+    } catch (error) {
+      console.error('Error exchanging code for tokens:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  private verifyState(state: string): string {
+    try {
+      const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
+      const { payload, signature } = decoded;
+      
+      // Verify signature
+      const expectedSignature = createHmac('sha256', this.stateSecret)
+        .update(payload)
+        .digest('hex');
+      
+      if (signature !== expectedSignature) {
+        throw new BadRequestException('Invalid state signature');
+      }
+
+      const { userId, timestamp } = JSON.parse(payload);
+      
+      // Check if state is not too old (1 hour)
+      if (Date.now() - timestamp > 3600000) {
+        throw new BadRequestException('State parameter expired');
+      }
+
+      return userId;
+    } catch (error) {
+      throw new BadRequestException('Invalid state parameter');
+    }
+  }
+
+  private async storeUserTokens(userId: string, tokens: GoogleTokens): Promise<void> {
+    const encryptedAccessToken = this.encryptToken(tokens.access_token);
+    const encryptedRefreshToken = tokens.refresh_token 
+      ? this.encryptToken(tokens.refresh_token) 
+      : null;
+
+    await this.prisma.userGoogleToken.upsert({
+      where: { userId },
+      update: {
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
+        expiresAt: tokens.expires_at,
+        scope: tokens.scope,
+        tokenType: tokens.token_type,
+        updatedAt: new Date(),
+      },
+      create: {
+        userId,
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
+        expiresAt: tokens.expires_at,
+        scope: tokens.scope,
+        tokenType: tokens.token_type,
+      },
+    });
+  }
+  
+  private encryptToken(token: string): string {
+    const algorithm = 'aes-256-gcm';
+    const key = scryptSync(this.stateSecret, 'salt', 32);
+    const iv = randomBytes(16);
+
+    const cipher = createCipheriv(algorithm, key, iv);
+    cipher.setAAD(Buffer.from('google-token'));
+
+    let encrypted = cipher.update(token, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+
+    const authTag = cipher.getAuthTag();
+
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
   }
 }

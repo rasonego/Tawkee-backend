@@ -42,36 +42,6 @@ export class GoogleCalendarOAuthController {
     return this.googleCalendarOAuthService.getAuthUrl(userId);
   }
 
-  @Post('exchange-tokens')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Exchange authorization code for access tokens' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Tokens exchanged successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        tokens: {
-          type: 'object',
-          properties: {
-            access_token: { type: 'string' },
-            refresh_token: { type: 'string' },
-            expires_at: { type: 'number' },
-            scope: { type: 'string' },
-            token_type: { type: 'string' }
-          }
-        }
-      }
-    }
-  })
-  async exchangeTokens(@Body() exchangeDto: GoogleTokenExchangeDto) {
-    return this.googleCalendarOAuthService.exchangeCodeForTokens(
-      exchangeDto.code,
-      exchangeDto.state
-    );
-  }
-
   @Get('auth-status/:userId')
   @ApiOperation({ summary: 'Check user Google Calendar authentication status' })
   @ApiResponse({ 

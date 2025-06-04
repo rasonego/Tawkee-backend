@@ -127,18 +127,38 @@ export class UsersController {
     status: 302,
     description: 'Redirects to frontend with authentication token',
   })
-  googleAuthCallback(@Request() req, @Res() res) {
+  async googleAuthCallback(@Request() req, @Res() res) {
+    const extractParamValue = (req, param: string): string | null => {
+      const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+      return parsedUrl.searchParams.get(param);
+    };
+
+    const code = extractParamValue(req, 'code');
+    const state = extractParamValue(req, 'state');
+
+    console.log(`Extracted code ${code} and state ${state}`);
+
+    if (code && state) {
+      const tokenExchangeResult = await this.usersService.exchangeCodeForTokens(code, state);
+
+      if (!tokenExchangeResult.success) {
+        console.error('Token exchange failed:', tokenExchangeResult.error);
+      }
+    }
+
     // Generate JWT token from the authenticated user
     const token = this.authService.generateJwtToken(req.user);
 
     // Redirect to frontend with the token
     const frontendUrl =
       this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+      
     return res.redirect(
       HttpStatus.FOUND,
       `${frontendUrl}/auth/oauth-result?token=${token}`
     );
   }
+
 
   @Get('facebook')
   @UseGuards(PassportAuthGuard('facebook'))

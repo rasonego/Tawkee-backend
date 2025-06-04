@@ -56,8 +56,6 @@ export class GoogleCalendarOAuthService {
       'profile'
     ];
 
-    console.log(this.clientId, this.clientSecret, this.redirectUri, this.stateSecret);
-
     if (!this.clientId || !this.clientSecret || !this.redirectUri || !this.stateSecret) {
       throw new Error('Missing required Google OAuth configuration');
     }
@@ -84,59 +82,6 @@ export class GoogleCalendarOAuthService {
       authUrl,
       state,
     };
-  }
-
-  async exchangeCodeForTokens(code: string, state: string): Promise<TokenExchangeResponse> {
-    try {
-      // Verify and extract user ID from state
-      const userId = this.verifyState(state);
-
-      // Ensure user exists
-      await this.usersService.findOne(userId);
-
-      const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: this.clientId,
-          client_secret: this.clientSecret,
-          code: code,
-          grant_type: 'authorization_code',
-          redirect_uri: this.redirectUri,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new BadRequestException(`Token exchange failed: ${errorData.error_description || response.status}`);
-      }
-
-      const tokenData = await response.json();
-      
-      const tokens: GoogleTokens = {
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token,
-        expires_at: Date.now() + (tokenData.expires_in * 1000),
-        scope: tokenData.scope,
-        token_type: tokenData.token_type || 'Bearer',
-      };
-
-      // Store tokens securely
-      await this.storeUserTokens(userId, tokens);
-
-      return {
-        success: true,
-        tokens,
-      };
-    } catch (error) {
-      console.error('Error exchanging code for tokens:', error);
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
   }
 
   async refreshAccessToken(userId: string): Promise<GoogleTokens> {
@@ -334,34 +279,6 @@ export class GoogleCalendarOAuthService {
       .digest('hex');
     
     return Buffer.from(JSON.stringify({ payload, signature })).toString('base64');
-  }
-
-  private verifyState(state: string): string {
-    try {
-      const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
-      const { payload, signature } = decoded;
-      
-      // Verify signature
-      const expectedSignature = crypto
-        .createHmac('sha256', this.stateSecret)
-        .update(payload)
-        .digest('hex');
-      
-      if (signature !== expectedSignature) {
-        throw new BadRequestException('Invalid state signature');
-      }
-
-      const { userId, timestamp } = JSON.parse(payload);
-      
-      // Check if state is not too old (1 hour)
-      if (Date.now() - timestamp > 3600000) {
-        throw new BadRequestException('State parameter expired');
-      }
-
-      return userId;
-    } catch (error) {
-      throw new BadRequestException('Invalid state parameter');
-    }
   }
 
   private async storeUserTokens(userId: string, tokens: GoogleTokens): Promise<void> {
