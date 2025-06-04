@@ -985,4 +985,287 @@ export class OpenAiService {
       this.logger.warn(`Failed to clean up some temporary files: ${cleanupError.message}`);
     }
   }
+
+/**
+ * Extract structured fields from user message using AI
+ * @param extractionPrompt - The prompt containing field extraction instructions
+ * @returns JSON string with extracted field values
+ */
+  async extractFields(extractionPrompt: string): Promise<string> {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4', // or your preferred model
+        messages: [
+          {
+            role: 'system',
+            content: `You are a precise data extraction assistant. Your job is to extract specific information from user messages and return it as valid JSON. Always return valid JSON even if some fields cannot be determined - use null for missing values. Be accurate and only extract information that is explicitly mentioned or can be reasonably inferred.`
+          },
+          {
+            role: 'user',
+            content: extractionPrompt
+          }
+        ],
+        temperature: 0.1, // Low temperature for consistency
+        max_tokens: 1000,
+        response_format: { type: "json_object" } // Ensures JSON response if supported
+      });
+
+      const extractedData = response.choices[0]?.message?.content?.trim();
+      
+      if (!extractedData) {
+        throw new Error('No response from OpenAI');
+      }
+
+      // Validate that it's proper JSON
+      JSON.parse(extractedData);
+      
+      this.logger.debug(`Field extraction successful: ${extractedData}`);
+      return extractedData;
+
+    } catch (error) {
+      this.logger.error(`Error in extractFields: ${error.message}`);
+      
+      // Return empty JSON object as fallback
+      return '{}';
+    }
+  }
+
+/**
+ * Generate a natural response for successful intention execution
+ * @param intention - The executed intention
+ * @param result - The result of the intention execution
+ * @param agent - The agent context
+ * @param communicationGuide - The communication style guide
+ * @returns Natural language response
+ */
+  async generateIntentionSuccessResponse(
+    intention: any,
+    result: any,
+    agent: any,
+    communicationGuide: string
+  ): Promise<string> {
+    try {
+      const prompt = `
+  Generate a natural, helpful response to confirm that an action was completed successfully.
+
+  Context:
+  - Agent Name: ${agent.name}
+  - Agent Type: ${agent.type}
+  - Communication Style: ${agent.communicationType}
+  - Action Completed: ${intention.description}
+  - Result Data: ${JSON.stringify(result.data || {}, null, 2)}
+
+  Communication Guide:
+  ${communicationGuide}
+
+  Generate a response that:
+  1. Confirms the action was completed successfully
+  2. Mentions relevant details from the result if appropriate
+  3. Maintains the agent's communication style
+  4. Is helpful and reassuring
+  5. Is concise but informative
+
+  Response:`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful assistant generating success confirmation messages. Be natural, concise, and match the specified communication style.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 300
+      });
+
+      const responseText = response.choices[0]?.message?.content?.trim();
+      
+      if (!responseText) {
+        // Fallback response
+        return `Great! I've successfully completed the ${intention.description.toLowerCase()} for you.`;
+      }
+
+      return responseText;
+
+    } catch (error) {
+      this.logger.error(`Error generating intention success response: ${error.message}`);
+      
+      // Fallback response
+      return `Perfect! I've successfully handled your ${intention.description.toLowerCase()}.`;
+    }
+  }
+
+/**
+ * Generate a natural error response for failed intention execution
+ * @param intention - The failed intention
+ * @param error - The error that occurred
+ * @param agent - The agent context
+ * @param communicationGuide - The communication style guide
+ * @returns Natural language error response
+ */
+  async generateIntentionErrorResponse(
+    intention: any,
+    error: any,
+    agent: any,
+    communicationGuide: string
+  ): Promise<string> {
+    try {
+      const prompt = `
+  Generate a natural, apologetic response for when an action failed to complete.
+
+  Context:
+  - Agent Name: ${agent.name}
+  - Agent Type: ${agent.type}
+  - Communication Style: ${agent.communicationType}
+  - Failed Action: ${intention.description}
+  - Error: ${error.message || 'Unknown error'}
+
+  Communication Guide:
+  ${communicationGuide}
+
+  Generate a response that:
+  1. Apologizes for the issue
+  2. Briefly mentions what went wrong (without technical details)
+  3. Offers next steps or alternatives if possible
+  4. Maintains the agent's communication style
+  5. Is empathetic and helpful
+
+  Response:`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful assistant generating empathetic error messages. Be apologetic, helpful, and match the specified communication style.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 300
+      });
+
+      const responseText = response.choices[0]?.message?.content?.trim();
+      
+      if (!responseText) {
+        // Fallback response
+        return `I apologize, but I encountered an issue while trying to ${intention.description.toLowerCase()}. Please try again or contact support if the problem persists.`;
+      }
+
+      return responseText;
+
+    } catch (error) {
+      this.logger.error(`Error generating intention error response: ${error.message}`);
+      
+      // Fallback response
+      return `I'm sorry, but I'm unable to ${intention.description.toLowerCase()} right now due to a technical issue. Please try again later.`;
+    }
+  }
+
+/**
+ * Generate a clarification message asking for missing required fields
+ * @param intention - The intention requiring more information
+ * @param missingFields - Array of missing field names
+ * @param collectedFields - Already collected field values
+ * @param agent - The agent context
+ * @param communicationGuide - The communication style guide
+ * @returns Natural language clarification request
+ */
+  async generateClarificationMessage(
+    intention: any,
+    missingFields: string[],
+    collectedFields: Record<string, any>,
+    agent: any,
+    communicationGuide: string
+  ): Promise<string> {
+    try {
+      const collectedInfo = Object.keys(collectedFields).length > 0 
+        ? `Already collected: ${JSON.stringify(collectedFields, null, 2)}`
+        : 'No information collected yet';
+
+      const fieldDetails = intention.fields
+        .filter(field => missingFields.includes(field.name))
+        .map(field => `- ${field.name}: ${field.description} (Type: ${field.type}, Required: ${field.required})`)
+        .join('\n');
+
+      const prompt = `
+  Generate a helpful message asking the user for missing information to complete an action.
+
+  Context:
+  - Agent Name: ${agent.name}
+  - Agent Type: ${agent.type}
+  - Communication Style: ${agent.communicationType}
+  - Action to Complete: ${intention.description}
+  - ${collectedInfo}
+  - Missing Fields:
+  ${fieldDetails}
+
+  Communication Guide:
+  ${communicationGuide}
+
+  Generate a response that:
+  1. Enthusiastically offers to help with the action
+  2. Acknowledges any information already provided
+  3. Clearly asks for the missing information
+  4. Makes it easy to understand what's needed
+  5. Maintains the agent's communication style
+  6. Is encouraging and helpful
+
+  Response:`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful assistant generating clarification requests. Be encouraging, clear, and match the specified communication style.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 400
+      });
+
+      const responseText = response.choices[0]?.message?.content?.trim();
+      
+      if (!responseText) {
+        // Fallback response
+        let message = `I'd be happy to help you ${intention.description.toLowerCase()}! `;
+        
+        if (Object.keys(collectedFields).length > 0) {
+          message += `I have some of the information already. `;
+        }
+        
+        message += `To proceed, I need the following details:\n\n`;
+        
+        missingFields.forEach((fieldName, index) => {
+          const field = intention.fields.find(f => f.name === fieldName);
+          message += `${index + 1}. ${field.name}: ${field.description}\n`;
+        });
+        
+        message += `\nPlease provide this information and I'll take care of it for you!`;
+        
+        return message;
+      }
+
+      return responseText;
+
+    } catch (error) {
+      this.logger.error(`Error generating clarification message: ${error.message}`);
+      
+      // Simple fallback
+      return `To help you with ${intention.description.toLowerCase()}, I need some additional information. Could you please provide: ${missingFields.join(', ')}?`;
+    }
+  }
 }

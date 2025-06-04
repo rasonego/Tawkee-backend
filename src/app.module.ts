@@ -23,6 +23,7 @@ import { QdrantModule } from './qdrant/qdrant.module';
 import { MediaModule } from './media/media.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { UsersModule } from './users/users.module';
+import { GoogleCalendarOAuthModule } from './intentions/google-calendar/google-calendar-oauth.module';
 import * as Joi from 'joi';
 
 @Module({
@@ -91,7 +92,8 @@ import * as Joi from 'joi';
     DeepseekModule,
     QdrantModule,
     MediaModule,
-    WebsocketModule
+    WebsocketModule,
+    GoogleCalendarOAuthModule
   ],
 })
 export class AppModule {}

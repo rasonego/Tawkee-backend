@@ -28,7 +28,9 @@ model User {
   verificationExpires DateTime?
   verificationToken   String?
   workspace           Workspace @relation(fields: [workspaceId], references: [id])
-
+  
+  googleToken       UserGoogleToken?
+  
   @@index([provider, providerId])
   @@index([verificationToken])
   @@index([resetToken])
@@ -307,6 +309,23 @@ model BlacklistedToken {
 
   @@index([token])
   @@index([expiresAt])
+}
+
+model UserGoogleToken {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  accessToken  String   // Encrypted
+  refreshToken String?  // Encrypted, optional
+  expiresAt    BigInt
+  scope        String
+  tokenType    String   @default("Bearer")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_google_tokens")
 }
 
 enum SubscriptionStatus {

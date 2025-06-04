@@ -6,6 +6,7 @@ import { OpenAiService } from '../openai/openai.service';
 import { TrainingsService } from '../trainings/trainings.service';
 import { ConversationDto } from './dto/conversation.dto';
 import { AIModel } from '@prisma/client';
+import { getCommunicationGuide } from '../common/utils/communication-guides';
 
 @Injectable()
 export class ConversationsService {
@@ -221,7 +222,90 @@ export class ConversationsService {
         jobDescription: agent.jobDescription || '',
       };
 
-      // Generate AI response using the preferred model with RAG
+      // STEP 1: Check if user message matches any intentions
+      const matchedIntention = await this.detectIntention(conversationDto.prompt, intentions);
+      
+      if (matchedIntention) {
+        this.logger.debug(`Matched intention: ${matchedIntention.description}`);
+        
+        // STEP 2: Extract required fields from user message or ask for missing ones
+        const extractionResult = await this.extractIntentionFields(
+          conversationDto.prompt, 
+          conversationContext,
+          matchedIntention,
+          enhancedAgent
+        );
+
+        if (!extractionResult.allFieldsCollected) {
+          // Return a response asking for missing information
+          return {
+            message: extractionResult.clarificationMessage,
+            images: [],
+            audios: [],
+            communicationGuide,
+            goalGuide,
+            pendingIntention: {
+              intentionId: matchedIntention.id,
+              collectedFields: extractionResult.collectedFields,
+              missingFields: extractionResult.missingFields
+            }
+          };
+        }
+
+        // STEP 3: Execute the intention if all fields are collected
+        try {
+          const intentionResult = await this.executeIntention(matchedIntention, extractionResult.collectedFields);
+          
+          // STEP 4: Generate a natural response based on the intention result
+          const communicationGuide = getCommunicationGuide(agent.communicationType);
+ 
+          const responseText = await this.openAiService.generateIntentionSuccessResponse(
+            matchedIntention,
+            intentionResult,
+            enhancedAgent,
+            communicationGuide
+          );
+
+          return {
+            message: responseText,
+            images: [],
+            audios: [],
+            communicationGuide,
+            goalGuide,
+            intentionExecuted: {
+              intention: matchedIntention.description,
+              result: intentionResult,
+              success: intentionResult.success
+            }
+          };
+
+        } catch (error) {
+          this.logger.error(`Error executing intention: ${error.message}`);
+
+          // Generate error response
+          const communicationGuide = getCommunicationGuide(agent.communicationType);
+          const errorResponse = await this.openAiService.generateIntentionErrorResponse(
+            matchedIntention,
+            error,
+            enhancedAgent,
+            communicationGuide
+          );
+          
+          return {
+            message: errorResponse,
+            images: [],
+            audios: [],
+            communicationGuide,
+            goalGuide,
+            intentionError: {
+              intention: matchedIntention.description,
+              error: error.message
+            }
+          };
+        }
+      }
+
+      // STEP 5: If no intention matched, proceed with normal AI response generation
       let responseText = '';
       try {
         // Search for relevant training materials using RAG
@@ -256,8 +340,17 @@ export class ConversationsService {
           // Continue without RAG if there's an error
         }
 
-        // Use the preferred model to generate the response with RAG context
+        // Add intention context to the AI prompt
+        let intentionContext = '';
+        if (intentions.length > 0) {
+          intentionContext = '\nAvailable actions I can perform:\n';
+          intentions.forEach((intention, index) => {
+            intentionContext += `${index + 1}. ${intention.description}\n`;
+          });
+          intentionContext += '\nIf the user wants me to perform any of these actions, I should let them know I can help with that.\n';
+        }
 
+        // Use the preferred model to generate the response with RAG context
         const preferredModel: AIModel = enhancedAgent.settings.preferredModel;
         const openAIModels: AIModel[] = [
           AIModel.GPT_4,
@@ -278,7 +371,7 @@ export class ConversationsService {
             communicationGuide,
             goalGuide,
             conversationContext,
-            retrievedContext // Include retrieved context from RAG
+            retrievedContext + intentionContext // Include both RAG and intention context
           );
         } else if (openAIModels.includes(preferredModel as AIModel)) {
           responseText = await this.openAiService.generateAgentResponse(
@@ -287,7 +380,7 @@ export class ConversationsService {
             communicationGuide,
             goalGuide,
             conversationContext,
-            retrievedContext // Include retrieved context from RAG
+            retrievedContext + intentionContext // Include both RAG and intention context
           );          
         }
 
@@ -295,11 +388,10 @@ export class ConversationsService {
       } catch (error) {
         this.logger.error(`Error generating AI response: ${error.message}`);
 
-        // Fallback response if OpenAI fails
+        // Fallback response logic (keeping your existing fallback)
         let stylePrefix = '';
         let goalPrefix = '';
 
-        // Determine style prefix based on communication type
         switch (agent.communicationType) {
           case 'FORMAL':
             stylePrefix = 'Greetings. I am';
@@ -307,19 +399,17 @@ export class ConversationsService {
           case 'RELAXED':
             stylePrefix = "Hey there! I'm";
             break;
-          default: // NORMAL or any other case
+          default:
             stylePrefix = "Hi, I'm";
             break;
         }
 
-        // Determine goal prefix based on agent type
         switch (agentType) {
           case 'SUPPORT':
             goalPrefix = "I'm here to help resolve your issue with";
             break;
           case 'SALE':
-            goalPrefix =
-              "I'd like to tell you about our fantastic solution for";
+            goalPrefix = "I'd like to tell you about our fantastic solution for";
             break;
           case 'PERSONAL':
             goalPrefix = "I'd love to chat with you about";
@@ -329,32 +419,243 @@ export class ConversationsService {
             break;
         }
 
-        // Fallback response
         responseText = `${stylePrefix} ${agent.name}. ${goalPrefix} "${conversationDto.prompt}". I'm currently experiencing some technical difficulties, but I'll do my best to assist you.`;
       }
-
-      // DUPLICATE
-      // // Create an assistant message
-      // await this.prisma.message.create({
-      //   data: {
-      //     text: responseText,
-      //     role: 'assistant',
-      //     chatId: chat.id,
-      //     interactionId: interaction.id,
-      //   },
-      // });
 
       // Return the response in the expected format
       return {
         message: responseText,
         images: [],
         audios: [],
-        communicationGuide, // Include the communication guide for reference
-        goalGuide, // Include the goal guide for reference
+        communicationGuide,
+        goalGuide,
       };
     } catch (error) {
       this.logger.error(`Error in generateAgentResponse: ${error.message}`);
       throw error;
+    }
+  }
+
+  private async detectIntention(userMessage: string, intentions: any[]): Promise<any | null> {
+    if (!intentions || intentions.length === 0) {
+      return null;
+    }
+
+    // Simple keyword-based intention detection
+    // You can make this more sophisticated using ML models or semantic similarity
+    const lowerMessage = userMessage.toLowerCase();
+    
+    for (const intention of intentions) {
+      const keywords = this.extractKeywordsFromIntention(intention);
+      const score = this.calculateIntentionScore(lowerMessage, keywords);
+      
+      if (score > 0.3) { // Threshold for intention matching
+        return intention;
+      }
+    }
+    
+    return null;
+  }
+
+  private extractKeywordsFromIntention(intention: any): string[] {
+    const keywords = [];
+    
+    // Extract keywords from description
+    const descWords = intention.description.toLowerCase().split(/\s+/);
+    keywords.push(...descWords);
+    
+    // Extract keywords from field names and descriptions
+    if (intention.fields) {
+      intention.fields.forEach(field => {
+        keywords.push(...field.name.toLowerCase().split(/\s+/));
+        keywords.push(...field.description.toLowerCase().split(/\s+/));
+      });
+    }
+    
+    // Add common action words based on intention type
+    if (intention.description.includes('schedule') || intention.description.includes('meeting')) {
+      keywords.push('schedule', 'meeting', 'appointment', 'book', 'calendar');
+    }
+    
+    return keywords.filter(word => word.length > 2); // Filter out short words
+  }
+
+  private calculateIntentionScore(message: string, keywords: string[]): number {
+    const messageWords = message.split(/\s+/);
+    let matches = 0;
+    
+    keywords.forEach(keyword => {
+      if (message.includes(keyword)) {
+        matches++;
+      }
+    });
+    
+    return matches / Math.max(keywords.length, messageWords.length);
+  }
+
+  private async extractIntentionFields(
+    userMessage: string, 
+    conversationContext: string,
+    intention: any,
+    agent: any
+  ): Promise<{
+    allFieldsCollected: boolean;
+    collectedFields: Record<string, any>;
+    missingFields: string[];
+    clarificationMessage?: string;
+  }> {
+    const collectedFields: Record<string, any> = {};
+    const missingFields: string[] = [];
+    
+    // Use AI to extract field values from the user message
+    try {
+      const extractionPrompt = this.buildExtractionPrompt(userMessage, conversationContext, intention);
+      
+      // Always use OpenAI for field extraction (more reliable for structured data)
+      const extractionResult = await this.openAiService.extractFields(extractionPrompt);
+      
+      // Parse the extraction result (assuming JSON format)
+      const parsedFields = JSON.parse(extractionResult);
+      
+      // Check which fields were successfully extracted
+      intention.fields.forEach(field => {
+        if (parsedFields[field.jsonName] && parsedFields[field.jsonName] !== null && parsedFields[field.jsonName] !== '') {
+          collectedFields[field.jsonName] = parsedFields[field.jsonName];
+        } else if (field.required) {
+          missingFields.push(field.name);
+        }
+      });
+      
+    } catch (error) {
+      this.logger.error(`Error extracting fields: ${error.message}`);
+      // If extraction fails, mark all required fields as missing
+      intention.fields.forEach(field => {
+        if (field.required) {
+          missingFields.push(field.name);
+        }
+      });
+    }
+    
+    if (missingFields.length > 0) {
+      const communicationGuide = getCommunicationGuide(agent.communicationType);
+      const clarificationMessage = await this.openAiService.generateClarificationMessage(
+        intention, 
+        missingFields, 
+        collectedFields,
+        agent,
+        communicationGuide
+      );
+      
+      return {
+        allFieldsCollected: false,
+        collectedFields,
+        missingFields,
+        clarificationMessage
+      };
+    }
+    
+    return {
+      allFieldsCollected: true,
+      collectedFields,
+      missingFields: []
+    };
+  }
+
+  private buildExtractionPrompt(userMessage: string, context: string, intention: any): string {
+    let prompt = `Extract the following information from the user's message:\n\n`;
+    prompt += `User message: "${userMessage}"\n`;
+    prompt += `Context: ${context}\n\n`;
+    prompt += `Fields to extract:\n`;
+    
+    intention.fields.forEach(field => {
+      prompt += `- ${field.name} (${field.jsonName}): ${field.description} - Type: ${field.type}, Required: ${field.required}\n`;
+    });
+    
+    prompt += `\nReturn the extracted information as a JSON object with the field jsonNames as keys. Use null for fields that cannot be determined from the message.\n`;
+    prompt += `Example: {"meetingTitle": "Team Standup", "startDateTime": "2024-01-15T10:00:00", "attendeeEmail": null}\n\n`;
+    prompt += `JSON Response:`;
+    
+    return prompt;
+  }
+
+  private async generateClarificationMessage(
+    intention: any, 
+    missingFields: string[], 
+    collectedFields: Record<string, any>,
+    agent: any
+  ): Promise<string> {
+    // This method is kept for backward compatibility but now uses AI service
+    const { getCommunicationGuide } = await import('../common/utils/communication-guides');
+    const communicationGuide = getCommunicationGuide(agent.communicationType);
+    
+    return await this.openAiService.generateClarificationMessage(
+      intention,
+      missingFields,
+      collectedFields,
+      agent,
+      communicationGuide
+    );
+  }
+
+  private async executeIntention(intention: any, fields: Record<string, any>): Promise<any> {
+    try {
+      // Build the request
+      const url = intention.url;
+      const method = intention.httpMethod.toUpperCase();
+      
+      // Replace template variables in URL
+      let finalUrl = url;
+      Object.keys(fields).forEach(fieldKey => {
+        finalUrl = finalUrl.replace(`{{${fieldKey}}}`, encodeURIComponent(fields[fieldKey]));
+      });
+      
+      // Build headers
+      const headers: Record<string, string> = {};
+      intention.headers.forEach(header => {
+        let value = header.value;
+        // Replace template variables in headers
+        Object.keys(fields).forEach(fieldKey => {
+          value = value.replace(`{{${fieldKey}}}`, fields[fieldKey]);
+        });
+        headers[header.name] = value;
+      });
+      
+      // Build request body if present
+      let body = null;
+      if (intention.requestBody) {
+        let bodyString = intention.requestBody;
+        Object.keys(fields).forEach(fieldKey => {
+          bodyString = bodyString.replace(`{{${fieldKey}}}`, fields[fieldKey]);
+        });
+        body = bodyString;
+      }
+      
+      // Make the HTTP request
+      const response = await fetch(finalUrl, {
+        method,
+        headers,
+        body: body ? body : undefined
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      return {
+        success: true,
+        data: result,
+        statusCode: response.status
+      };
+      
+    } catch (error) {
+      this.logger.error(`Intention execution failed: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+        statusCode: error.status || 500
+      };
     }
   }
 }
