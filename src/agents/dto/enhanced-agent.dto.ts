@@ -11,6 +11,7 @@ import { CommunicationType, AgentType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { AgentSettingsDto } from '../../agent-settings/dto/agent-settings.dto';
 import { AgentWebhooksDto } from '../../agent-webhooks/dto/agent-webhooks.dto';
+import { IntentionDto } from 'src/intentions/dto/intention.dto';
 
 class BasicAgentInfo {
   @ApiProperty({
@@ -116,6 +117,14 @@ class BasicAgentInfo {
   })
   @IsOptional()
   channels?: any[];
+
+  @ApiProperty({
+    description: 'List of intentions defined for the agent',
+    type: [IntentionDto],
+  })
+  @ValidateNested({ each: true })
+  @Type(() => IntentionDto)
+  intentions?: IntentionDto[];
 }
 
 export class EnhancedAgentDto {

@@ -1,139 +1,148 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Delete, 
-  Body, 
-  Param, 
-  Query,
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
   HttpCode,
-  HttpStatus 
+  HttpStatus,
+  UseGuards,
+  Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { GoogleCalendarOAuthService } from './google-calendar-oauth.service';
-import { 
-  GoogleAuthUrlDto,
-  GoogleTokenExchangeDto,
-  GoogleAuthStatusDto,
-  GoogleRevokeTokensDto 
-} from './dto';
+import { AuthGuard } from '../../auth/auth.guard';
 
 @ApiTags('Google Calendar OAuth')
 @Controller('google-calendar-oauth')
 export class GoogleCalendarOAuthController {
   constructor(
-    private readonly googleCalendarOAuthService: GoogleCalendarOAuthService
+    private readonly googleCalendarOAuthService: GoogleCalendarOAuthService,
   ) {}
 
-  @Get('auth-url/:userId')
-  @ApiOperation({ summary: 'Get Google OAuth authorization URL' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Authorization URL generated successfully',
+  @Get('auth-url/:agentId')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Generate Google OAuth URL for agent' })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully generated auth URL',
     schema: {
       type: 'object',
       properties: {
         authUrl: { type: 'string' },
-        state: { type: 'string' }
-      }
-    }
+        state: { type: 'string' },
+      },
+    },
   })
-  async getAuthUrl(@Param('userId') userId: string) {
-    return this.googleCalendarOAuthService.getAuthUrl(userId);
+  async getAuthUrl(@Param('agentId') agentId: string) {
+    return this.googleCalendarOAuthService.getAuthUrl(agentId);
   }
 
-  @Get('auth-status/:userId')
-  @ApiOperation({ summary: 'Check user Google Calendar authentication status' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Authentication status retrieved successfully',
+  @Get('callback')
+  @ApiOperation({ summary: 'Handle Google OAuth callback with code + state' })
+  @ApiResponse({
+    status: 200,
+    description: 'OAuth code exchanged for access token successfully',
+  })
+  async handleOAuthCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+  ) {
+    return this.googleCalendarOAuthService.exchangeCodeForTokens(code, state);
+  }
+
+  @Get('auth-status/:agentId')
+  @ApiOperation({ summary: 'Check agent Google Calendar auth status' })
+  @ApiResponse({
+    status: 200,
+    description: 'Agent auth status returned',
     schema: {
       type: 'object',
       properties: {
         isAuthenticated: { type: 'boolean' },
         needsRefresh: { type: 'boolean' },
         expiresAt: { type: 'number' },
-        scopes: { type: 'array', items: { type: 'string' } }
-      }
-    }
+        scopes: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+      },
+    },
   })
-  async getAuthStatus(@Param('userId') userId: string) {
-    return this.googleCalendarOAuthService.getAuthStatus(userId);
+  async getAuthStatus(@Param('agentId') agentId: string) {
+    return this.googleCalendarOAuthService.getAuthStatus(agentId);
   }
 
-  @Post('refresh-token/:userId')
+  @Post('refresh-token/:agentId')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refresh user access token' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Token refreshed successfully',
+  @ApiOperation({ summary: 'Refresh Google Calendar access token for agent' })
+  @ApiResponse({
+    status: 200,
+    description: 'Access token refreshed',
+  })
+  async refreshToken(@Param('agentId') agentId: string) {
+    return this.googleCalendarOAuthService.refreshAccessToken(agentId);
+  }
+
+  @Get('valid-token/:agentId')
+  @ApiOperation({ summary: 'Get valid (possibly refreshed) access token for agent' })
+  @ApiResponse({
+    status: 200,
     schema: {
       type: 'object',
       properties: {
         access_token: { type: 'string' },
-        refresh_token: { type: 'string' },
-        expires_at: { type: 'number' },
-        scope: { type: 'string' },
-        token_type: { type: 'string' }
-      }
-    }
+      },
+    },
   })
-  async refreshToken(@Param('userId') userId: string) {
-    return this.googleCalendarOAuthService.refreshAccessToken(userId);
-  }
-
-  @Get('valid-token/:userId')
-  @ApiOperation({ summary: 'Get valid access token (refreshes if needed)' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Valid access token retrieved',
-    schema: {
-      type: 'object',
-      properties: {
-        access_token: { type: 'string' }
-      }
-    }
-  })
-  async getValidToken(@Param('userId') userId: string) {
-    const accessToken = await this.googleCalendarOAuthService.getValidAccessToken(userId);
+  async getValidToken(@Param('agentId') agentId: string) {
+    const accessToken = await this.googleCalendarOAuthService.getValidAccessToken(agentId);
     return { access_token: accessToken };
   }
 
-  @Delete('revoke/:userId')
+  @Delete('revoke/:agentId')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Revoke user Google Calendar access' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Tokens revoked successfully',
+  @ApiOperation({ summary: 'Revoke an agent’s Google Calendar credentials' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tokens revoked',
     schema: {
       type: 'object',
       properties: {
-        success: { type: 'boolean' }
-      }
-    }
+        success: { type: 'boolean' },
+      },
+    },
   })
-  async revokeTokens(@Param('userId') userId: string) {
-    return this.googleCalendarOAuthService.revokeUserTokens(userId);
+  async revokeTokens(@Param('agentId') agentId: string) {
+    return this.googleCalendarOAuthService.revokeAgentTokens(agentId);
   }
 
-  @Get('users')
-  @ApiOperation({ summary: 'Get all users with Google Calendar tokens (admin only)' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'User tokens retrieved successfully',
+  @Get('agents')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all agents with Google Calendar tokens' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of agents and token info',
     schema: {
       type: 'array',
       items: {
         type: 'object',
         properties: {
-          userId: { type: 'string' },
+          agentId: { type: 'string' },
           expiresAt: { type: 'number' },
-          scopes: { type: 'array', items: { type: 'string' } }
-        }
-      }
-    }
+          scopes: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
   })
-  async getAllUserTokens() {
-    return this.googleCalendarOAuthService.findAllUserTokens();
+  async getAllAgentTokens() {
+    return this.googleCalendarOAuthService.findAllAgentTokens();
   }
 }

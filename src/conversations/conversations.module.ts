@@ -7,6 +7,7 @@ import { AuthModule } from '../auth/auth.module';
 import { DeepseekModule } from '../deepseek/deepseek.module';
 import { OpenAiModule } from '../openai/openai.module';
 import { TrainingsModule } from '../trainings/trainings.module';
+import { GoogleCalendarOAuthModule } from 'src/intentions/google-calendar/google-calendar-oauth.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { TrainingsModule } from '../trainings/trainings.module';
     DeepseekModule,
     OpenAiModule,
     TrainingsModule,
+    GoogleCalendarOAuthModule
   ],
   controllers: [ConversationsController],
   providers: [ConversationsService],

@@ -189,7 +189,8 @@ export class AgentsService {
     return {
       agent: {
         ...result.agent,
-        channels: [], // Add empty channels array for newly created agents
+        channels: [],
+        intentions: []
       },
       settings: {
         preferredModel: result.settings.preferredModel,
@@ -206,7 +207,7 @@ export class AgentsService {
         onLackKnowLedge: result.webhooks.onLackKnowLedge,
         onTransfer: result.webhooks.onTransfer,
         onFinishAttendance: result.webhooks.onFinishAttendance,
-      },
+      }
     };
   }
 
@@ -256,6 +257,63 @@ export class AgentsService {
             updatedAt: true,
           },
         },
+        intentions: {
+          select: {
+            id: true,
+            toolName: true,
+            description: true,
+            type: true,
+            httpMethod: true,
+            url: true,
+            requestBody: true,
+            preprocessingMessage: true,
+            preprocessingText: true,
+            autoGenerateParams: true,
+            autoGenerateBody: true,
+            fields: {
+              select: {
+                id: true,
+                name: true,
+                jsonName: true,
+                description: true,
+                type: true,
+                required: true
+              },
+            },
+            headers: {
+              select: {
+                id: true,
+                name: true,
+                value: true,
+              },
+            },
+            params: {
+              select: {
+                id: true,
+                name: true,
+                value: true,
+              },
+            },
+            preconditions: {
+              select: {
+                id: true,
+                name: true,
+                url: true,
+                httpMethod: true,
+                requestBody: true,
+                failureCondition: true,
+                failureMessage: true,
+                headers: {   // 👈 ADD THIS BLOCK
+                  select: {
+                    id: true,
+                    name: true,
+                    value: true,
+                  }
+                }
+              }
+            }
+          },
+        },
       },
     });
 
@@ -263,14 +321,13 @@ export class AgentsService {
       throw new NotFoundException(`Agent with ID ${id} not found`);
     }
 
-    // Extract and format the data
-    const { settings, webhooks, channels, ...agentData } = agent as any;
+    const { settings, webhooks, channels, intentions, ...agentData } = agent as any;
 
-    // Return the combined data in EnhancedAgentDto format
     return {
       agent: {
         ...agentData,
         channels: channels || [],
+        intentions: intentions || [],
       },
       settings: settings || {
         preferredModel: AIModel.GPT_4_1,
@@ -287,7 +344,7 @@ export class AgentsService {
         onLackKnowLedge: null,
         onTransfer: null,
         onFinishAttendance: null,
-      },
+      }
     };
   }
 
@@ -326,6 +383,64 @@ export class AgentsService {
             updatedAt: true,
           },
         },
+        intentions: {
+          select: {
+            id: true,
+            toolName: true,
+            description: true,
+            type: true,
+            httpMethod: true,
+            url: true,
+            requestBody: true,
+            preprocessingMessage: true,
+            preprocessingText: true,
+            autoGenerateParams: true,
+            autoGenerateBody: true,
+            fields: {
+              select: {
+                id: true,
+                name: true,
+                jsonName: true,
+                description: true,
+                type: true,
+                required: true
+              },
+            },
+            headers: {
+              select: {
+                id: true,
+                name: true,
+                value: true,
+              },
+            },
+            params: {
+              select: {
+                id: true,
+                name: true,
+                value: true,
+              },
+            },
+            preconditions: {
+              select: {
+                id: true,
+                name: true,
+                url: true,
+                httpMethod: true,
+                requestBody: true,
+                failureCondition: true,
+                failureMessage: true,
+                headers: {
+                  select: {
+                    id: true,
+                    name: true,
+                    value: true,
+                  }
+                }
+              }
+            }
+          },
+        },
+
       },
     });
 

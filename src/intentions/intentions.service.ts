@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentsService } from '../agents/agents.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { CreateIntentionDto } from './dto/create-intention.dto';
 import { UpdateIntentionDto } from './dto/update-intention.dto';
+import { createGoogleCalendarIntention } from './google-calendar-intention';
+import { FieldType, PreprocessingType, Prisma } from '@prisma/client';
 
 @Injectable()
 export class IntentionsService {
@@ -58,8 +60,28 @@ export class IntentionsService {
     // Ensure agent exists
     await this.agentsService.findOne(agentId);
 
+    const existing = await this.prisma.intention.findUnique({
+      where: { toolName: createIntentionDto.toolName },
+    });
+
+    if (existing) {
+      throw new BadRequestException(`An intention with toolName "${createIntentionDto.toolName}" already exists.`);
+    }
+
     // Extract nested data
-    const { fields, headers, params, ...intentionData } = createIntentionDto;
+    const { fields, headers, params, preconditions, ...intentionData } = createIntentionDto;
+
+    const formattedPreconditions = (preconditions || []).map(p => ({
+      name: p.name,
+      url: p.url,
+      httpMethod: p.httpMethod,
+      requestBody: p.requestBody,
+      failureCondition: p.failureCondition,
+      failureMessage: p.failureMessage,
+      headers: {
+        create: p.headers || []
+      }
+    }));
 
     // Create intention with nested data in a transaction
     return this.prisma.$transaction(async (prisma) => {
@@ -76,11 +98,13 @@ export class IntentionsService {
           params: {
             create: params || [],
           },
+          preconditions: { create: formattedPreconditions },
         },
         include: {
           fields: true,
           headers: true,
           params: true,
+          preconditions: true
         },
       });
 
@@ -102,7 +126,7 @@ export class IntentionsService {
     }
 
     // Extract nested data
-    const { fields, headers, params, ...intentionData } = updateIntentionDto;
+    const { fields, headers, params, preconditions, ...intentionData } = updateIntentionDto;
 
     // Update intention with nested data in a transaction
     await this.prisma.$transaction(async (prisma) => {
@@ -110,6 +134,18 @@ export class IntentionsService {
       await prisma.intentionField.deleteMany({ where: { intentionId: id } });
       await prisma.intentionHeader.deleteMany({ where: { intentionId: id } });
       await prisma.intentionParam.deleteMany({ where: { intentionId: id } });
+
+      const formattedPreconditions = (preconditions || []).map(p => ({
+        name: p.name,
+        url: p.url,
+        httpMethod: p.httpMethod,
+        requestBody: p.requestBody,
+        failureCondition: p.failureCondition,
+        failureMessage: p.failureMessage,
+        headers: {
+          create: p.headers || []
+        }
+      }));
 
       // Then update intention and create new related records
       await prisma.intention.update({
@@ -125,6 +161,9 @@ export class IntentionsService {
           params: {
             create: params || [],
           },
+          preconditions: {
+            create: formattedPreconditions
+          }
         },
       });
     });
@@ -148,5 +187,83 @@ export class IntentionsService {
     });
 
     return { success: true };
+  }
+
+  async registerGoogleCalendarIntention(agentId: string) {
+    await this.agentsService.findOne(agentId);
+
+    const {
+      fields,
+      headers,
+      preconditions,
+      authentication,       // ❌ runtime-only, stripped
+      errorHandling,        // ❌ runtime-only, stripped
+      responseProcessing,   // ❌ runtime-only, stripped
+      ...intentionData
+    } = createGoogleCalendarIntention;
+
+    const formattedPreconditions = (preconditions || []).map(pre => ({
+      name: pre.name,
+      url: pre.url,
+      httpMethod: pre.httpMethod,
+      requestBody: pre.requestBody,
+      failureCondition: pre.failureCondition,
+      failureMessage: pre.failureMessage,
+      headers: {
+        create: pre.headers || [],
+      },
+    }));
+
+    const normalizeFieldType = (raw: string): FieldType => {
+      const map: Record<string, FieldType> = {
+        TEXT: FieldType.TEXT,
+        BOOLEAN: FieldType.BOOLEAN,
+        NUMBER: FieldType.NUMBER,
+        DATE: FieldType.DATE,
+        DATETIME: FieldType.DATE_TIME,
+        DATE_TIME: FieldType.DATE_TIME,
+        URL: FieldType.URL,
+      };
+
+      const key = raw.toUpperCase();
+      const normalized = map[key];
+
+      if (!normalized) {
+        throw new Error(`Invalid field type: "${raw}"`);
+      }
+
+      return normalized;
+    };
+
+    const castedFields = (fields || []).map(({ validation, defaultValue, ...field }) => ({
+      ...field,
+      type: normalizeFieldType(field.type),
+    }));
+
+    return this.prisma.$transaction(async (prisma) => {
+      const intention = await prisma.intention.create({
+        data: {
+          ...intentionData,
+          preprocessingMessage: intentionData.preprocessingMessage as PreprocessingType,
+          agent: {
+            connect: { id: agentId },
+          },
+          fields: {
+            create: castedFields,
+          },
+          headers: {
+            create: headers || [],
+          },
+          preconditions: { create: formattedPreconditions },
+        } as Prisma.IntentionCreateInput,
+        include: {
+          fields: true,
+          headers: true,
+          params: true
+        },
+      });
+
+      return intention;
+    });
   }
 }

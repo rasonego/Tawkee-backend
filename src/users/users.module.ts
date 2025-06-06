@@ -6,11 +6,13 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
+import { GoogleCalendarOAuthModule } from 'src/intentions/google-calendar/google-calendar-oauth.module';
 
 @Module({
   imports: [
     PrismaModule,
     AuthModule,
+    GoogleCalendarOAuthModule,
     ConfigModule,
     EmailModule,
     JwtModule.registerAsync({

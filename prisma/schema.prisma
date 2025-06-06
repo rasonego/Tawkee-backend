@@ -28,9 +28,7 @@ model User {
   verificationExpires DateTime?
   verificationToken   String?
   workspace           Workspace @relation(fields: [workspaceId], references: [id])
-  
-  googleToken       UserGoogleToken?
-  
+   
   @@index([provider, providerId])
   @@index([verificationToken])
   @@index([resetToken])
@@ -72,6 +70,7 @@ model Agent {
   intentions        Intention[]
   interactions      Interaction[]
   trainings         Training[]
+  googleToken AgentGoogleToken?
 }
 
 model AgentSettings {
@@ -122,6 +121,7 @@ model Training {
 
 model Intention {
   id                   String            @id @default(uuid())
+  toolName             String            @unique
   description          String
   preprocessingMessage PreprocessingType @default(DISABLED)
   preprocessingText    String?
@@ -138,6 +138,10 @@ model Intention {
   fields               IntentionField[]
   headers              IntentionHeader[]
   params               IntentionParam[]
+
+  preconditions        IntentionPrecondition[]
+
+  @@index([toolName])
 }
 
 model IntentionField {
@@ -166,6 +170,30 @@ model IntentionParam {
   intentionId String
   intention   Intention @relation(fields: [intentionId], references: [id], onDelete: Cascade)
 }
+
+model IntentionPrecondition {
+  id             String    @id @default(uuid())
+  name           String
+  url            String
+  httpMethod     String    @default("POST")
+  requestBody    String?
+  failureCondition String
+  failureMessage String
+
+  intentionId    String
+  intention      Intention @relation(fields: [intentionId], references: [id], onDelete: Cascade)
+
+  headers        IntentionPreconditionHeader[]
+}
+
+model IntentionPreconditionHeader {
+  id              String    @id @default(uuid())
+  name            String
+  value           String
+  preconditionId  String
+  precondition    IntentionPrecondition @relation(fields: [preconditionId], references: [id], onDelete: Cascade)
+}
+
 
 model CreditSpent {
   id        String   @id @default(uuid())
@@ -311,9 +339,9 @@ model BlacklistedToken {
   @@index([expiresAt])
 }
 
-model UserGoogleToken {
+model AgentGoogleToken {
   id           String   @id @default(cuid())
-  userId       String   @unique
+  agentId      String   @unique
   accessToken  String   // Encrypted
   refreshToken String?  // Encrypted, optional
   expiresAt    BigInt
@@ -322,10 +350,9 @@ model UserGoogleToken {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
-  @@map("user_google_tokens")
+  @@map("agent_google_tokens")
 }
 
 enum SubscriptionStatus {

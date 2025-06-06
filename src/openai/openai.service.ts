@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
-import { CreateEmbeddingResponse } from 'openai/resources';
+import { ChatCompletionTool, CreateEmbeddingResponse } from 'openai/resources';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -986,49 +986,63 @@ export class OpenAiService {
     }
   }
 
-/**
- * Extract structured fields from user message using AI
- * @param extractionPrompt - The prompt containing field extraction instructions
- * @returns JSON string with extracted field values
- */
-  async extractFields(extractionPrompt: string): Promise<string> {
+  async callWithToolDetection(
+    userPrompt: string,
+    toolSchemas: OpenAI.Chat.Completions.ChatCompletionTool[],
+    modelPreference = 'gpt-4o'
+  ): Promise<{
+    toolCall?: ChatCompletionTool;
+    extractedFields?: Record<string, any>;
+    fallbackMessage?: string;
+  }> {
     try {
+      const modelId = this.getModelId(modelPreference);
+
+      this.logger.debug(`[OpenAiService] Starting tool detection with model: ${modelId}`);
+      this.logger.debug(`[OpenAiService] User prompt: ${userPrompt}`);
+      this.logger.debug(`[OpenAiService] Tool schemas: ${JSON.stringify(toolSchemas, null, 2)}`);
+
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-4', // or your preferred model
+        model: modelId,
         messages: [
           {
             role: 'system',
-            content: `You are a precise data extraction assistant. Your job is to extract specific information from user messages and return it as valid JSON. Always return valid JSON even if some fields cannot be determined - use null for missing values. Be accurate and only extract information that is explicitly mentioned or can be reasonably inferred.`
+            content: `You have access to function tools. Use the appropriate tool when user intent matches.`
           },
-          {
-            role: 'user',
-            content: extractionPrompt
-          }
+          { role: 'user', content: userPrompt }
         ],
-        temperature: 0.1, // Low temperature for consistency
-        max_tokens: 1000,
-        response_format: { type: "json_object" } // Ensures JSON response if supported
+        tools: toolSchemas,
+        tool_choice: 'auto',
       });
 
-      const extractedData = response.choices[0]?.message?.content?.trim();
-      
-      if (!extractedData) {
-        throw new Error('No response from OpenAI');
+      this.logger.debug(`[OpenAiService] Raw OpenAI response:\n${JSON.stringify(response, null, 2)}`);
+
+      const toolCalls = response.choices[0]?.message?.tool_calls;
+
+      if (toolCalls && toolCalls.length > 0) {
+        const toolCall = toolCalls[0];
+        this.logger.debug(`[OpenAiService] Tool called: ${toolCall.function.name}`);
+        this.logger.debug(`[OpenAiService] Raw arguments: ${toolCall.function.arguments}`);
+
+        const args = JSON.parse(toolCall.function.arguments || '{}');
+
+        return {
+          toolCall,
+          extractedFields: args,
+        };
       }
 
-      // Validate that it's proper JSON
-      JSON.parse(extractedData);
-      
-      this.logger.debug(`Field extraction successful: ${extractedData}`);
-      return extractedData;
-
+      this.logger.warn('[OpenAiService] No tool call returned by OpenAI.');
+      return {
+        fallbackMessage: response.choices?.[0].message?.content ?? undefined
+      };
     } catch (error) {
-      this.logger.error(`Error in extractFields: ${error.message}`);
-      
-      // Return empty JSON object as fallback
-      return '{}';
+      this.logger.error(`Error in callWithToolDetection: ${error.message}`);
+      this.logger.error(error.stack);
+      return {};
     }
   }
+
 
 /**
  * Generate a natural response for successful intention execution

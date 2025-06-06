@@ -1,40 +1,71 @@
-// Updated intention configuration for Google Calendar
 export const createGoogleCalendarIntention = {
+  toolName: "schedule_google_meeting",
   description: "Schedule meetings in Google Calendar",
   preprocessingMessage: "MANUAL",
-  preprocessingText: "I need to schedule a meeting in Google Calendar with the provided details",
+  preprocessingText: "I need to schedule a meeting in Google Calendar with the provided details.",
   type: "WEBHOOK",
   httpMethod: "POST",
   url: "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-  
-  // Updated request body with proper validation
-  requestBody: JSON.stringify({
-    summary: "{{meetingTitle}}",
-    description: "{{meetingDescription}}",
-    start: {
-      dateTime: "{{startDateTime}}",
-      timeZone: "{{timeZone}}"
+
+  preconditions: [
+    {
+      name: "Check Time Slot Availability",
+      url: "https://www.googleapis.com/calendar/v3/freeBusy",
+      httpMethod: "POST",
+      headers: [
+        {
+          name: "Authorization",
+          value: "Bearer {{DYNAMIC_GOOGLE_ACCESS_TOKEN}}"
+        },
+        {
+          name: "Content-Type",
+          value: "application/json"
+        }
+      ],
+      requestBody: `{
+        "timeMin": "{{startDateTime}}",
+        "timeMax": "{{endDateTime}}",
+        "timeZone": "{{timeZone}}",
+        "items": [
+          { "id": "primary" }
+        ]
+      }`,
+      failureCondition: `preJson.calendars.primary.busy.length > 0`,
+      failureMessage: "The selected time slot is unavailable in Google Calendar. Please choose a different time."
+    }
+  ],
+
+  requestBody: `{
+    "summary": "{{meetingTitle}}",
+    "description": "{{meetingDescription}}\\n\\n---\\nContact Info:\\nName: {{contactName}}\\nPhone: {{contactPhone}}",
+    "start": {
+      "dateTime": "{{startDateTime}}",
+      "timeZone": "{{timeZone}}"
     },
-    end: {
-      dateTime: "{{endDateTime}}",
-      timeZone: "{{timeZone}}"
+    "end": {
+      "dateTime": "{{endDateTime}}",
+      "timeZone": "{{timeZone}}"
     },
-    attendees: "{{attendeesList}}", // Handle multiple attendees
-    sendUpdates: "all", // Send invitations to attendees
-    conferenceData: { // Optional: Add Google Meet
-      createRequest: {
-        requestId: "{{requestId}}",
-        conferenceSolutionKey: {
-          type: "hangoutsMeet"
+    "attendees": [
+      {{#each attendeesList}}
+        { "email": "{{this}}" }{{#unless @last}},{{/unless}}
+      {{/each}}
+    ],
+    "sendUpdates": "all"{{#if addGoogleMeet}},
+    "conferenceData": {
+      "createRequest": {
+        "requestId": "{{requestId}}",
+        "conferenceSolutionKey": {
+          "type": "hangoutsMeet"
         }
       }
     }
-  }),
-  
+    {{/if}}
+  }`,
+
   autoGenerateParams: false,
   autoGenerateBody: false,
-  
-  // Enhanced fields with better validation
+
   fields: [
     {
       name: "Meeting Title",
@@ -42,10 +73,7 @@ export const createGoogleCalendarIntention = {
       description: "The title/subject of the meeting",
       type: "TEXT",
       required: true,
-      validation: {
-        minLength: 1,
-        maxLength: 1024
-      }
+      validation: { minLength: 1, maxLength: 1024 }
     },
     {
       name: "Meeting Description",
@@ -53,14 +81,12 @@ export const createGoogleCalendarIntention = {
       description: "Detailed description of the meeting",
       type: "TEXT",
       required: false,
-      validation: {
-        maxLength: 8192
-      }
+      validation: { maxLength: 8192 }
     },
     {
       name: "Start Date Time",
       jsonName: "startDateTime",
-      description: "Meeting start time in ISO 8601 format (e.g., 2024-01-15T10:00:00)",
+      description: "ISO 8601 meeting start time (e.g., 2025-06-10T14:00:00)",
       type: "DATETIME",
       required: true,
       validation: {
@@ -71,7 +97,7 @@ export const createGoogleCalendarIntention = {
     {
       name: "End Date Time",
       jsonName: "endDateTime",
-      description: "Meeting end time in ISO 8601 format (e.g., 2024-01-15T11:00:00)",
+      description: "ISO 8601 meeting end time",
       type: "DATETIME",
       required: true,
       validation: {
@@ -82,57 +108,76 @@ export const createGoogleCalendarIntention = {
     {
       name: "Time Zone",
       jsonName: "timeZone",
-      description: "Time zone for the meeting (e.g., America/New_York, Europe/London)",
+      description: "Time zone (e.g., America/Bahia)",
       type: "TEXT",
       required: true,
+      defaultValue: "UTC",
       validation: {
         pattern: "^[A-Za-z_]+/[A-Za-z_]+$"
-      },
-      defaultValue: "UTC"
+      }
     },
     {
       name: "Attendee Emails",
-      jsonName: "attendeesList", 
-      description: "Comma-separated list of attendee email addresses",
-      type: "TEXT", // Will be processed into array
+      jsonName: "attendeesList",
+      description: "Comma-separated list of emails",
+      type: "TEXT",
       required: false,
-      validation: {
-        emailList: true
-      }
+      validation: { emailList: true }
     },
     {
       name: "Add Google Meet",
       jsonName: "addGoogleMeet",
-      description: "Whether to add a Google Meet video conference",
+      description: "Add Google Meet link?",
       type: "BOOLEAN",
       required: false,
       defaultValue: false
+    },
+    {
+      name: "Request ID",
+      jsonName: "requestId",
+      description: "Unique ID for Google Meet creation (UUID recommended)",
+      type: "TEXT",
+      required: false
+    },
+    {
+      name: "Contact Name",
+      jsonName: "contactName",
+      description: "The name of the user requesting the meeting",
+      type: "TEXT",
+      required: false
+    },
+    {
+      name: "Contact Phone",
+      jsonName: "contactPhone",
+      description: "The phone number of the user requesting the meeting",
+      type: "TEXT",
+      required: false
     }
   ],
-  
-  // Headers with dynamic token - this needs special handling
+
   headers: [
     {
       name: "Authorization",
-      value: "Bearer {{DYNAMIC_GOOGLE_ACCESS_TOKEN}}" // Special token that gets resolved at runtime
+      value: "Bearer {{DYNAMIC_GOOGLE_ACCESS_TOKEN}}"
     },
     {
       name: "Content-Type",
       value: "application/json"
     }
   ],
-  
-  // Add authentication requirement
+
   authentication: {
     type: "GOOGLE_OAUTH",
     scopes: [
-      "https://www.googleapis.com/auth/calendar",
-      "https://www.googleapis.com/auth/calendar.events"
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/calendar.events.freebusy',
+      'https://www.googleapis.com/auth/calendar.freebusy'
     ],
     required: true
   },
-  
-  // Enhanced error handling
+
   errorHandling: {
     retryPolicy: {
       maxRetries: 3,
@@ -151,13 +196,12 @@ export const createGoogleCalendarIntention = {
       },
       {
         condition: "response.status === 409",
-        action: "FAIL", 
-        message: "Time conflict with existing calendar event"
+        action: "FAIL",
+        message: "Time conflict with an existing calendar event"
       }
     ]
   },
-  
-  // Response processing
+
   responseProcessing: {
     successCondition: "response.status >= 200 && response.status < 300",
     extractData: {

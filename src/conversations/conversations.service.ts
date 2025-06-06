@@ -1,4 +1,7 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+
+import * as Handlebars from 'handlebars';
+
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentsService } from '../agents/agents.service';
 import { DeepseekService } from '../deepseek/deepseek.service';
@@ -7,6 +10,38 @@ import { TrainingsService } from '../trainings/trainings.service';
 import { ConversationDto } from './dto/conversation.dto';
 import { AIModel } from '@prisma/client';
 import { getCommunicationGuide } from '../common/utils/communication-guides';
+import { GoogleCalendarOAuthService } from 'src/intentions/google-calendar/google-calendar-oauth.service';
+import { ChatCompletionTool } from 'openai/resources';
+import { IntentionDto } from 'src/intentions/dto/intention.dto';
+
+const timezoneMap: Record<string, string> = {
+  '(GMT-12:00) Baker Island': 'Etc/GMT+12',
+  '(GMT-11:00) Pago Pago': 'Pacific/Pago_Pago',
+  '(GMT-10:00) Honolulu': 'Pacific/Honolulu',
+  '(GMT-09:00) Anchorage': 'America/Anchorage',
+  '(GMT-08:00) Los Angeles': 'America/Los_Angeles',
+  '(GMT-07:00) Denver': 'America/Denver',
+  '(GMT-06:00) Chicago': 'America/Chicago',
+  '(GMT-05:00) New York': 'America/New_York',
+  '(GMT-04:00) Santiago': 'America/Santiago',
+  '(GMT-03:00) São Paulo': 'America/Sao_Paulo',
+  '(GMT-02:00) South Georgia': 'Atlantic/South_Georgia',
+  '(GMT-01:00) Azores': 'Atlantic/Azores',
+  '(GMT+00:00) London': 'Europe/London',
+  '(GMT+01:00) Paris': 'Europe/Paris',
+  '(GMT+02:00) Athens': 'Europe/Athens',
+  '(GMT+03:00) Moscow': 'Europe/Moscow',
+  '(GMT+04:00) Dubai': 'Asia/Dubai',
+  '(GMT+05:00) Karachi': 'Asia/Karachi',
+  '(GMT+06:00) Almaty': 'Asia/Almaty',
+  '(GMT+07:00) Bangkok': 'Asia/Bangkok',
+  '(GMT+08:00) Beijing': 'Asia/Shanghai',
+  '(GMT+09:00) Tokyo': 'Asia/Tokyo',
+  '(GMT+10:00) Sydney': 'Australia/Sydney',
+  '(GMT+11:00) Noumea': 'Pacific/Noumea',
+  '(GMT+12:00) Auckland': 'Pacific/Auckland',
+};
+
 
 @Injectable()
 export class ConversationsService {
@@ -17,7 +52,8 @@ export class ConversationsService {
     private readonly agentsService: AgentsService,
     private readonly deepseekAiService: DeepseekService,
     private readonly openAiService: OpenAiService,
-    private readonly trainingsService: TrainingsService
+    private readonly trainingsService: TrainingsService,
+    private readonly googleCalendarOAuthService: GoogleCalendarOAuthService
   ) {}
 
   async converse(agentId: string, conversationDto: ConversationDto) {
@@ -159,45 +195,26 @@ export class ConversationsService {
     chat: any,
     conversationDto: ConversationDto
   ) {
-    // Extract the agent data from the enhanced DTO
     const agent = d.agent;
     try {
-      // Import the communication guide and goal guide utilities
-      const { getCommunicationGuide } = await import(
-        '../common/utils/communication-guides'
-      );
       const { getGoalGuide } = await import('../common/utils/goal-guides');
 
-      // Retrieve agent settings and training data
-      // Get communication guide based on agent's communicationType
       const communicationGuide = getCommunicationGuide(agent.communicationType);
-
-      // Get goal guide based on agent's type (SUPPORT, SALE, PERSONAL)
-      // Default to SUPPORT if not specified
       const agentType = agent.type || 'SUPPORT';
       const goalGuide = getGoalGuide(agentType);
 
-      // Log the communication type, agent type, and guides for debugging
-      this.logger.debug(
-        `Agent ${agent.name} uses communication type: ${agent.communicationType}`
-      );
-      this.logger.debug(`Agent ${agent.name} is of type: ${agentType}`);
-      this.logger.debug(
-        `Using communication guide: ${communicationGuide.substring(0, 50)}...`
-      );
-      this.logger.debug(`Using goal guide: ${goalGuide.substring(0, 50)}...`);
+      this.logger.debug(`Agent ${agent.name} [ID: ${agent.id}]`);
+      this.logger.debug(`Communication type: ${agent.communicationType}`);
+      this.logger.debug(`Agent type: ${agentType}`);
+      this.logger.debug(`Intentions count: ${agent.intentions?.length || 0}`);
 
-      // Fetch conversation history for context (last 10 messages)
       const conversationHistory = await this.prisma.message.findMany({
         where: { chatId: chat.id },
         orderBy: { createdAt: 'desc' },
         take: 10,
       });
 
-      // Reverse to get chronological order
       const orderedHistory = [...conversationHistory].reverse();
-
-      // Create a conversation context string for the AI
       let conversationContext = '';
       if (orderedHistory.length > 0) {
         conversationContext = 'Previous messages in this conversation:\n';
@@ -206,59 +223,81 @@ export class ConversationsService {
         });
       }
 
-      // Get trainings and intentions data if available
       const trainings = agent.trainings || [];
       const intentions = agent.intentions || [];
 
-      // Add additional agent information to be passed to the model
       const enhancedAgent = {
         ...agent,
         settings: d.settings,
         trainings,
         intentions,
-        // Ensure job-related attributes are included
         jobName: agent.jobName || '',
         jobSite: agent.jobSite || '',
         jobDescription: agent.jobDescription || '',
       };
 
-      // STEP 1: Check if user message matches any intentions
-      const matchedIntention = await this.detectIntention(conversationDto.prompt, intentions);
-      
-      if (matchedIntention) {
-        this.logger.debug(`Matched intention: ${matchedIntention.description}`);
-        
-        // STEP 2: Extract required fields from user message or ask for missing ones
-        const extractionResult = await this.extractIntentionFields(
-          conversationDto.prompt, 
-          conversationContext,
-          matchedIntention,
-          enhancedAgent
-        );
+      this.logger.debug(`Analyzing message for matching intentions: "${conversationDto.prompt}"`);
+      const detectionResult = await this.detectIntention(
+        conversationDto.prompt,
+        intentions,
+        enhancedAgent.model,
+        orderedHistory.map((msg => ({
+          role: msg.role,
+          text: msg.text,
+          createdAt: msg.createdAt.toISOString()
+        }))),
+        agent.settings
+      );
 
-        if (!extractionResult.allFieldsCollected) {
-          // Return a response asking for missing information
+      if (detectionResult) {
+        const { matchedIntention, extractedFields, toolCallMessage } = detectionResult;
+
+        if (!matchedIntention && toolCallMessage) {
+          this.logger.debug('[generateAgentResponse] OpenAI returned assistant message instead of tool call. Returning it directly.');
+
           return {
-            message: extractionResult.clarificationMessage,
+            message: toolCallMessage,
+            images: [],
+            audio: [],
+            communicationGuide,
+            goalGuide
+          }
+        }
+
+        const collectedFields = extractedFields || {};
+        const missingFields = matchedIntention.fields
+          .filter(f => f.required && !collectedFields[f.jsonName])
+          .map(f => f.name);
+
+        if (missingFields.length > 0) {
+          const clarificationMessage = await this.openAiService.generateClarificationMessage(
+            matchedIntention,
+            missingFields,
+            collectedFields,
+            enhancedAgent,
+            communicationGuide,
+          );
+
+          return {
+            message: clarificationMessage,
             images: [],
             audios: [],
             communicationGuide,
             goalGuide,
             pendingIntention: {
               intentionId: matchedIntention.id,
-              collectedFields: extractionResult.collectedFields,
-              missingFields: extractionResult.missingFields
+              collectedFields,
+              missingFields
             }
           };
         }
 
-        // STEP 3: Execute the intention if all fields are collected
         try {
-          const intentionResult = await this.executeIntention(matchedIntention, extractionResult.collectedFields);
-          
-          // STEP 4: Generate a natural response based on the intention result
-          const communicationGuide = getCommunicationGuide(agent.communicationType);
- 
+          this.logger.debug(`Executing intention: ${matchedIntention.description} with timezone ${enhancedAgent.settings}`);
+          const intentionResult = await this.executeIntention(
+            matchedIntention, collectedFields, agent.id, enhancedAgent.settings.timezone
+          );
+
           const responseText = await this.openAiService.generateIntentionSuccessResponse(
             matchedIntention,
             intentionResult,
@@ -281,16 +320,13 @@ export class ConversationsService {
 
         } catch (error) {
           this.logger.error(`Error executing intention: ${error.message}`);
-
-          // Generate error response
-          const communicationGuide = getCommunicationGuide(agent.communicationType);
           const errorResponse = await this.openAiService.generateIntentionErrorResponse(
             matchedIntention,
             error,
             enhancedAgent,
             communicationGuide
           );
-          
+
           return {
             message: errorResponse,
             images: [],
@@ -304,6 +340,8 @@ export class ConversationsService {
           };
         }
       }
+
+      this.logger.debug(`No matching intention found. Proceeding with fallback AI response.`);
 
       // STEP 5: If no intention matched, proceed with normal AI response generation
       let responseText = '';
@@ -436,226 +474,327 @@ export class ConversationsService {
     }
   }
 
-  private async detectIntention(userMessage: string, intentions: any[]): Promise<any | null> {
-    if (!intentions || intentions.length === 0) {
-      return null;
-    }
-
-    // Simple keyword-based intention detection
-    // You can make this more sophisticated using ML models or semantic similarity
-    const lowerMessage = userMessage.toLowerCase();
-    
-    for (const intention of intentions) {
-      const keywords = this.extractKeywordsFromIntention(intention);
-      const score = this.calculateIntentionScore(lowerMessage, keywords);
-      
-      if (score > 0.3) { // Threshold for intention matching
-        return intention;
-      }
-    }
-    
-    return null;
-  }
-
-  private extractKeywordsFromIntention(intention: any): string[] {
-    const keywords = [];
-    
-    // Extract keywords from description
-    const descWords = intention.description.toLowerCase().split(/\s+/);
-    keywords.push(...descWords);
-    
-    // Extract keywords from field names and descriptions
-    if (intention.fields) {
-      intention.fields.forEach(field => {
-        keywords.push(...field.name.toLowerCase().split(/\s+/));
-        keywords.push(...field.description.toLowerCase().split(/\s+/));
-      });
-    }
-    
-    // Add common action words based on intention type
-    if (intention.description.includes('schedule') || intention.description.includes('meeting')) {
-      keywords.push('schedule', 'meeting', 'appointment', 'book', 'calendar');
-    }
-    
-    return keywords.filter(word => word.length > 2); // Filter out short words
-  }
-
-  private calculateIntentionScore(message: string, keywords: string[]): number {
-    const messageWords = message.split(/\s+/);
-    let matches = 0;
-    
-    keywords.forEach(keyword => {
-      if (message.includes(keyword)) {
-        matches++;
-      }
-    });
-    
-    return matches / Math.max(keywords.length, messageWords.length);
-  }
-
-  private async extractIntentionFields(
-    userMessage: string, 
-    conversationContext: string,
-    intention: any,
-    agent: any
+  async detectIntention(
+    userPrompt: string,
+    intentions: IntentionDto[],
+    model: AIModel,
+    conversationHistory?: { role: string, text: string, createdAt: string }[],
+    agentSettings?: { timezone?: string }
   ): Promise<{
-    allFieldsCollected: boolean;
-    collectedFields: Record<string, any>;
-    missingFields: string[];
-    clarificationMessage?: string;
+    matchedIntention?: IntentionDto;
+    extractedFields?: Record<string, any>;
+    toolCallMessage?: string;
   }> {
-    const collectedFields: Record<string, any> = {};
-    const missingFields: string[] = [];
-    
-    // Use AI to extract field values from the user message
-    try {
-      const extractionPrompt = this.buildExtractionPrompt(userMessage, conversationContext, intention);
-      
-      // Always use OpenAI for field extraction (more reliable for structured data)
-      const extractionResult = await this.openAiService.extractFields(extractionPrompt);
-      
-      // Parse the extraction result (assuming JSON format)
-      const parsedFields = JSON.parse(extractionResult);
-      
-      // Check which fields were successfully extracted
-      intention.fields.forEach(field => {
-        if (parsedFields[field.jsonName] && parsedFields[field.jsonName] !== null && parsedFields[field.jsonName] !== '') {
-          collectedFields[field.jsonName] = parsedFields[field.jsonName];
-        } else if (field.required) {
-          missingFields.push(field.name);
-        }
-      });
-      
-    } catch (error) {
-      this.logger.error(`Error extracting fields: ${error.message}`);
-      // If extraction fails, mark all required fields as missing
-      intention.fields.forEach(field => {
-        if (field.required) {
-          missingFields.push(field.name);
-        }
-      });
-    }
-    
-    if (missingFields.length > 0) {
-      const communicationGuide = getCommunicationGuide(agent.communicationType);
-      const clarificationMessage = await this.openAiService.generateClarificationMessage(
-        intention, 
-        missingFields, 
-        collectedFields,
-        agent,
-        communicationGuide
-      );
-      
+    const tools = this.mapIntentionsToTools(intentions);
+
+    const latestTimestamp = conversationHistory?.length
+    ? conversationHistory[conversationHistory.length - 1]?.createdAt
+    : new Date().toISOString();
+
+    const formattedHistory = conversationHistory?.map(msg =>
+      `${msg.role === 'user' ? 'user' : 'assistant'}: ${msg.text}`).join('\n') || '';
+
+    const timezoneNote = agentSettings?.timezone
+      ? `\nAssume the user's preferred timezone is: ${agentSettings.timezone}. Interpret all ambiguous time expressions accordingly.`
+      : '';
+
+    const prompt = `
+  The following conversation occurred with the latest user message sent at ${latestTimestamp}.
+  Please interpret all date/time expressions (e.g., "today", "8 am", "next week") in this context.
+  ${timezoneNote}
+
+  Additionally:
+  - If possible, infer any relevant fields such as contactName, contactPhone, or scheduling details from the conversation context.
+  - If a field is not clearly stated, try to use common sense or recent messages to deduce values.
+  - Do not ask for technical values like requestId unless essential.
+
+  Conversation history:
+  ${formattedHistory}
+
+  Now the user says:
+  ${userPrompt}
+    `.trim();
+
+    const { toolCall, extractedFields, fallbackMessage } = await this.openAiService.callWithToolDetection(
+      prompt,
+      tools,
+      model
+    );
+
+    if (!toolCall && fallbackMessage) {
       return {
-        allFieldsCollected: false,
-        collectedFields,
-        missingFields,
-        clarificationMessage
-      };
+        matchedIntention: null,
+        extractedFields: null,
+        toolCallMessage: fallbackMessage
+      }
     }
-    
+
+    if (!toolCall) return null;
+
+    const matchedTool = intentions.find(i => i.toolName === toolCall.function.name);
     return {
-      allFieldsCollected: true,
-      collectedFields,
-      missingFields: []
+      matchedIntention: matchedTool,
+      extractedFields,
     };
   }
 
-  private buildExtractionPrompt(userMessage: string, context: string, intention: any): string {
-    let prompt = `Extract the following information from the user's message:\n\n`;
-    prompt += `User message: "${userMessage}"\n`;
-    prompt += `Context: ${context}\n\n`;
-    prompt += `Fields to extract:\n`;
-    
-    intention.fields.forEach(field => {
-      prompt += `- ${field.name} (${field.jsonName}): ${field.description} - Type: ${field.type}, Required: ${field.required}\n`;
+  private mapIntentionsToTools(intentions: IntentionDto[]): ChatCompletionTool[] {
+    return intentions.filter((intention) => {
+      const hasToolName = typeof intention.toolName === 'string' && intention.toolName.trim().length > 0;
+      const hasFields = Array.isArray(intention.fields);
+
+      if (!hasToolName || !hasFields) {
+        this.logger.warn(`[mapIntentionsToTools] Skipping invalid intention:`, {
+          id: intention.id,
+          toolName: intention.toolName,
+          fieldsType: typeof intention.fields,
+        });
+      }
+
+      return hasToolName && hasFields;
+    })
+    .map((intention) => {
+      const parameters: any = {
+        type: 'object',
+        properties: {},
+        required: [],
+      };
+
+      for (const field of intention.fields) {
+        if (!field.jsonName || typeof field.jsonName !== 'string') {
+          this.logger.warn(`[mapIntentionsToTools] Skipping field with invalid jsonName: ${JSON.stringify(field)}`);
+          continue;
+        }
+
+        const jsonType = this.convertFieldTypeToJsonSchema(field.type);
+        parameters.properties[field.jsonName] = {
+          type: jsonType,
+          description: field.description || '',
+        };
+
+        if (field.required) {
+          parameters.required.push(field.jsonName);
+        }
+      }
+
+      const toolSchema: ChatCompletionTool = {
+        type: 'function',
+        function: {
+          name: intention.toolName.trim(),
+          description: intention.description || 'No description provided.',
+          parameters,
+        },
+      };
+
+      this.logger.debug(`[mapIntentionsToTools] Built tool schema for "${toolSchema.function.name}": ${JSON.stringify(toolSchema, null, 2)}`);
+
+      return toolSchema;
     });
-    
-    prompt += `\nReturn the extracted information as a JSON object with the field jsonNames as keys. Use null for fields that cannot be determined from the message.\n`;
-    prompt += `Example: {"meetingTitle": "Team Standup", "startDateTime": "2024-01-15T10:00:00", "attendeeEmail": null}\n\n`;
-    prompt += `JSON Response:`;
-    
-    return prompt;
   }
 
-  private async generateClarificationMessage(
-    intention: any, 
-    missingFields: string[], 
-    collectedFields: Record<string, any>,
-    agent: any
-  ): Promise<string> {
-    // This method is kept for backward compatibility but now uses AI service
-    const { getCommunicationGuide } = await import('../common/utils/communication-guides');
-    const communicationGuide = getCommunicationGuide(agent.communicationType);
-    
-    return await this.openAiService.generateClarificationMessage(
-      intention,
-      missingFields,
-      collectedFields,
-      agent,
-      communicationGuide
-    );
+  private convertFieldTypeToJsonSchema(type: string): string {
+    const normalized = type.trim().toUpperCase();
+
+    const typeMap: Record<string, string> = {
+      TEXT: 'string',
+      URL: 'string',
+      DATE: 'string',
+      DATETIME: 'string',
+      DATE_TIME: 'string',
+      NUMBER: 'number',
+      BOOLEAN: 'boolean',
+    };
+
+    return typeMap[normalized] || 'string';
   }
 
-  private async executeIntention(intention: any, fields: Record<string, any>): Promise<any> {
+  private renderTemplate(template: string, context: Record<string, any>): string {
+    const compiled = Handlebars.compile(template, { noEscape: true });
+    return compiled(context);
+  }
+
+  private normalizeFields(fields: Record<string, any>): Record<string, any> {
+    const normalized = { ...fields };
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+
+        if (trimmed === 'true') normalized[key] = true;
+        else if (trimmed === 'false') normalized[key] = false;
+        else if (trimmed.includes(',') && !trimmed.startsWith('[') && !trimmed.startsWith('{')) {
+          normalized[key] = trimmed.split(',').map(item => item.trim());
+        }
+      }
+    }
+
+    return normalized;
+  }
+
+  private async executeIntention(
+    intention: IntentionDto,
+    inputFields: Record<string, any>,
+    agentId: string,
+    agentTimezone?: string // Pass from agent.settings.timezone if available
+  ): Promise<any> {
     try {
-      // Build the request
-      const url = intention.url;
-      const method = intention.httpMethod.toUpperCase();
-      
-      // Replace template variables in URL
-      let finalUrl = url;
-      Object.keys(fields).forEach(fieldKey => {
-        finalUrl = finalUrl.replace(`{{${fieldKey}}}`, encodeURIComponent(fields[fieldKey]));
-      });
-      
-      // Build headers
-      const headers: Record<string, string> = {};
-      intention.headers.forEach(header => {
-        let value = header.value;
-        // Replace template variables in headers
-        Object.keys(fields).forEach(fieldKey => {
-          value = value.replace(`{{${fieldKey}}}`, fields[fieldKey]);
+      this.logger.debug(`[executeIntention] Starting execution for intention: ${intention.description}`);
+
+      // Step 1: Normalize fields and access token
+      const fields = this.normalizeFields(inputFields);
+      const accessToken = await this.googleCalendarOAuthService.getValidAccessToken(agentId);
+      this.logger.debug(`[executeIntention] Access token retrieved`);
+
+      // Step 1.5: Normalize date-times with timezone
+      let timezone = 'UTC';
+      if (agentTimezone && timezoneMap[agentTimezone]) {
+        timezone = timezoneMap[agentTimezone];
+      }
+
+      const toISOStringWithTZ = (dt: string): string => {
+        const date = new Date(dt);
+        const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+        return tzDate.toISOString().replace(/\.\d{3}Z$/, 'Z'); // Keep only the Z suffix
+      };
+
+      if (fields.startDateTime) {
+        fields.startDateTime = toISOStringWithTZ(fields.startDateTime);
+      }
+      if (fields.endDateTime) {
+        fields.endDateTime = toISOStringWithTZ(fields.endDateTime);
+      }
+      fields.timeZone = timezone;
+
+      // Step 2: Evaluate preconditions
+      if (Array.isArray(intention.preconditions)) {
+        for (const pre of intention.preconditions) {
+          const preUrl = this.resolveTemplate(pre.url, fields);
+          const preHeaders: Record<string, string> = {};
+          pre.headers?.forEach(h => {
+            let value = h.value.replace('{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}', accessToken);
+            Object.keys(fields).forEach(k => value = value.replace(`{{${k}}}`, fields[k]));
+            preHeaders[h.name] = value;
+          });
+
+          let preBody: string | undefined;
+          if (pre.requestBody) {
+            const rendered = this.renderTemplate(pre.requestBody, fields);
+            try {
+              preBody = JSON.stringify(JSON.parse(rendered));
+            } catch (err) {
+              this.logger.warn(`[executeIntention] Invalid precondition body`, {
+                rawTemplate: pre.requestBody,
+                rendered,
+                fields,
+                error: err.message
+              });
+              throw new Error('Invalid precondition request body format');
+            }
+          }
+
+          this.logger.debug(`[executeIntention] Executing precondition: ${pre.name}`, {
+            url: preUrl,
+            headers: preHeaders,
+            body: preBody || 'None'
+          });
+
+          const preResponse = await fetch(preUrl, {
+            method: pre.httpMethod.toUpperCase(),
+            headers: preHeaders,
+            body: preBody || undefined
+          });
+
+          const preResponseText = await preResponse.text();
+          const preJson = JSON.parse(preResponseText);
+
+          this.logger.debug(`[executeIntention] Precondition response`, {
+            name: pre.name,
+            status: preResponse.status,
+            body: preJson
+          });
+
+          if (!preResponse.ok) {
+            throw new Error(`Precondition "${pre.name}" failed with HTTP ${preResponse.status}: ${preJson?.error?.message || 'Unknown error'}`);
+          }
+
+          if (pre.failureCondition && eval(pre.failureCondition)) {
+            throw new Error(pre.failureMessage || `Precondition "${pre.name}" failed.`);
+          }
+        }
+      }
+
+      // Step 3: Resolve main headers
+      const resolvedHeaders = intention.headers.map(header => {
+        let value = header.value.replace('{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}', accessToken);
+        Object.keys(fields).forEach(key => {
+          value = value.replace(`{{${key}}}`, fields[key]);
         });
-        headers[header.name] = value;
+        return { name: header.name, value };
       });
-      
-      // Build request body if present
-      let body = null;
+
+      // Step 4: Build final URL
+      let finalUrl = intention.url;
+      Object.keys(fields).forEach(key => {
+        finalUrl = finalUrl.replace(`{{${key}}}`, encodeURIComponent(fields[key]));
+      });
+
+      let resolvedBody: string | undefined = undefined;
       if (intention.requestBody) {
-        let bodyString = intention.requestBody;
-        Object.keys(fields).forEach(fieldKey => {
-          bodyString = bodyString.replace(`{{${fieldKey}}}`, fields[fieldKey]);
-        });
-        body = bodyString;
+        const rawRendered = this.renderTemplate(intention.requestBody, fields);
+        try {
+          resolvedBody = JSON.stringify(JSON.parse(rawRendered));
+        } catch (err) {
+          this.logger.warn(`[executeIntention] Request body is not valid JSON after templating`, {
+            rawTemplate: intention.requestBody,
+            resolvedBody: rawRendered,
+            fields,
+            error: err.message
+          });
+          throw new Error('Invalid request body format');
+        }
       }
-      
-      // Make the HTTP request
-      const response = await fetch(finalUrl, {
-        method,
+
+      const headers: Record<string, string> = {};
+      resolvedHeaders.forEach(h => headers[h.name] = h.value);
+
+      this.logger.debug(`[executeIntention] Making HTTP request`, {
+        method: intention.httpMethod.toUpperCase(),
+        url: finalUrl,
         headers,
-        body: body ? body : undefined
+        body: resolvedBody || 'None'
       });
-      
+
+      const response = await fetch(finalUrl, {
+        method: intention.httpMethod.toUpperCase(),
+        headers,
+        body: resolvedBody || undefined
+      });
+
+      const responseBody = await response.text();
+      this.logger.debug(`[executeIntention] HTTP response`, {
+        status: response.status,
+        body: responseBody
+      });
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${responseBody}`);
       }
-      
-      const result = await response.json();
-      
+
       return {
         success: true,
-        data: result,
+        data: JSON.parse(responseBody),
         statusCode: response.status
       };
-      
     } catch (error) {
-      this.logger.error(`Intention execution failed: ${error.message}`);
-      return {
-        success: false,
-        error: error.message,
-        statusCode: error.status || 500
-      };
+      this.logger.error(`[executeIntention] Intention execution failed: ${error.message}`, error.stack || '');
+      throw error;
     }
+  }
+
+  private resolveTemplate(template: string, fields: Record<string, any>): string {
+    return template.replace(/{{(.*?)}}/g, (_, key) => {
+      const value = fields[key.trim()];
+      return value !== undefined && value !== null ? String(value) : '';
+    });
   }
 }

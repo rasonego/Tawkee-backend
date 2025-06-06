@@ -114,18 +114,18 @@ export class WebhooksController {
     }
 
     // Full payload logging (not just in development, since we need to diagnose)
-    try {
-      this.logger.debug(
-        `[REQ:${requestId}] Complete webhook payload: ${JSON.stringify(webhookData, null, 2)}`
-      );
-      this.logger.debug(
-        `[REQ:${requestId}] Headers: ${JSON.stringify(headers, null, 2)}`
-      );
-    } catch (e) {
-      this.logger.debug(
-        `[REQ:${requestId}] Cannot stringify payload: ${e.message}`
-      );
-    }
+    // try {
+    //   this.logger.debug(
+    //     `[REQ:${requestId}] Complete webhook payload: ${JSON.stringify(webhookData, null, 2)}`
+    //   );
+    //   this.logger.debug(
+    //     `[REQ:${requestId}] Headers: ${JSON.stringify(headers, null, 2)}`
+    //   );
+    // } catch (e) {
+    //   this.logger.debug(
+    //     `[REQ:${requestId}] Cannot stringify payload: ${e.message}`
+    //   );
+    // }
 
     // Get webhook token directly from process.env
     const expectedToken = process.env.WEBHOOK_TOKEN;
@@ -230,9 +230,9 @@ export class WebhooksController {
     const requestId = Math.random().toString(36).substring(2, 10); // Generate a unique ID for this request
 
     // Log basic webhook info with request ID for tracking
-    this.logger.log(
-      `[REQ:${requestId}] Received webhook from instance=${instanceName}, event=${eventType}`
-    );
+    // this.logger.log(
+    //   `[REQ:${requestId}] Received webhook from instance=${instanceName}, event=${eventType}`
+    // );
 
     // Log detailed info about the message if it's a message event
     if (eventType === 'message') {
@@ -272,18 +272,18 @@ export class WebhooksController {
     }
 
     // Full payload logging (not just in development, since we need to diagnose)
-    try {
-      this.logger.debug(
-        `[REQ:${requestId}] Complete webhook payload: ${JSON.stringify(webhookData, null, 2)}`
-      );
-      this.logger.debug(
-        `[REQ:${requestId}] Headers: ${JSON.stringify(headers, null, 2)}`
-      );
-    } catch (e) {
-      this.logger.debug(
-        `[REQ:${requestId}] Cannot stringify payload: ${e.message}`
-      );
-    }
+    // try {
+    //   this.logger.debug(
+    //     `[REQ:${requestId}] Complete webhook payload: ${JSON.stringify(webhookData, null, 2)}`
+    //   );
+    //   this.logger.debug(
+    //     `[REQ:${requestId}] Headers: ${JSON.stringify(headers, null, 2)}`
+    //   );
+    // } catch (e) {
+    //   this.logger.debug(
+    //     `[REQ:${requestId}] Cannot stringify payload: ${e.message}`
+    //   );
+    // }
 
     // Get webhook token directly from process.env
     const expectedToken = process.env.WEBHOOK_TOKEN;

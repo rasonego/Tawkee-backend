@@ -16,6 +16,7 @@ import {
   IntentionHeaderDto,
   IntentionParamDto,
 } from './intention.dto';
+import { IntentionPreconditionDto } from './intention-precondition.dto';
 
 export class UpdateIntentionDto {
   @ApiProperty({
@@ -25,6 +26,14 @@ export class UpdateIntentionDto {
   @IsUUID()
   @IsNotEmpty()
   id: string;
+
+  @ApiProperty({
+    description: 'Tool name (unique identifier for OpenAI function calling)',
+    example: 'schedule_meeting_google_calendar',
+  })
+  @IsString()
+  @IsNotEmpty()
+  toolName: string;
 
   @ApiProperty({
     description: 'Intention description',
@@ -128,4 +137,15 @@ export class UpdateIntentionDto {
   @ValidateNested({ each: true })
   @Type(() => IntentionParamDto)
   params: IntentionParamDto[];
+
+  @ApiProperty({
+    description: 'Preconditions to check before executing the intention',
+    type: [IntentionPreconditionDto],
+    required: false,
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => IntentionPreconditionDto)
+  @IsOptional()
+  preconditions?: IntentionPreconditionDto[];
 }

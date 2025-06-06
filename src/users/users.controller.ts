@@ -32,6 +32,7 @@ import { FacebookAuthExceptionFilter } from '../auth/facebook-auth.exception-fil
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyResetTokenDto } from './dto/verify-reset-token.dto';
+import { GoogleCalendarOAuthService } from 'src/intentions/google-calendar/google-calendar-oauth.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -39,6 +40,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly authService: AuthService,
+    private readonly googleCalendarOAuthService: GoogleCalendarOAuthService,
     private readonly configService: ConfigService,
     private readonly verificationService: VerificationService,
     private readonly passwordResetService: PasswordResetService
@@ -139,10 +141,11 @@ export class UsersController {
     console.log(`Extracted code ${code} and state ${state}`);
 
     if (code && state) {
-      const tokenExchangeResult = await this.usersService.exchangeCodeForTokens(code, state);
-
-      if (!tokenExchangeResult.success) {
-        console.error('Token exchange failed:', tokenExchangeResult.error);
+      try {
+        const tokenExchangeResult = await this.googleCalendarOAuthService.exchangeCodeForTokens(code, state);
+  
+      } catch(error) {
+        console.error('Token exchange failed:', error);
       }
     }
 

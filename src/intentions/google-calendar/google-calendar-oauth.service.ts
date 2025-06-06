@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { UsersService } from '../../users/users.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import * as crypto from 'crypto';
+import { google, Auth } from 'googleapis';
 
 export interface GoogleTokens {
   access_token: string;
@@ -12,24 +12,6 @@ export interface GoogleTokens {
   token_type: string;
 }
 
-export interface GoogleAuthUrlResponse {
-  authUrl: string;
-  state: string;
-}
-
-export interface GoogleAuthStatus {
-  isAuthenticated: boolean;
-  needsRefresh?: boolean;
-  expiresAt?: number;
-  scopes?: string[];
-}
-
-export interface TokenExchangeResponse {
-  success: boolean;
-  tokens?: GoogleTokens;
-  error?: string;
-}
-
 @Injectable()
 export class GoogleCalendarOAuthService {
   private readonly clientId: string;
@@ -37,23 +19,30 @@ export class GoogleCalendarOAuthService {
   private readonly redirectUri: string;
   private readonly stateSecret: string;
   private readonly scopes: string[];
+  private readonly oauth2Client: Auth.OAuth2Client;
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    private readonly usersService: UsersService
+    private readonly prisma: PrismaService,
   ) {
     this.clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
     this.redirectUri = this.configService.get<string>('GOOGLE_CALLBACK_URL');
     this.stateSecret = this.configService.get<string>('GOOGLE_STATE_SECRET');
-    
+
+    this.oauth2Client = new google.auth.OAuth2(
+      this.clientId,
+      this.clientSecret,
+      this.redirectUri
+    );
+
     this.scopes = [
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/calendar.events',
-      'openid',
-      'email',
-      'profile'
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/calendar.events.freebusy',
+      'https://www.googleapis.com/auth/calendar.freebusy',     
+      'openid', 'email', 'profile',
     ];
 
     if (!this.clientId || !this.clientSecret || !this.redirectUri || !this.stateSecret) {
@@ -61,246 +50,186 @@ export class GoogleCalendarOAuthService {
     }
   }
 
-  async getAuthUrl(userId: string): Promise<GoogleAuthUrlResponse> {
-    // Ensure user exists
-    await this.usersService.findOne(userId);
+  async getAuthUrl(agentId: string): Promise<{ authUrl: string, state: string }> {
+    // Ensure the agent exists before performing the upsert
+    const agentExists = await this.prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { id: true },
+    });
 
-    const state = this.generateState(userId);
-    const params = new URLSearchParams({
-      client_id: this.clientId,
-      redirect_uri: this.redirectUri,
-      scope: this.scopes.join(' '),
-      response_type: 'code',
+    if (!agentExists) {
+      console.error(`Agent with ID ${agentId} does not exist. Aborting auth URL generation.`);
+      throw new Error(`Agent with ID ${agentId} not found`);
+    }
+
+    const state = this.generateState(agentId);
+    const authUrl = this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
+      scope: this.scopes,
       prompt: 'consent',
-      state: state,
-    });
-
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-
-    return {
-      authUrl,
       state,
-    };
-  }
-
-  async refreshAccessToken(userId: string): Promise<GoogleTokens> {
-    // Ensure user exists
-    await this.usersService.findOne(userId);
-
-    const storedTokens = await this.getUserTokens(userId);
-    
-    if (!storedTokens || !storedTokens.refresh_token) {
-      throw new UnauthorizedException('No refresh token available. User needs to re-authenticate.');
-    }
-
-    try {
-      const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: this.clientId,
-          client_secret: this.clientSecret,
-          refresh_token: storedTokens.refresh_token,
-          grant_type: 'refresh_token',
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        
-        // If refresh token is invalid, user needs to re-authenticate
-        if (response.status === 400 && errorData.error === 'invalid_grant') {
-          await this.revokeUserTokens(userId);
-          throw new UnauthorizedException('Refresh token expired. User needs to re-authenticate.');
-        }
-        
-        throw new BadRequestException(`Token refresh failed: ${errorData.error_description || response.status}`);
-      }
-
-      const tokenData = await response.json();
-      
-      const updatedTokens: GoogleTokens = {
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token || storedTokens.refresh_token, // Keep old refresh token if new one not provided
-        expires_at: Date.now() + (tokenData.expires_in * 1000),
-        scope: tokenData.scope || storedTokens.scope,
-        token_type: tokenData.token_type || storedTokens.token_type,
-      };
-
-      // Update stored tokens
-      await this.storeUserTokens(userId, updatedTokens);
-
-      return updatedTokens;
-    } catch (error) {
-      console.error('Error refreshing access token:', error);
-      throw error;
-    }
-  }
-
-  async getValidAccessToken(userId: string): Promise<string> {
-    // Ensure user exists
-    await this.usersService.findOne(userId);
-
-    const tokens = await this.getUserTokens(userId);
-    
-    if (!tokens) {
-      throw new UnauthorizedException('User not authenticated with Google Calendar');
-    }
-
-    // Check if token is expired (with 5-minute buffer)
-    const expiresAt = tokens.expires_at || 0;
-    const now = Date.now();
-    const buffer = 5 * 60 * 1000; // 5 minutes
-
-    if (now + buffer >= expiresAt) {
-      // Token is expired or will expire soon, refresh it
-      const refreshedTokens = await this.refreshAccessToken(userId);
-      return refreshedTokens.access_token;
-    }
-
-    return tokens.access_token;
-  }
-
-  async getAuthStatus(userId: string): Promise<GoogleAuthStatus> {
-    try {
-      // Ensure user exists
-      await this.usersService.findOne(userId);
-
-      const tokens = await this.getUserTokens(userId);
-      
-      if (!tokens || !tokens.access_token) {
-        return { isAuthenticated: false };
-      }
-
-      // Check if token is expired
-      const expiresAt = tokens.expires_at || 0;
-      const now = Date.now();
-      
-      if (now >= expiresAt) {
-        return {
-          isAuthenticated: true,
-          needsRefresh: true,
-          expiresAt: tokens.expires_at,
-          scopes: tokens.scope ? tokens.scope.split(' ') : [],
-        };
-      }
-
-      // Verify token is still valid by making a test API call
-      try {
-        const testResponse = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary', {
-          headers: {
-            'Authorization': `Bearer ${tokens.access_token}`,
-          },
-        });
-
-        return {
-          isAuthenticated: testResponse.ok,
-          needsRefresh: testResponse.status === 401,
-          expiresAt: tokens.expires_at,
-          scopes: tokens.scope ? tokens.scope.split(' ') : [],
-        };
-      } catch (error) {
-        return {
-          isAuthenticated: false,
-          needsRefresh: true,
-          expiresAt: tokens.expires_at,
-          scopes: tokens.scope ? tokens.scope.split(' ') : [],
-        };
-      }
-    } catch (error) {
-      console.error('Error checking auth status:', error);
-      return { isAuthenticated: false };
-    }
-  }
-
-  async revokeUserTokens(userId: string): Promise<{ success: boolean }> {
-    try {
-      // Ensure user exists
-      await this.usersService.findOne(userId);
-
-      const tokens = await this.getUserTokens(userId);
-      
-      if (tokens && tokens.access_token) {
-        // Revoke token with Google
-        try {
-          await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-          });
-        } catch (error) {
-          console.warn('Error revoking token with Google:', error);
-          // Continue with local cleanup even if Google revocation fails
-        }
-      }
-
-      // Remove tokens from database
-      await this.prisma.userGoogleToken.delete({
-        where: { userId },
-      });
-
-      return { success: true };
-    } catch (error) {
-      if (error.code === 'P2025') { // Prisma record not found
-        return { success: true }; // Already revoked
-      }
-      console.error('Error revoking user tokens:', error);
-      throw error;
-    }
-  }
-
-  async findAllUserTokens(): Promise<Array<{ userId: string; expiresAt: number; scopes: string[] }>> {
-    const tokens = await this.prisma.userGoogleToken.findMany({
-      select: {
-        userId: true,
-        expiresAt: true,
-        scope: true,
-      },
     });
-
-    return tokens.map(token => ({
-      userId: token.userId,
-      expiresAt: Number(token.expiresAt),
-      scopes: token.scope.split(' '),
-    }));
+    return { authUrl, state };
   }
 
-  // Private helper methods
-  private generateState(userId: string): string {
+  async exchangeCodeForTokens(code: string, state: string) {
+    const agentId = this.verifyState(state);
+
+    const { tokens } = await this.oauth2Client.getToken(code);
+    const expires_at = tokens.expiry_date ?? (Date.now() + 3600 * 1000);
+
+    const googleTokens: GoogleTokens = {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at,
+      scope: tokens.scope ?? this.scopes.join(' '),
+      token_type: tokens.token_type ?? 'Bearer',
+    };
+
+    await this.storeAgentTokens(agentId, googleTokens);
+    return googleTokens;
+  }
+
+  async getAuthStatus(agentId: string): Promise<{
+    isAuthenticated: boolean;
+    needsRefresh?: boolean;
+    expiresAt?: number;
+    scopes?: string[];
+  }> {
+    const tokens = await this.getAgentTokens(agentId);
+    if (!tokens?.access_token) return { isAuthenticated: false };
+
+    const now = Date.now();
+    const isExpired = now >= tokens.expires_at;
+
+    if (isExpired) {
+      return {
+        isAuthenticated: true,
+        needsRefresh: true,
+        expiresAt: tokens.expires_at,
+        scopes: tokens.scope?.split(' ') || [],
+      };
+    }
+
+    try {
+      const response = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+
+      return {
+        isAuthenticated: response.ok,
+        needsRefresh: response.status === 401,
+        expiresAt: tokens.expires_at,
+        scopes: tokens.scope?.split(' ') || [],
+      };
+    } catch (err) {
+      return {
+        isAuthenticated: false,
+        needsRefresh: true,
+        expiresAt: tokens.expires_at,
+        scopes: tokens.scope?.split(' ') || [],
+      };
+    }
+  }
+
+  async getValidAccessToken(agentId: string): Promise<string> {
+    const tokens = await this.getAgentTokens(agentId);
+    if (!tokens) throw new UnauthorizedException('Agent not authenticated.');
+
+    const isExpired = Date.now() + 5 * 60 * 1000 >= tokens.expires_at;
+    return isExpired ? (await this.refreshAccessToken(agentId)).access_token : tokens.access_token;
+  }
+
+  async refreshAccessToken(agentId: string): Promise<GoogleTokens> {
+    const tokens = await this.getAgentTokens(agentId);
+    if (!tokens?.refresh_token) throw new UnauthorizedException('Missing refresh token');
+
+    this.oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
+
+    const res = await this.oauth2Client.refreshAccessToken();
+    const refreshed = res.credentials;
+
+    const updated: GoogleTokens = {
+      access_token: refreshed.access_token,
+      refresh_token: refreshed.refresh_token ?? tokens.refresh_token,
+      expires_at: refreshed.expiry_date ?? (Date.now() + 3600 * 1000),
+      scope: refreshed.scope ?? tokens.scope,
+      token_type: refreshed.token_type ?? 'Bearer',
+    };
+
+    await this.storeAgentTokens(agentId, updated);
+    return updated;
+  }
+
+  async findAllAgentTokens(): Promise<Array<{ agentId: string; expiresAt: number; scopes: string[] }>> {
+  const tokenRecords = await this.prisma.agentGoogleToken.findMany({
+    select: {
+      agentId: true,
+      expiresAt: true,
+      scope: true,
+    },
+  });
+
+  return tokenRecords.map(record => ({
+    agentId: record.agentId,
+    expiresAt: Number(record.expiresAt),
+    scopes: record.scope.split(' '),
+  }));
+}
+  async revokeAgentTokens(agentId: string) {
+    const tokens = await this.getAgentTokens(agentId);
+    if (tokens?.access_token) await this.oauth2Client.revokeToken(tokens.access_token);
+    await this.prisma.agentGoogleToken.deleteMany({ where: { agentId } });
+    return { success: true };
+  }
+
+  private generateState(agentId: string): string {
     const timestamp = Date.now();
-    const payload = JSON.stringify({ userId, timestamp });
-    const signature = crypto
-      .createHmac('sha256', this.stateSecret)
-      .update(payload)
-      .digest('hex');
-    
+    const payload = JSON.stringify({ agentId, timestamp });
+    const signature = crypto.createHmac('sha256', this.stateSecret).update(payload).digest('hex');
     return Buffer.from(JSON.stringify({ payload, signature })).toString('base64');
   }
 
-  private async storeUserTokens(userId: string, tokens: GoogleTokens): Promise<void> {
-    const encryptedAccessToken = this.encryptToken(tokens.access_token);
-    const encryptedRefreshToken = tokens.refresh_token 
-      ? this.encryptToken(tokens.refresh_token) 
-      : null;
+  private verifyState(state: string): string {
+    const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
+    const { payload, signature } = decoded;
+    const expected = crypto.createHmac('sha256', this.stateSecret).update(payload).digest('hex');
+    if (expected !== signature) throw new BadRequestException('Invalid state signature');
 
-    await this.prisma.userGoogleToken.upsert({
-      where: { userId },
+    const { agentId, timestamp } = JSON.parse(payload);
+    if (Date.now() - timestamp > 3600000) throw new BadRequestException('State expired');
+
+    return agentId;
+  }
+
+  private async storeAgentTokens(agentId: string, tokens: GoogleTokens) {
+    // Ensure the agent exists before performing the upsert
+    const agentExists = await this.prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { id: true },
+    });
+
+    if (!agentExists) {
+      console.error(`Agent with ID ${agentId} does not exist. Aborting token storage.`);
+      throw new Error(`Agent with ID ${agentId} not found`);
+    }
+
+    const encryptedAccess = this.encryptToken(tokens.access_token);
+    const encryptedRefresh = tokens.refresh_token ? this.encryptToken(tokens.refresh_token) : null;
+
+    await this.prisma.agentGoogleToken.upsert({
+      where: { agentId },
       update: {
-        accessToken: encryptedAccessToken,
-        refreshToken: encryptedRefreshToken,
+        accessToken: encryptedAccess,
+        refreshToken: encryptedRefresh,
         expiresAt: tokens.expires_at,
         scope: tokens.scope,
         tokenType: tokens.token_type,
-        updatedAt: new Date(),
       },
       create: {
-        userId,
-        accessToken: encryptedAccessToken,
-        refreshToken: encryptedRefreshToken,
+        agentId,
+        accessToken: encryptedAccess,
+        refreshToken: encryptedRefresh,
         expiresAt: tokens.expires_at,
         scope: tokens.scope,
         tokenType: tokens.token_type,
@@ -308,62 +237,34 @@ export class GoogleCalendarOAuthService {
     });
   }
 
-  private async getUserTokens(userId: string): Promise<GoogleTokens | null> {
-    try {
-      const tokenRecord = await this.prisma.userGoogleToken.findUnique({
-        where: { userId },
-      });
-
-      if (!tokenRecord) {
-        return null;
-      }
-
-      return {
-        access_token: this.decryptToken(tokenRecord.accessToken),
-        refresh_token: tokenRecord.refreshToken 
-          ? this.decryptToken(tokenRecord.refreshToken) 
-          : null,
-        expires_at: Number(tokenRecord.expiresAt),
-        scope: tokenRecord.scope,
-        token_type: tokenRecord.tokenType,
-      };
-    } catch (error) {
-      console.error('Error retrieving user tokens:', error);
-      return null;
-    }
+  private async getAgentTokens(agentId: string): Promise<GoogleTokens | null> {
+    const record = await this.prisma.agentGoogleToken.findUnique({ where: { agentId } });
+    if (!record) return null;
+    return {
+      access_token: this.decryptToken(record.accessToken),
+      refresh_token: record.refreshToken ? this.decryptToken(record.refreshToken) : null,
+      expires_at: Number(record.expiresAt),
+      scope: record.scope,
+      token_type: record.tokenType,
+    };
   }
 
   private encryptToken(token: string): string {
-    const algorithm = 'aes-256-gcm';
-    const key = crypto.scryptSync(this.stateSecret, 'salt', 32);
     const iv = crypto.randomBytes(16);
-
-    const cipher = crypto.createCipheriv(algorithm, key, iv);
+    const key = crypto.scryptSync(this.stateSecret, 'salt', 32);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
     cipher.setAAD(Buffer.from('google-token'));
-
-    let encrypted = cipher.update(token, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-
-    const authTag = cipher.getAuthTag();
-
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+    const enc = cipher.update(token, 'utf8', 'hex') + cipher.final('hex');
+    const tag = cipher.getAuthTag();
+    return `${iv.toString('hex')}:${tag.toString('hex')}:${enc}`;
   }
 
-  private decryptToken(encryptedToken: string): string {
-    const [ivHex, authTagHex, encrypted] = encryptedToken.split(':');
-
-    const algorithm = 'aes-256-gcm';
+  private decryptToken(data: string): string {
+    const [ivHex, tagHex, enc] = data.split(':');
     const key = crypto.scryptSync(this.stateSecret, 'salt', 32);
-    const iv = Buffer.from(ivHex, 'hex');
-    const authTag = Buffer.from(authTagHex, 'hex');
-
-    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
     decipher.setAAD(Buffer.from('google-token'));
-    decipher.setAuthTag(authTag);
-
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-
-    return decrypted;
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return decipher.update(enc, 'hex', 'utf8') + decipher.final('utf8');
   }
 }
