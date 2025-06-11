@@ -119,8 +119,6 @@ export class UsersController {
   })
   async googleAuth(@Res() res) {
     const { authUrl, state } = this.googleCalendarOAuthService.getSocialLoginAuthUrl();
-    console.log('Redirecting to Google OAuth URL:', authUrl);
-    console.log('State sent:', state);
     return res.redirect(authUrl);
   }
 

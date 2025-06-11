@@ -70,14 +70,16 @@ export class AgentSettingsDto {
     example: true,
     required: false,
   })
+  @IsOptional()
   @IsBoolean()
-  alwaysRespondWithAudio: boolean;
+  alwaysRespondWithAudio?: boolean;
 
   @ApiProperty({
     description: 'If true, the agent will respond with audio when user sends audio',
     example: true,
     required: false,
   })
+  @IsOptional()
   @IsBoolean()
-  respondAudioWithAudio: boolean;
+  respondAudioWithAudio?: boolean;
 }

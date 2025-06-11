@@ -7,7 +7,8 @@ import { UpdateIntentionDto } from './dto/update-intention.dto';
 import { 
   createGoogleCalendarIntention,
   suggestAvailableGoogleMeetingSlotsIntention,
-  cancelGoogleCalendarMeetingIntention
+  cancelGoogleCalendarMeetingIntention,
+  checkGoogleCalendarEventsIntention
 } from './google-calendar/google-calendar-intention';
 import { FieldType, PreprocessingType, Prisma } from '@prisma/client';
 
@@ -64,8 +65,8 @@ export class IntentionsService {
     // Ensure agent exists
     await this.agentsService.findOne(agentId);
 
-    const existing = await this.prisma.intention.findUnique({
-      where: { toolName: createIntentionDto.toolName },
+    const existing = await this.prisma.intention.findFirst({
+      where: { agentId: agentId, toolName: createIntentionDto.toolName },
     });
 
     if (existing) {
@@ -177,18 +178,18 @@ export class IntentionsService {
 
   async remove(id?: string, agentId?: string, toolName?: string): Promise<{ success: boolean }> {
     // console.log('🗑️ [remove] Attempting to remove intention...');
-    console.log('🔍 [remove] Received parameters:', { id, agentId, toolName });
+    // console.log('🔍 [remove] Received parameters:', { id, agentId, toolName });
 
     let whereClause: Prisma.IntentionWhereInput | null = null;
 
     if (id) {
       whereClause = { id };
-      console.log('📌 [remove] Built where clause using id:', whereClause);
+      // console.log('📌 [remove] Built where clause using id:', whereClause);
     } else if (agentId && toolName) {
       whereClause = { agentId, toolName };
-      console.log('📌 [remove] Built where clause using agentId and toolName:', whereClause);
+      // console.log('📌 [remove] Built where clause using agentId and toolName:', whereClause);
     } else {
-      console.warn('⚠️ [remove] Invalid parameters. Either `id` or both `agentId` and `toolName` must be provided.');
+      // console.warn('⚠️ [remove] Invalid parameters. Either `id` or both `agentId` and `toolName` must be provided.');
       throw new BadRequestException('Must provide either id or both agentId and toolName.');
     }
 
@@ -218,6 +219,7 @@ export class IntentionsService {
 
     await this.registerGoogleCalendarSuggestSlotsIntention(agentId);
     await this.registerGoogleCalendarCancelMeetingIntention(agentId);
+    await this.registerGoogleCalendarCheckEventsIntention(agentId);
     return await this.registerGoogleCalendarScheduleIntention(agentId);
   }
 
@@ -226,6 +228,7 @@ export class IntentionsService {
 
     await this.remove(undefined, agentId, 'schedule_google_meeting');
     await this.remove(undefined, agentId, 'cancel_google_meeting');
+    await this.remove(undefined, agentId, 'check_google_calendar_events');
     await this.remove(undefined, agentId, 'suggest_available_google_meeting_slots');
     
     return await this.registerGoogleCalendarScheduleIntention(agentId);
@@ -464,4 +467,76 @@ export class IntentionsService {
       return intention;
     });
   }
+
+  private async registerGoogleCalendarCheckEventsIntention(agentId: string) {
+    const {
+      fields,
+      headers,
+      queryParams,          // ✅ Extract queryParams from root level
+      authentication,       // ❌ runtime-only, stripped
+      responseProcessing,   // ❌ runtime-only, stripped
+      errorHandling,        // ❌ runtime-only, stripped
+      ...intentionData
+    } = checkGoogleCalendarEventsIntention;
+
+    const normalizeFieldType = (raw: string): FieldType => {
+      const map: Record<string, FieldType> = {
+        TEXT: FieldType.TEXT,
+        BOOLEAN: FieldType.BOOLEAN,
+        NUMBER: FieldType.NUMBER,
+        DATE: FieldType.DATE,
+        DATETIME: FieldType.DATE_TIME,
+        DATE_TIME: FieldType.DATE_TIME,
+        URL: FieldType.URL,
+      };
+
+      const key = raw.toUpperCase();
+      const normalized = map[key];
+
+      if (!normalized) {
+        throw new Error(`Invalid field type: "${raw}"`);
+      }
+
+      return normalized;
+    };
+
+    const castedFields = (fields || []).map(({ validation, defaultValue, ...field }) => ({
+      ...field,
+      type: normalizeFieldType(field.type),
+    }));
+
+    // ✅ Format root-level queryParams as params for Prisma
+    const formattedParams = (queryParams || []).map(param => ({
+      name: param.name,
+      value: param.value,
+    }));
+
+    return this.prisma.$transaction(async (prisma) => {
+      const intention = await prisma.intention.create({
+        data: {
+          ...intentionData,
+          preprocessingMessage: intentionData.preprocessingMessage as PreprocessingType,
+          agent: {
+            connect: { id: agentId },
+          },
+          fields: {
+            create: castedFields,
+          },
+          headers: {
+            create: headers || [],
+          },
+          params: {     
+            create: formattedParams,
+          },
+        },
+        include: {
+          fields: true,
+          headers: true,
+          params: true,
+        },
+      });
+
+      return intention;
+    });
+  } 
 }

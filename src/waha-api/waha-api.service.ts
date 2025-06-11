@@ -405,9 +405,7 @@ export class WahaApiService {
   async createInstance(options: CreateInstanceOptions): Promise<any> {
     try {
       const { workspaceId, agentId, channelId, instanceName, serverUrl, apiKey, webhookUrl } = options;
-
-      console.log({options});
-      
+     
       // First, check if the instance already exists
       try {
         const response = await axios.get(

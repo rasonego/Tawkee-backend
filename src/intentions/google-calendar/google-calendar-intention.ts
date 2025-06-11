@@ -470,3 +470,174 @@ export const cancelGoogleCalendarMeetingIntention = {
     }
   }
 };
+
+export const checkGoogleCalendarEventsIntention = {
+  toolName: "check_google_calendar_events",
+  description: "Check existing meeting events in Google Calendar by searching for events within a time range and optional phone number filter.",
+  preprocessingMessage: "MANUAL",
+  preprocessingText: "I'm searching for existing meetings in Google Calendar based on your criteria.",
+  type: "WEBHOOK",
+  httpMethod: "GET",
+  url: "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+
+  autoGenerateParams: false,
+  autoGenerateBody: false,
+
+  headers: [
+    {
+      name: "Authorization",
+      value: "Bearer {{DYNAMIC_GOOGLE_ACCESS_TOKEN}}"
+    }
+  ],
+
+  queryParams: [
+    {
+      name: "timeMin",
+      value: "{{timeMin}}"
+    },
+    {
+      name: "timeMax", 
+      value: "{{timeMax}}"
+    },
+    {
+      name: "q",
+      value: "{{searchQuery}}"
+    },
+    {
+      name: "singleEvents",
+      value: "true"
+    },
+    {
+      name: "orderBy",
+      value: "startTime"
+    },
+    {
+      name: "showDeleted",
+      value: "false"
+    },
+    {
+      name: "maxResults",
+      value: "{{maxResults}}"
+    }
+  ],
+
+  fields: [
+    {
+      name: "Start Time",
+      jsonName: "timeMin",
+      description: "Earliest meeting start time to search from (RFC3339 format)",
+      type: "DATETIME",
+      required: true,
+      defaultValue: "{{currentDateTime}}",
+      validation: {
+        format: "iso8601"
+      }
+    },
+    {
+      name: "End Time",
+      jsonName: "timeMax",
+      description: "Latest meeting start time to search until (RFC3339 format)",
+      type: "DATETIME",
+      required: true,
+      defaultValue: "{{addDays(currentDateTime, 7)}}",
+      validation: {
+        format: "iso8601"
+      }
+    },
+    {
+      name: "Search Query",
+      jsonName: "searchQuery",
+      description: "Optional search term to filter events (e.g., phone number, meeting title, or participant name)",
+      type: "TEXT",
+      required: false,
+      defaultValue: ""
+    },
+    {
+      name: "Max Results",
+      jsonName: "maxResults",
+      description: "Maximum number of events to return",
+      type: "TEXT",
+      required: false,
+      defaultValue: "50",
+      validation: {
+        pattern: "^[1-9][0-9]*$"
+      }
+    },
+    {
+      name: "Include Past Events",
+      jsonName: "includePast",
+      description: "Whether to include events that have already started/ended",
+      type: "BOOLEAN",
+      required: false,
+      defaultValue: false
+    }
+  ],
+
+  authentication: {
+    type: "GOOGLE_OAUTH",
+    scopes: [
+      "https://www.googleapis.com/auth/calendar.readonly",
+      "https://www.googleapis.com/auth/calendar"
+    ],
+    required: true
+  },
+
+  errorHandling: {
+    retryPolicy: {
+      maxRetries: 2,
+      backoffStrategy: "exponential"
+    },
+    errorMappings: [
+      {
+        condition: "response.status === 401",
+        action: "REFRESH_TOKEN_AND_RETRY",
+        message: "Authentication expired, please reconnect your Google Calendar"
+      },
+      {
+        condition: "response.status === 403",
+        action: "FAIL",
+        message: "Insufficient permissions to read calendar events"
+      },
+      {
+        condition: "response.status === 404",
+        action: "FAIL",
+        message: "Calendar not found"
+      }
+    ]
+  },
+
+  responseProcessing: {
+    successCondition: "response.status === 200",
+    extractData: {
+      totalEvents: "json.items ? json.items.length : 0",
+      events: `
+        json.items ? json.items.map(event => ({
+          id: event.id,
+          title: event.summary || 'No Title',
+          startTime: event.start?.dateTime || event.start?.date,
+          endTime: event.end?.dateTime || event.end?.date,
+          description: event.description || '',
+          location: event.location || '',
+          status: event.status,
+          attendees: event.attendees ? event.attendees.map(a => a.email) : [],
+          organizer: event.organizer?.email || '',
+          isUpcoming: event.start?.dateTime ? new Date(event.start.dateTime) > new Date() : false,
+          hasVideoConference: event.conferenceData ? true : false,
+          meetingLink: event.conferenceData?.entryPoints?.[0]?.uri || ''
+        })) : []
+      `,
+      upcomingEvents: `
+        json.items ? json.items.filter(event => 
+          event.status !== 'cancelled' &&
+          event.start?.dateTime &&
+          new Date(event.start.dateTime) > new Date()
+        ).length : 0
+      `,
+      searchCriteria: {
+        timeRange: "{{timeMin}} to {{timeMax}}",
+        searchQuery: "{{searchQuery}}",
+        maxResults: "{{maxResults}}"
+      }
+    }
+  }
+};

@@ -1045,200 +1045,211 @@ export class OpenAiService {
     }
   }
 
+  async generateIntentionSuccessResponse(
+    intention: any,
+    result: any,
+    agent: any,
+    communicationGuide: string,
+    chat: ChatDto,
+    scheduleSettings: ScheduleSettings
+  ): Promise<string> {
+    try {
+      const userName = chat?.userName || 'the user';
 
-async generateIntentionSuccessResponse(
-  intention: any,
-  result: any,
-  agent: any,
-  communicationGuide: string,
-  chat: ChatDto,
-  scheduleSettings: ScheduleSettings
-): Promise<string> {
-  try {
-    const userName = chat?.userName || 'the user';
+      const prompt = `
+  The assistant just completed a task for ${userName}, who is a real person and potentially the same as the contactName: "${result?.data?.contactName}".
 
-    const prompt = `
-The assistant just completed a task for ${userName}, who is a real person and potentially the same as the contactName: "${result?.data?.contactName}".
+  The task executed by the agent occurred on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
 
-The task executed by the agent occurred on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
+  Generate a response confirming successful completion of: ${intention.description}. If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}
 
-Generate a response confirming successful completion of: ${intention.description}. If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}
+  Agent Name: ${agent.name}
+  Agent Type: ${agent.type}
+  Communication Style: ${agent.communicationType}
 
-Agent Name: ${agent.name}
-Agent Type: ${agent.type}
-Communication Style: ${agent.communicationType}
+  Result:
+  ${JSON.stringify(result?.data || {}, null, 2)}
 
-Result:
-${JSON.stringify(result?.data || {}, null, 2)}
+  Guidelines:
+  - Confirm the task was successful
+  - Mention relevant details, especially date/time if it's a scheduled event.
+  - If the task involved scheduling an event, **it is CRUCIAL to generate a Google Calendar "add to calendar" link for the user to add the event to their *own* calendar.**
+    - **IMPORTANT: The 'Result' object will primarily contain 'description', 'creator', 'start' datetime, and 'end' datetime. You must infer other details as needed.**
+    - **DO NOT use the old Google Calendar event view link format (e.g., \`https://www.google.com/calendar/event?eid=...\`). This link is NOT useful for the user to add the event to their own calendar.**
+    - The base URL for the "add to calendar" link MUST be: 
+      \`https://calendar.google.com/calendar/u/0/r/eventedit\`
+    - The link MUST include the following URL-encoded parameters, using data from the 'Result' object:
+      - \`text\`: **Infer a concise event title.** This can be the first few words of the \`description\` or a generic title like "Meeting" or "Event" if \`description\` is not suitable. (e.g., from \`result.data.description\`).
+      - \`dates\`: The event start and end times in \`YYYYMMDDTHHMMSSZ/YYYYMMSSZ\` format. **Crucially, these times MUST be in UTC (Coordinated Universal Time).** You will need to convert the provided \`start\` and \`end\` datetimes (which may include timezone information) to UTC before formatting. For example, if \`result.data.start\` is '2025-06-12T09:00:00-03:00' (Sao Paulo time), convert it to UTC before formatting (e.g., '20250612T120000Z').
+      - \`details\`: The full \`description\` of the event (e.g., from \`result.data.description\`).
+      - \`location\`: **Omit this parameter if a specific location is not explicitly available in the 'Result' object.** If a location can be clearly inferred from the \`description\`, you may include it.
+    - If any of these data points are missing or cannot be inferred, omit the corresponding parameter from the URL.
+    - The link should be presented with clear anchor text like "Add to Google Calendar" or similar.
+  - If user is the same as the contact, reflect that
+  - Keep tone human and aligned with communication guide
+  - Avoid repeating "the user" and prefer the name if known: "${userName}"
 
-Guidelines:
-- Confirm the task was successful
-- Mention relevant details, especially date/time if it's a scheduled event
-- If user is the same as the contact, reflect that
-- Keep tone human and aligned with communication guide
-- Avoid repeating "the user" and prefer the name if known: "${userName}"
+  Communication Guide:
+  ${communicationGuide}
 
-Communication Guide:
-${communicationGuide}
+  Final response (directly to the user):
+      `.trim();
 
-Final response (directly to the user):
-    `.trim();
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a natural-sounding assistant who responds warmly and clearly after completing tasks.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 300
+      });
 
-    const response = await this.openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a natural-sounding assistant who responds warmly and clearly after completing tasks.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 300
-    });
+      return response.choices?.[0]?.message?.content?.trim() ??
+        `Great! I’ve successfully completed the ${intention.description.toLowerCase()} for you.`;
 
-    return response.choices[0]?.message?.content?.trim()
-      || `Great! I’ve successfully completed the ${intention.description.toLowerCase()} for you.`;
-
-  } catch (error) {
-    this.logger.error(`Error generating intention success response: ${error.message}`);
-    return `All set! Your request to ${intention.description.toLowerCase()} was completed.`;
+    } catch (error: any) {
+      this.logger?.error?.(`Error generating intention success response: ${error.message}`);
+      return `All set! Your request to ${intention.description.toLowerCase()} was completed.`;
+    }
   }
-}
 
-async generateIntentionErrorResponse(
-  intention: any,
-  error: any,
-  agent: any,
-  communicationGuide: string,
-  chat: ChatDto,
-  scheduleSettings: ScheduleSettings
-): Promise<string> {
-  try {
-    const userName = chat?.userName || 'the user';
+  async generateIntentionErrorResponse(
+    intention: any,
+    error: any,
+    agent: any,
+    communicationGuide: string,
+    chat: ChatDto,
+    scheduleSettings: ScheduleSettings
+  ): Promise<string> {
+    try {
+      const userName = chat?.userName || 'the user';
 
-    const prompt = `
-The assistant encountered an issue while trying to execute the task whose description is ${intention.description}, requested by ${userName}, who is a real person".
+      const prompt = `
+  The assistant encountered an issue while trying to execute the task whose description is ${intention.description}, requested by ${userName}, who is a real person".
 
-The task executed by the agent occurred on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
- If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}
+  The task executed by the agent occurred on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
+  If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}
 
-Agent Name: ${agent.name}
-Agent Type: ${agent.type}
-Communication Style: ${agent.communicationType}
+  Agent Name: ${agent.name}
+  Agent Type: ${agent.type}
+  Communication Style: ${agent.communicationType}
 
-Error Message: "${error.message}"
+  Error Message: "${error.message}"
 
-Write a human-friendly explanation that:
-- Is clear and direct (not too technical)
-- Uses the user's name if available
-- Suggests alternatives or retrying, especially if the issue is time-related
-- Reflects the agent’s communication style
+  Write a human-friendly explanation that:
+  - Is clear and direct (not too technical)
+  - Uses the user's name if available
+  - Suggests alternatives or retrying, especially if the issue is time-related
+  - Reflects the agent’s communication style
 
-Communication Guide:
-${communicationGuide}
+  Communication Guide:
+  ${communicationGuide}
 
-Reply:
-    `.trim();
+  Reply:
+      `.trim();
 
-    const response = await this.openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: 'You write empathetic, natural assistant responses for failed actions.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.6,
-      max_tokens: 200
-    });
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You write empathetic, natural assistant responses for failed actions.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.6,
+        max_tokens: 200
+      });
 
-    return response.choices[0]?.message?.content?.trim()
-      || `I couldn’t complete the request to ${intention.description.toLowerCase()}. Could you try another time or adjust the request?`;
+      return response.choices[0]?.message?.content?.trim()
+        || `I couldn’t complete the request to ${intention.description.toLowerCase()}. Could you try another time or adjust the request?`;
 
-  } catch (error) {
-    this.logger.error(`Error generating intention error response: ${error.message}`);
-    return `Sorry, something went wrong trying to ${intention.description.toLowerCase()}. Let’s try again with a different time.`;
+    } catch (error) {
+      this.logger.error(`Error generating intention error response: ${error.message}`);
+      return `Sorry, something went wrong trying to ${intention.description.toLowerCase()}. Let’s try again with a different time.`;
+    }
   }
-}
 
-async generateClarificationMessage(
-  intention: any,
-  missingFields: string[],
-  collectedFields: Record<string, any>,
-  agent: any,
-  communicationGuide: string,
-  chat: ChatDto,
-  scheduleSettings: ScheduleSettings
-): Promise<string> {
-  try {
-    const userName = chat?.userName || 'the user';
+  async generateClarificationMessage(
+    intention: any,
+    missingFields: string[],
+    collectedFields: Record<string, any>,
+    agent: any,
+    communicationGuide: string,
+    chat: ChatDto,
+    scheduleSettings: ScheduleSettings
+  ): Promise<string> {
+    try {
+      const userName = chat?.userName || 'the user';
 
-    const collectedInfo = Object.keys(collectedFields).length > 0
-      ? `I’ve already gathered some info: ${JSON.stringify(collectedFields, null, 2)}`
-      : `I don’t have any details yet.`;
+      const collectedInfo = Object.keys(collectedFields).length > 0
+        ? `I’ve already gathered some info: ${JSON.stringify(collectedFields, null, 2)}`
+        : `I don’t have any details yet.`;
 
-    const missingList = intention.fields
-      .filter(f => missingFields.includes(f.name))
-      .map(f => `- ${f.name}: ${f.description}`)
-      .join('\n');
+      const missingList = intention.fields
+        .filter(f => missingFields.includes(f.name))
+        .map(f => `- ${f.name}: ${f.description}`)
+        .join('\n');
 
-    const prompt = `
-You are an assistant helping ${userName} on behalf of ${agent.jobName}. You are trying to complete this action: "${intention.description}" but need more info.
+      const prompt = `
+  You are an assistant helping ${userName} on behalf of ${agent.jobName}. You are trying to complete this action: "${intention.description}" but need more info.
 
-The task your are trying to carry out is always executed on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
-If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}
+  The task your are trying to carry out is always executed on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
+  If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}
 
-Known Info:
-${collectedInfo}
+  Known Info:
+  ${collectedInfo}
 
-Missing:
-${missingList}
+  Missing:
+  ${missingList}
 
-Agent Name: ${agent.name}
-Agent Type: ${agent.type}
-Communication Style: ${agent.communicationType}
+  Agent Name: ${agent.name}
+  Agent Type: ${agent.type}
+  Communication Style: ${agent.communicationType}
 
-Write a helpful message:
-- Address the user naturally (use name if available)
-- Clarify what’s needed
-- Reflect the communication guide
+  Write a helpful message:
+  - Address the user naturally (use name if available)
+  - Clarify what’s needed
+  - Reflect the communication guide
 
-Communication Guide:
-${communicationGuide}
+  Communication Guide:
+  ${communicationGuide}
 
-Response:
-    `.trim();
+  Response:
+      `.trim();
 
-    const response = await this.openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: 'You write friendly assistant responses when asking for more info.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 400
-    });
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You write friendly assistant responses when asking for more info.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 400
+      });
 
-    return response.choices[0]?.message?.content?.trim()
-      || `To help you with ${intention.description.toLowerCase()}, I just need the following: ${missingFields.join(', ')}.`;
+      return response.choices[0]?.message?.content?.trim()
+        || `To help you with ${intention.description.toLowerCase()}, I just need the following: ${missingFields.join(', ')}.`;
 
-  } catch (error) {
-    this.logger.error(`Error generating clarification message: ${error.message}`);
-    return `To complete your request to ${intention.description.toLowerCase()}, I need some more details: ${missingFields.join(', ')}`;
+    } catch (error) {
+      this.logger.error(`Error generating clarification message: ${error.message}`);
+      return `To complete your request to ${intention.description.toLowerCase()}, I need some more details: ${missingFields.join(', ')}`;
+    }
   }
-}
 }

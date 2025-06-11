@@ -147,7 +147,7 @@ model Training {
 
 model Intention {
   id                   String            @id @default(uuid())
-  toolName             String            @unique
+  toolName             String            
   description          String
   preprocessingMessage PreprocessingType @default(DISABLED)
   preprocessingText    String?

@@ -383,8 +383,6 @@ export class WebhooksService {
       },
     });
 
-    console.log(JSON.stringify(webhookEvent.channel.agent.settings, null, 4));
-
     if (!webhookEvent) {
       this.logger.error(`Could not find webhook event with ID: ${webhookEventId}`);
       return;
@@ -671,8 +669,6 @@ export class WebhooksService {
               webhookEvent.messageType === 'audio' && webhookEvent.channel.agent.settings?.respondAudioWithAudio === true
             );
 
-            console.log(`SHOULD RESPOND VIA AUDIO: ${respondViaAudio}`);
-
             const agentResponse = await this.conversationsService.converse(
               webhookEvent.channel.agent.id,
               {
@@ -686,8 +682,6 @@ export class WebhooksService {
             if (!agentResponse || (!agentResponse.message && (!agentResponse.audios || agentResponse.audios.length === 0))) {
               throw new Error('Empty or invalid response from agent');
             }
-
-            console.log(JSON.stringify(agentResponse, null, 4));
 
             // Handle text message
             if (agentResponse.message) {

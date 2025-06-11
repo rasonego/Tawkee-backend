@@ -358,7 +358,6 @@ export class ConversationsService {
             };
 
           } catch (error) {
-            console.log(JSON.stringify(error, null, 3));
             this.logger.error(`Error executing intention: ${error.message}`);
 
             responseText = await this.openAiService.generateIntentionErrorResponse(
@@ -635,7 +634,7 @@ export class ConversationsService {
         this.logger.warn(`[mapIntentionsToTools] Skipping invalid intention:`, {
           id: intention.id,
           toolName: intention.toolName,
-          fieldsType: typeof intention.fields,
+          // fieldsType: typeof intention.fields,
         });
       }
 
@@ -823,12 +822,47 @@ export class ConversationsService {
         }
       }
 
-      // Replace preconditions[0].key in URL and headers
+      // Build finalUrl with template replacement and query parameters
       let finalUrl = intention.url;
+      
+      // Replace preconditions[0].key in URL
       finalUrl = finalUrl.replace(/\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g, (_, idx, key) => encodeURIComponent(preconditionResults?.[idx]?.[key] ?? ''));
+      
+      // Replace field templates in URL
       Object.keys(fields).forEach(key => {
         finalUrl = finalUrl.replace(`{{${key}}}`, encodeURIComponent(fields[key]));
       });
+
+      // Handle query parameters for the main intention
+      if (Array.isArray(intention.queryParams)) {
+        const searchParams = new URLSearchParams();
+        for (const param of intention.queryParams) {
+          let value = param.value;
+          // Replace preconditions references
+          value = value.replace(/\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g, (_, idx, key) => preconditionResults?.[idx]?.[key] ?? '');
+          // Replace field templates
+          value = this.resolveTemplate(value, fields);
+          searchParams.append(param.name, value);
+        }
+        finalUrl += `${finalUrl.includes('?') ? '&' : '?'}${searchParams.toString()}`;
+      }
+
+      // For GET requests, append inputFields as query parameters if they're not already included
+      if (intention.httpMethod.toUpperCase() === 'GET') {
+        const existingParams = new URLSearchParams(finalUrl.split('?')[1] || '');
+        const additionalParams = new URLSearchParams();
+        
+        Object.keys(fields).forEach(key => {
+          // Only add if not already present in URL or queryParams
+          if (!existingParams.has(key)) {
+            additionalParams.append(key, String(fields[key]));
+          }
+        });
+        
+        if (additionalParams.toString()) {
+          finalUrl += `${finalUrl.includes('?') ? '&' : '?'}${additionalParams.toString()}`;
+        }
+      }
 
       const resolvedHeaders = intention.headers.map(header => {
         let value = header.value.replace('{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}', accessToken);
@@ -872,7 +906,6 @@ export class ConversationsService {
   }
 
   private resolveTemplate(template: string, fields: Record<string, any>): string {
-    console.log({fields});
     return template.replace(/{{(.*?)}}/g, (_, key) => {
       const value = fields[key.trim()];
       return value !== undefined && value !== null ? String(value) : '';

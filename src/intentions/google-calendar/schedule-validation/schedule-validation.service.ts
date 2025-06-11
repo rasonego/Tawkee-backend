@@ -59,7 +59,6 @@ export class ScheduleValidationService {
   }
 
   async updateScheduleSettings(agentId: string, updateDto: Partial<ScheduleSettingsDto>) {
-    console.log({ updateDto });
     const existing = await this.prisma.scheduleSettings.findUnique({
       where: { agentId },
     });

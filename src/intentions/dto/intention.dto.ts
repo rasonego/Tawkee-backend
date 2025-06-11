@@ -216,4 +216,13 @@ export class IntentionDto {
   @Type(() => IntentionPreconditionDto)
   @IsOptional()
   preconditions?: IntentionPreconditionDto[];
+
+  @ApiProperty({
+    description: 'Parameters for the webhook',
+    type: [IntentionParamDto],
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => IntentionParamDto)
+  queryParams?: IntentionParamDto[]; 
 }
