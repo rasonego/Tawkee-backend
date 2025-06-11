@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 
 import * as Handlebars from 'handlebars';
+import * as vm from 'vm';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentsService } from '../agents/agents.service';
@@ -8,11 +9,16 @@ import { DeepseekService } from '../deepseek/deepseek.service';
 import { OpenAiService } from '../openai/openai.service';
 import { TrainingsService } from '../trainings/trainings.service';
 import { ConversationDto } from './dto/conversation.dto';
-import { AIModel } from '@prisma/client';
+import { AIModel, ScheduleSettings } from '@prisma/client';
 import { getCommunicationGuide } from '../common/utils/communication-guides';
 import { GoogleCalendarOAuthService } from 'src/intentions/google-calendar/google-calendar-oauth.service';
 import { ChatCompletionTool } from 'openai/resources';
 import { IntentionDto } from 'src/intentions/dto/intention.dto';
+import { ScheduleValidationService } from 'src/intentions/google-calendar/schedule-validation/schedule-validation.service';
+import { plainToInstance } from 'class-transformer';
+import { AvailableTimesDto } from 'src/intentions/google-calendar/schedule-validation/dto/schedule-validation.dto';
+import { ChatDto } from 'src/chats/dto/chat.dto';
+import { ElevenLabsService } from 'src/elevenlabs/elevenlabs.service';
 
 const timezoneMap: Record<string, string> = {
   '(GMT-12:00) Baker Island': 'Etc/GMT+12',
@@ -53,7 +59,9 @@ export class ConversationsService {
     private readonly deepseekAiService: DeepseekService,
     private readonly openAiService: OpenAiService,
     private readonly trainingsService: TrainingsService,
-    private readonly googleCalendarOAuthService: GoogleCalendarOAuthService
+    private readonly googleCalendarOAuthService: GoogleCalendarOAuthService,
+    private readonly scheduleValidationService: ScheduleValidationService,
+    private readonly elevenLabsService: ElevenLabsService
   ) {}
 
   async converse(agentId: string, conversationDto: ConversationDto) {
@@ -190,10 +198,10 @@ export class ConversationsService {
     };
   }
 
-  private async generateAgentResponse(
-    d: any,
+  async generateAgentResponse(
+    d: { agent: any; settings: any },
     chat: any,
-    conversationDto: ConversationDto
+    conversationDto: ConversationDto,
   ) {
     const agent = d.agent;
     try {
@@ -209,7 +217,12 @@ export class ConversationsService {
       this.logger.debug(`Intentions count: ${agent.intentions?.length || 0}`);
 
       const conversationHistory = await this.prisma.message.findMany({
-        where: { chatId: chat.id },
+        where: {
+          chatId: chat.id,
+          NOT: {
+            text: conversationDto.prompt,
+          },
+        },
         orderBy: { createdAt: 'desc' },
         take: 10,
       });
@@ -241,6 +254,7 @@ export class ConversationsService {
         conversationDto.prompt,
         intentions,
         enhancedAgent.model,
+        chat,
         orderedHistory.map((msg => ({
           role: msg.role,
           text: msg.text,
@@ -249,102 +263,146 @@ export class ConversationsService {
         agent.settings
       );
 
+      const scheduleSettings = await this.prisma.scheduleSettings.findUnique(
+        { where: { agentId: enhancedAgent.id } }
+      );
+
+      let responseText = '';
+      let audios: any[] = [];
+
       if (detectionResult) {
         const { matchedIntention, extractedFields, toolCallMessage } = detectionResult;
 
         if (!matchedIntention && toolCallMessage) {
           this.logger.debug('[generateAgentResponse] OpenAI returned assistant message instead of tool call. Returning it directly.');
+          responseText = toolCallMessage;
+        } else {
+          const collectedFields = extractedFields || {};
+          const missingFields = matchedIntention.fields
+            .filter(f => f.required && !collectedFields[f.jsonName])
+            .map(f => f.name);
 
-          return {
-            message: toolCallMessage,
-            images: [],
-            audio: [],
-            communicationGuide,
-            goalGuide
-          }
-        }
-
-        const collectedFields = extractedFields || {};
-        const missingFields = matchedIntention.fields
-          .filter(f => f.required && !collectedFields[f.jsonName])
-          .map(f => f.name);
-
-        if (missingFields.length > 0) {
-          const clarificationMessage = await this.openAiService.generateClarificationMessage(
-            matchedIntention,
-            missingFields,
-            collectedFields,
-            enhancedAgent,
-            communicationGuide,
-          );
-
-          return {
-            message: clarificationMessage,
-            images: [],
-            audios: [],
-            communicationGuide,
-            goalGuide,
-            pendingIntention: {
-              intentionId: matchedIntention.id,
+          if (missingFields.length > 0) {
+            responseText = await this.openAiService.generateClarificationMessage(
+              matchedIntention,
+              missingFields,
               collectedFields,
-              missingFields
+              enhancedAgent,
+              communicationGuide,
+              chat,
+              scheduleSettings
+            );
+            return {
+              message: responseText,
+              images: [],
+              audios: [],
+              communicationGuide,
+              goalGuide,
+              pendingIntention: {
+                intentionId: matchedIntention.id,
+                collectedFields,
+                missingFields
+              }
+            };
+          }
+
+          try {
+            this.logger.debug(`Executing intention: ${matchedIntention.description} with timezone ${enhancedAgent.settings}`);
+            
+            let intentionResult;
+            if (matchedIntention.toolName === 'schedule_google_meeting') {
+              intentionResult = await this.executeScheduleMeetingIntention(
+                intentions, matchedIntention, collectedFields, agent.id, scheduleSettings, enhancedAgent.settings.timezone
+              );
+            } else {
+              intentionResult = await this.executeIntention(
+                matchedIntention, collectedFields, agent.id, enhancedAgent.settings.timezone
+              );
             }
-          };
-        }
 
-        try {
-          this.logger.debug(`Executing intention: ${matchedIntention.description} with timezone ${enhancedAgent.settings}`);
-          const intentionResult = await this.executeIntention(
-            matchedIntention, collectedFields, agent.id, enhancedAgent.settings.timezone
-          );
+            responseText = await this.openAiService.generateIntentionSuccessResponse(
+              matchedIntention,
+              intentionResult,
+              enhancedAgent,
+              communicationGuide,
+              chat,
+              scheduleSettings
+            );
 
-          const responseText = await this.openAiService.generateIntentionSuccessResponse(
-            matchedIntention,
-            intentionResult,
-            enhancedAgent,
-            communicationGuide
-          );
-
-          return {
-            message: responseText,
-            images: [],
-            audios: [],
-            communicationGuide,
-            goalGuide,
-            intentionExecuted: {
-              intention: matchedIntention.description,
-              result: intentionResult,
-              success: intentionResult.success
+            // Intention executed, now check for audio response
+            if (conversationDto.respondViaAudio && responseText) {
+              try {
+                const audioData = await this.elevenLabsService.textToAudio({
+                  text: responseText,
+                  voiceId: enhancedAgent.settings.elevenLabsVoiceId || 'IRHApOXLvnW57QJPQH2P', // Use agent's configured voice or a default
+                });
+                if (audioData) {
+                  audios.push(audioData); // Add the audio data (Buffer) to the audios array
+                }
+              } catch (audioError) {
+                this.logger.error(`Error generating audio for intention response: ${audioError.message}`);
+              }
             }
-          };
 
-        } catch (error) {
-          this.logger.error(`Error executing intention: ${error.message}`);
-          const errorResponse = await this.openAiService.generateIntentionErrorResponse(
-            matchedIntention,
-            error,
-            enhancedAgent,
-            communicationGuide
-          );
+            return {
+              message: responseText,
+              images: [],
+              audios: audios, // Return the generated audios
+              communicationGuide,
+              goalGuide,
+              intentionExecuted: {
+                intention: matchedIntention.description,
+                result: intentionResult,
+                success: intentionResult.success
+              }
+            };
 
-          return {
-            message: errorResponse,
-            images: [],
-            audios: [],
-            communicationGuide,
-            goalGuide,
-            intentionError: {
-              intention: matchedIntention.description,
-              error: error.message
+          } catch (error) {
+            console.log(JSON.stringify(error, null, 3));
+            this.logger.error(`Error executing intention: ${error.message}`);
+
+            responseText = await this.openAiService.generateIntentionErrorResponse(
+              matchedIntention,
+              error,
+              enhancedAgent,
+              communicationGuide,
+              chat,
+              scheduleSettings
+            );
+
+            // Intention error, now check for audio response
+            if (conversationDto.respondViaAudio && responseText) {
+              try {
+                const audioData = await this.elevenLabsService.textToAudio({
+                  text: responseText,
+                  voiceId: enhancedAgent.settings.elevenLabsVoiceId || 'IRHApOXLvnW57QJPQH2P', // Use agent's configured voice or a default
+                });
+                if (audioData) {
+                  audios.push(audioData);
+                }
+              } catch (audioError) {
+                this.logger.error(`Error generating audio for intention error response: ${audioError.message}`);
+              }
             }
-          };
+
+            return {
+              message: responseText,
+              images: [],
+              audios: audios, // Return the generated audios
+              communicationGuide,
+              goalGuide,
+              intentionError: {
+                intention: matchedIntention.description,
+                error: error.message
+              }
+            };
+          }
         }
       }
 
       this.logger.debug(`No matching intention found. Proceeding with fallback AI response.`);
 
       // STEP 5: If no intention matched, proceed with normal AI response generation
-      let responseText = '';
       try {
         // Search for relevant training materials using RAG
         let retrievedContext = '';
@@ -460,11 +518,26 @@ export class ConversationsService {
         responseText = `${stylePrefix} ${agent.name}. ${goalPrefix} "${conversationDto.prompt}". I'm currently experiencing some technical difficulties, but I'll do my best to assist you.`;
       }
 
+      // After generating responseText (either from intention or fallback AI), check if audio response is needed
+      if (conversationDto.respondViaAudio && responseText) {
+        try {
+          const audioData = await this.elevenLabsService.textToAudio({
+            text: responseText,
+            voiceId: enhancedAgent.settings.elevenLabsVoiceId || 'IRHApOXLvnW57QJPQH2P', // Use agent's configured voice or a default
+          });
+          if (audioData) {
+            audios.push(audioData);
+          }
+        } catch (audioError) {
+          this.logger.error(`Error generating audio for AI response: ${audioError.message}`);
+        }
+      }
+
       // Return the response in the expected format
       return {
         message: responseText,
         images: [],
-        audios: [],
+        audios: audios,
         communicationGuide,
         goalGuide,
       };
@@ -478,8 +551,9 @@ export class ConversationsService {
     userPrompt: string,
     intentions: IntentionDto[],
     model: AIModel,
+    chat: ChatDto,
     conversationHistory?: { role: string, text: string, createdAt: string }[],
-    agentSettings?: { timezone?: string }
+    agentSettings?: { timezone?: string },
   ): Promise<{
     matchedIntention?: IntentionDto;
     extractedFields?: Record<string, any>;
@@ -495,24 +569,31 @@ export class ConversationsService {
       `${msg.role === 'user' ? 'user' : 'assistant'}: ${msg.text}`).join('\n') || '';
 
     const timezoneNote = agentSettings?.timezone
-      ? `\nAssume the user's preferred timezone is: ${agentSettings.timezone}. Interpret all ambiguous time expressions accordingly.`
+      ? `The timezone reference is always ${agentSettings.timezone}. Interpret all ambiguous time expressions accordingly.`
       : '';
 
     const prompt = `
   The following conversation occurred with the latest user message sent at ${latestTimestamp}.
   Please interpret all date/time expressions (e.g., "today", "8 am", "next week") in this context.
-  ${timezoneNote}
 
   Additionally:
   - If possible, infer any relevant fields such as contactName, contactPhone, or scheduling details from the conversation context.
   - If a field is not clearly stated, try to use common sense or recent messages to deduce values.
+      - Common sense: If no conversation history provided, and user requests to schedule meetings or check availability, consider they are referring to today.
   - Do not ask for technical values like requestId unless essential.
+  - Do not ask for user's timezones. ALWAYS use the Agent's timezone.
+
+  Chat data: ${JSON.stringify(chat, null, 3)}
 
   Conversation history:
   ${formattedHistory}
 
   Now the user says:
-  ${userPrompt}
+  [${chat?.whatsappPhone || ''} - ${chat?.userName || ''}]: ${userPrompt}
+
+  Finally:
+  ${timezoneNote}
+
     `.trim();
 
     const { toolCall, extractedFields, fallbackMessage } = await this.openAiService.callWithToolDetection(
@@ -531,10 +612,17 @@ export class ConversationsService {
 
     if (!toolCall) return null;
 
+    // const enrichedFields = {
+    //   ...extractedFields,
+    //   contactPhone: extractedFields?.contactPhone ?? chat.whatsappPhone ?? undefined,
+    //   q: extractedFields?.contactPhone ?? chat.whatsappPhone ?? undefined,
+    //   contactName: extractedFields?.contactName ?? chat.userName ?? undefined,
+    // };
+
     const matchedTool = intentions.find(i => i.toolName === toolCall.function.name);
     return {
       matchedIntention: matchedTool,
-      extractedFields,
+      extractedFields: extractedFields,
     };
   }
 
@@ -586,7 +674,7 @@ export class ConversationsService {
         },
       };
 
-      this.logger.debug(`[mapIntentionsToTools] Built tool schema for "${toolSchema.function.name}": ${JSON.stringify(toolSchema, null, 2)}`);
+      // this.logger.debug(`[mapIntentionsToTools] Built tool schema for "${toolSchema.function.name}": ${JSON.stringify(toolSchema, null, 2)}`);
 
       return toolSchema;
     });
@@ -635,17 +723,15 @@ export class ConversationsService {
     intention: IntentionDto,
     inputFields: Record<string, any>,
     agentId: string,
-    agentTimezone?: string // Pass from agent.settings.timezone if available
+    agentTimezone?: string
   ): Promise<any> {
     try {
       this.logger.debug(`[executeIntention] Starting execution for intention: ${intention.description}`);
 
-      // Step 1: Normalize fields and access token
       const fields = this.normalizeFields(inputFields);
       const accessToken = await this.googleCalendarOAuthService.getValidAccessToken(agentId);
       this.logger.debug(`[executeIntention] Access token retrieved`);
 
-      // Step 1.5: Normalize date-times with timezone
       let timezone = 'UTC';
       if (agentTimezone && timezoneMap[agentTimezone]) {
         timezone = timezoneMap[agentTimezone];
@@ -654,21 +740,48 @@ export class ConversationsService {
       const toISOStringWithTZ = (dt: string): string => {
         const date = new Date(dt);
         const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
-        return tzDate.toISOString().replace(/\.\d{3}Z$/, 'Z'); // Keep only the Z suffix
+        return tzDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
       };
 
-      if (fields.startDateTime) {
-        fields.startDateTime = toISOStringWithTZ(fields.startDateTime);
-      }
-      if (fields.endDateTime) {
-        fields.endDateTime = toISOStringWithTZ(fields.endDateTime);
-      }
-      fields.timeZone = timezone;
+      const appendOffsetToTimeString = (input: string, timezone: string): string => {
+        const date = input.endsWith('Z') ? new Date(input) : new Date(input + 'Z');
+        const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+        const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
 
-      // Step 2: Evaluate preconditions
+        const offsetMinutes = (tzDate.getTime() - utcDate.getTime()) / 60000;
+        const offsetSign = offsetMinutes >= 0 ? '+' : '-';
+        const absOffset = Math.abs(offsetMinutes);
+        const offsetHours = String(Math.floor(absOffset / 60)).padStart(2, '0');
+        const offsetMins = String(absOffset % 60).padStart(2, '0');
+        const offset = `${offsetSign}${offsetHours}:${offsetMins}`;
+
+        const base = input.replace(/Z$/, '');
+        return `${base}${offset}`;
+      };
+
+      ['startDateTime', 'endDateTime', 'startSearch', 'endSearch'].forEach(key => {
+        if (fields[key]) fields[key] = toISOStringWithTZ(fields[key]);
+      });
+      ['timeMin', 'timeMax'].forEach(key => {
+        if (fields[key]) fields[key] = appendOffsetToTimeString(fields[key], timezone);
+      });
+
+      fields.timeZone = timezone;
+      const preconditionResults: Record<string, any>[] = [];
+
       if (Array.isArray(intention.preconditions)) {
-        for (const pre of intention.preconditions) {
-          const preUrl = this.resolveTemplate(pre.url, fields);
+        for (const [index, pre] of intention.preconditions.entries()) {
+          let finalPreUrl = this.resolveTemplate(pre.url, fields);
+
+          if (Array.isArray(pre.queryParams)) {
+            const searchParams = new URLSearchParams();
+            for (const param of pre.queryParams) {
+              const value = this.resolveTemplate(param.value, fields);
+              searchParams.append(param.name, value);
+            }
+            finalPreUrl += `${finalPreUrl.includes('?') ? '&' : '?'}${searchParams.toString()}`;
+          }
+
           const preHeaders: Record<string, string> = {};
           pre.headers?.forEach(h => {
             let value = h.value.replace('{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}', accessToken);
@@ -682,60 +795,46 @@ export class ConversationsService {
             try {
               preBody = JSON.stringify(JSON.parse(rendered));
             } catch (err) {
-              this.logger.warn(`[executeIntention] Invalid precondition body`, {
-                rawTemplate: pre.requestBody,
-                rendered,
-                fields,
-                error: err.message
-              });
+              this.logger.warn(`[executeIntention] Invalid precondition body`, { rawTemplate: pre.requestBody, rendered, fields, error: err.message });
               throw new Error('Invalid precondition request body format');
             }
           }
 
-          this.logger.debug(`[executeIntention] Executing precondition: ${pre.name}`, {
-            url: preUrl,
-            headers: preHeaders,
-            body: preBody || 'None'
-          });
+          this.logger.debug(`[executeIntention] Executing precondition: ${pre.name}`, { url: finalPreUrl, headers: preHeaders, body: preBody || 'None' });
 
-          const preResponse = await fetch(preUrl, {
-            method: pre.httpMethod.toUpperCase(),
-            headers: preHeaders,
-            body: preBody || undefined
-          });
-
+          const preResponse = await fetch(finalPreUrl, { method: pre.httpMethod.toUpperCase(), headers: preHeaders, body: preBody || undefined });
           const preResponseText = await preResponse.text();
           const preJson = JSON.parse(preResponseText);
-
-          this.logger.debug(`[executeIntention] Precondition response`, {
-            name: pre.name,
-            status: preResponse.status,
-            body: preJson
-          });
 
           if (!preResponse.ok) {
             throw new Error(`Precondition "${pre.name}" failed with HTTP ${preResponse.status}: ${preJson?.error?.message || 'Unknown error'}`);
           }
 
-          if (pre.failureCondition && eval(pre.failureCondition)) {
+          const sandbox = { preJson, ...fields, preconditions: [{}] };
+          if (pre.failureCondition && vm.runInNewContext(pre.failureCondition, sandbox)) {
             throw new Error(pre.failureMessage || `Precondition "${pre.name}" failed.`);
+          }
+
+          if (pre.successAction) {
+            const script = new vm.Script(pre.successAction);
+            script.runInContext(vm.createContext(sandbox));
+            preconditionResults[index] = sandbox;
           }
         }
       }
 
-      // Step 3: Resolve main headers
-      const resolvedHeaders = intention.headers.map(header => {
-        let value = header.value.replace('{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}', accessToken);
-        Object.keys(fields).forEach(key => {
-          value = value.replace(`{{${key}}}`, fields[key]);
-        });
-        return { name: header.name, value };
-      });
-
-      // Step 4: Build final URL
+      // Replace preconditions[0].key in URL and headers
       let finalUrl = intention.url;
+      finalUrl = finalUrl.replace(/\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g, (_, idx, key) => encodeURIComponent(preconditionResults?.[idx]?.[key] ?? ''));
       Object.keys(fields).forEach(key => {
         finalUrl = finalUrl.replace(`{{${key}}}`, encodeURIComponent(fields[key]));
+      });
+
+      const resolvedHeaders = intention.headers.map(header => {
+        let value = header.value.replace('{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}', accessToken);
+        value = value.replace(/\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g, (_, idx, key) => preconditionResults?.[idx]?.[key] ?? '');
+        Object.keys(fields).forEach(k => value = value.replace(`{{${k}}}`, fields[k]));
+        return { name: header.name, value };
       });
 
       let resolvedBody: string | undefined = undefined;
@@ -744,12 +843,7 @@ export class ConversationsService {
         try {
           resolvedBody = JSON.stringify(JSON.parse(rawRendered));
         } catch (err) {
-          this.logger.warn(`[executeIntention] Request body is not valid JSON after templating`, {
-            rawTemplate: intention.requestBody,
-            resolvedBody: rawRendered,
-            fields,
-            error: err.message
-          });
+          this.logger.warn(`[executeIntention] Request body is not valid JSON after templating`, { rawTemplate: intention.requestBody, resolvedBody: rawRendered, fields, error: err.message });
           throw new Error('Invalid request body format');
         }
       }
@@ -757,24 +851,10 @@ export class ConversationsService {
       const headers: Record<string, string> = {};
       resolvedHeaders.forEach(h => headers[h.name] = h.value);
 
-      this.logger.debug(`[executeIntention] Making HTTP request`, {
-        method: intention.httpMethod.toUpperCase(),
-        url: finalUrl,
-        headers,
-        body: resolvedBody || 'None'
-      });
+      this.logger.debug(`[executeIntention] Making HTTP request`, { method: intention.httpMethod.toUpperCase(), url: finalUrl, headers, body: resolvedBody || 'None' });
 
-      const response = await fetch(finalUrl, {
-        method: intention.httpMethod.toUpperCase(),
-        headers,
-        body: resolvedBody || undefined
-      });
-
+      const response = await fetch(finalUrl, { method: intention.httpMethod.toUpperCase(), headers, body: resolvedBody || undefined });
       const responseBody = await response.text();
-      this.logger.debug(`[executeIntention] HTTP response`, {
-        status: response.status,
-        body: responseBody
-      });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText} - ${responseBody}`);
@@ -782,7 +862,7 @@ export class ConversationsService {
 
       return {
         success: true,
-        data: JSON.parse(responseBody),
+        data: responseBody ? JSON.parse(responseBody) : {},
         statusCode: response.status
       };
     } catch (error) {
@@ -792,9 +872,60 @@ export class ConversationsService {
   }
 
   private resolveTemplate(template: string, fields: Record<string, any>): string {
+    console.log({fields});
     return template.replace(/{{(.*?)}}/g, (_, key) => {
       const value = fields[key.trim()];
       return value !== undefined && value !== null ? String(value) : '';
     });
+  }
+
+  async executeScheduleMeetingIntention(
+    intentions: IntentionDto[],
+    intention: IntentionDto,
+    fields: Record<string, any>,
+    agentId: string,
+    scheduleSettings: ScheduleSettings,
+    agentTimezone?: string,
+  ): Promise<any> {
+    if (!scheduleSettings) throw new Error('Schedule settings not configured.');
+
+    const tz = agentTimezone || 'UTC';
+    const start = new Date(fields.startDateTime);
+    const end = new Date(fields.endDateTime);
+
+    // Transform the JSON field to the proper DTO class
+    const transformedSettings = {
+      ...scheduleSettings,
+      availableTimes: scheduleSettings.availableTimes
+        ? plainToInstance(AvailableTimesDto, scheduleSettings.availableTimes)
+        : undefined,
+    };
+
+    const validationError = this.scheduleValidationService.validateSchedule(start, end, transformedSettings);
+
+    console.log({validationError});
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    try {
+      return await this.executeIntention(intention, fields, agentId, tz);
+    } catch(error) {
+      if (error.message.includes('unavailable')) {
+        // Check availability using Google Calendar FreeBusy API (replace with actual logic)
+        const now = new Date();
+        fields.startSearch = fields.startSearch || now.toISOString();
+        fields.endSearch = fields.endSearch || new Date(now.getTime() + 7 * 86400000).toISOString();
+
+        const suggestAvailableSlotsIntention = intentions.find(i => i.toolName === 'suggest_available_google_meeting_slots');
+        const response = await this.executeIntention(
+          suggestAvailableSlotsIntention, fields, agentId, tz
+        );
+        throw new Error(JSON.stringify(response, null, 3));
+
+      } else {
+        throw new Error(error);
+      }
+    }
   }
 }

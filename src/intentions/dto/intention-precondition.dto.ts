@@ -12,6 +12,16 @@ export class IntentionPreconditionHeaderDto {
   value: string;
 }
 
+export class IntentionPreconditionQueryParamDto {
+  @ApiProperty({ description: 'Query parameter name', example: 'timeMin' })
+  @IsString()
+  name: string;
+
+  @ApiProperty({ description: 'Query parameter value, can use placeholders', example: '{{startDateTime}}' })
+  @IsString()
+  value: string;
+}
+
 export class IntentionPreconditionDto {
   @ApiProperty({ description: 'Precondition name', example: 'Check Availability' })
   @IsString()
@@ -48,6 +58,10 @@ export class IntentionPreconditionDto {
   @IsString()
   failureMessage: string;
 
+  @ApiProperty()
+  @IsString()
+  successAction?: string;
+
   @ApiProperty({
     description: 'Headers to include in the precondition request',
     type: [IntentionPreconditionHeaderDto],
@@ -58,4 +72,15 @@ export class IntentionPreconditionDto {
   @Type(() => IntentionPreconditionHeaderDto)
   @IsOptional()
   headers?: IntentionPreconditionHeaderDto[];
+
+  @ApiProperty({
+    description: 'Query parameters to append to the URL',
+    type: [IntentionPreconditionQueryParamDto],
+    required: false,
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => IntentionPreconditionQueryParamDto)
+  @IsOptional()
+  queryParams?: IntentionPreconditionQueryParamDto[];
 }

@@ -44,6 +44,8 @@ export class AgentSettingsService {
         enabledEmoji: settings.enabledEmoji,
         limitSubjects: settings.limitSubjects,
         messageGroupingTime: settings.messageGroupingTime,
+        alwaysRespondWithAudio: settings.alwaysRespondWithAudio,
+        respondAudioWithAudio: settings.respondAudioWithAudio
       };
     } catch (error) {
       this.logger.error(
@@ -132,6 +134,8 @@ export class AgentSettingsService {
         enabledEmoji: true,
         limitSubjects: true,
         messageGroupingTime: 'NO_GROUP',
+        respondAudioWithAudio: false,
+        alwaysRespondWithAudio: false
       };
 
       await this.prisma.agentSettings.create({

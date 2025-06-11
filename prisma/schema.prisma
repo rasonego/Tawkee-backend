@@ -70,7 +70,9 @@ model Agent {
   intentions        Intention[]
   interactions      Interaction[]
   trainings         Training[]
+  
   googleToken AgentGoogleToken?
+  scheduleSettings ScheduleSettings?
 }
 
 model AgentSettings {
@@ -86,6 +88,10 @@ model AgentSettings {
   agentId              String       @unique
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
+
+  respondAudioWithAudio Boolean @default(false)
+  alwaysRespondWithAudio Boolean @default(false)
+
   agent                Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
 
@@ -99,6 +105,26 @@ model AgentWebhooks {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   agent              Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model ScheduleSettings {
+  id                  String   @id @default(uuid())
+  agentId             String   @unique
+  agent               Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  email               String   @default("")
+  availableTimes      Json     // { "monday": [["08:00", "12:00"], ["14:00", "18:00"]], ... }
+  minAdvanceMinutes   Int?
+  maxAdvanceDays      Int?
+  maxEventDuration    Int?
+  alwaysOpen          Boolean  @default(false)
+
+  askForContactName   Boolean? @default(false)
+  askForContactPhone  Boolean? @default(false)
+  askForMeetingDuration Boolean? @default(false)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model Training {
@@ -179,11 +205,13 @@ model IntentionPrecondition {
   requestBody    String?
   failureCondition String
   failureMessage String
+  successAction String?
 
   intentionId    String
   intention      Intention @relation(fields: [intentionId], references: [id], onDelete: Cascade)
 
   headers        IntentionPreconditionHeader[]
+  queryParams      IntentionPreconditionQueryParam[]
 }
 
 model IntentionPreconditionHeader {
@@ -194,6 +222,14 @@ model IntentionPreconditionHeader {
   precondition    IntentionPrecondition @relation(fields: [preconditionId], references: [id], onDelete: Cascade)
 }
 
+model IntentionPreconditionQueryParam {
+  id                      String                 @id @default(uuid())
+  name                    String
+  value                   String
+
+  preconditionId          String
+  precondition            IntentionPrecondition  @relation(fields: [preconditionId], references: [id], onDelete: Cascade)
+}
 
 model CreditSpent {
   id        String   @id @default(uuid())

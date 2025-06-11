@@ -7,6 +7,7 @@ import { CreditSpentResponseDto } from './dto/credit-spent-response.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { EnhancedAgentDto } from './dto/enhanced-agent.dto';
 import { GroupingTime, AIModel } from '@prisma/client';
+import { AvailableTimesDto } from 'src/intentions/google-calendar/schedule-validation/dto/schedule-validation.dto';
 
 @Injectable()
 export class AgentsService {
@@ -182,7 +183,29 @@ export class AgentsService {
         },
       });
 
-      return { agent, settings, webhooks };
+      const defaultAvailableTimes = {
+        monday: [['09:00', '12:00'], ['13:00', '18:00']],
+        tuesday: [['09:00', '12:00'], ['13:00', '18:00']],
+        wednesday: [['09:00', '12:00'], ['13:00', '18:00']],
+        thursday: [['09:00', '12:00'], ['13:00', '18:00']],
+        friday: [['09:00', '12:00'], ['13:00', '18:00']],
+      };
+
+      const scheduleSettings = await tx.scheduleSettings.create({
+        data: {
+          agentId: agent.id,
+          minAdvanceMinutes: 120,
+          maxAdvanceDays: 15,
+          maxEventDuration: 60,
+          alwaysOpen: false,
+          availableTimes: defaultAvailableTimes,
+          askForContactName: true,
+          askForContactPhone: false,
+          askForMeetingDuration: false,
+        },
+      });      
+
+      return { agent, settings, webhooks, scheduleSettings };
     });
 
     // Return the combined data as EnhancedAgentDto
@@ -201,12 +224,24 @@ export class AgentsService {
         enabledEmoji: result.settings.enabledEmoji,
         limitSubjects: result.settings.limitSubjects,
         messageGroupingTime: result.settings.messageGroupingTime,
+        respondAudioWithAudio: result.settings.respondAudioWithAudio,
+        alwaysRespondWithAudio: result.settings.alwaysRespondWithAudio
       },
       webhooks: {
         onNewMessage: result.webhooks.onNewMessage,
         onLackKnowLedge: result.webhooks.onLackKnowLedge,
         onTransfer: result.webhooks.onTransfer,
         onFinishAttendance: result.webhooks.onFinishAttendance,
+      },
+      scheduleSettings: {
+        minAdvanceMinutes: result.scheduleSettings.minAdvanceMinutes,
+        maxAdvanceDays: result.scheduleSettings.maxAdvanceDays,
+        maxEventDuration: result.scheduleSettings.maxEventDuration,
+        alwaysOpen: result.scheduleSettings.alwaysOpen,
+        availableTimes: result.scheduleSettings.availableTimes as AvailableTimesDto,
+        askForContactName: result.scheduleSettings.askForContactName,
+        askForContactPhone: result.scheduleSettings.askForContactPhone,
+        askForMeetingDuration: result.scheduleSettings.askForMeetingDuration        
       }
     };
   }
@@ -257,6 +292,22 @@ export class AgentsService {
             updatedAt: true,
           },
         },
+        scheduleSettings: {
+          select: {
+            id: true,
+            email: true,
+            agentId: true,
+            createdAt: true,
+            updatedAt: true,
+            minAdvanceMinutes: true,
+            maxEventDuration: true,
+            alwaysOpen: true,
+            availableTimes: true,
+            askForContactName: true,
+            askForContactPhone: true,
+            askForMeetingDuration: true   
+          }
+        },
         intentions: {
           select: {
             id: true,
@@ -303,11 +354,19 @@ export class AgentsService {
                 requestBody: true,
                 failureCondition: true,
                 failureMessage: true,
-                headers: {   // 👈 ADD THIS BLOCK
+                successAction: true,
+                headers: {
                   select: {
                     id: true,
                     name: true,
                     value: true,
+                  }
+                },
+                queryParams: {
+                  select: {
+                    id: true,
+                    name: true,
+                    value: true
                   }
                 }
               }
@@ -321,7 +380,7 @@ export class AgentsService {
       throw new NotFoundException(`Agent with ID ${id} not found`);
     }
 
-    const { settings, webhooks, channels, intentions, ...agentData } = agent as any;
+    const { settings, webhooks, channels, intentions, scheduleSettings, ...agentData } = agent as any;
 
     return {
       agent: {
@@ -344,6 +403,10 @@ export class AgentsService {
         onLackKnowLedge: null,
         onTransfer: null,
         onFinishAttendance: null,
+      },
+      scheduleSettings: {
+        ...scheduleSettings,
+        availableTimes: scheduleSettings.availableTimes as AvailableTimesDto
       }
     };
   }
@@ -429,11 +492,19 @@ export class AgentsService {
                 requestBody: true,
                 failureCondition: true,
                 failureMessage: true,
+                successAction: true,
                 headers: {
                   select: {
                     id: true,
                     name: true,
                     value: true,
+                  }
+                },
+                queryParams: {
+                  select: {
+                    id: true,
+                    name: true,
+                    value: true
                   }
                 }
               }
@@ -456,6 +527,8 @@ export class AgentsService {
         enabledEmoji: true,
         limitSubjects: true,
         messageGroupingTime: true,
+        respondAudioWithAudio: true,
+        alwaysRespondWithAudio: true
       },
     });
 
@@ -470,6 +543,21 @@ export class AgentsService {
       },
     });
 
+    // Fetch the agent's schedule settings
+    const scheduleSettings = await this.prisma.scheduleSettings.findUnique({
+      where: { agentId: id },
+      select: {
+        minAdvanceMinutes: true,
+        maxAdvanceDays: true,
+        maxEventDuration: true,
+        alwaysOpen: true,
+        availableTimes: true,
+        askForContactName: true,
+        askForContactPhone: true,
+        askForMeetingDuration: true         
+      }
+    })
+
     // Return the combined data as EnhancedAgentDto
     return {
       agent: updatedAgent,
@@ -482,6 +570,8 @@ export class AgentsService {
         enabledEmoji: true,
         limitSubjects: true,
         messageGroupingTime: GroupingTime.NO_GROUP,
+        respondAudioWithAudio: false,
+        alwaysRespondWithAudio: false
       },
       webhooks: webhooks || {
         onNewMessage: null,
@@ -489,6 +579,10 @@ export class AgentsService {
         onTransfer: null,
         onFinishAttendance: null,
       },
+      scheduleSettings: {
+        ...scheduleSettings,
+        availableTimes: scheduleSettings.availableTimes as AvailableTimesDto
+      }
     };
   }
 

@@ -110,58 +110,19 @@ export class UsersController {
     return this.usersService.findOne(req.user.sub);
   }
 
+  // Initiate Google OAuth manually using googleapis
   @Get('google')
-  @UseGuards(PassportAuthGuard('google'))
-  @ApiOperation({ summary: 'Initiate Google OAuth login' })
+  @ApiOperation({ summary: 'Initiate Google OAuth login (manual)' })
   @ApiResponse({
     status: 302,
-    description: 'Redirects to Google for authentication',
+    description: 'Redirects to Google OAuth consent screen',
   })
-  googleAuth() {
-    // This is handled by Passport Google Strategy
-    // The @UseGuards(AuthGuard('google')) redirects to Google OAuth
+  async googleAuth(@Res() res) {
+    const { authUrl, state } = this.googleCalendarOAuthService.getSocialLoginAuthUrl();
+    console.log('Redirecting to Google OAuth URL:', authUrl);
+    console.log('State sent:', state);
+    return res.redirect(authUrl);
   }
-
-  @Get('google/callback')
-  @UseGuards(PassportAuthGuard('google'))
-  @ApiOperation({ summary: 'Handle Google OAuth callback' })
-  @ApiResponse({
-    status: 302,
-    description: 'Redirects to frontend with authentication token',
-  })
-  async googleAuthCallback(@Request() req, @Res() res) {
-    const extractParamValue = (req, param: string): string | null => {
-      const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
-      return parsedUrl.searchParams.get(param);
-    };
-
-    const code = extractParamValue(req, 'code');
-    const state = extractParamValue(req, 'state');
-
-    console.log(`Extracted code ${code} and state ${state}`);
-
-    if (code && state) {
-      try {
-        const tokenExchangeResult = await this.googleCalendarOAuthService.exchangeCodeForTokens(code, state);
-  
-      } catch(error) {
-        console.error('Token exchange failed:', error);
-      }
-    }
-
-    // Generate JWT token from the authenticated user
-    const token = this.authService.generateJwtToken(req.user);
-
-    // Redirect to frontend with the token
-    const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-      
-    return res.redirect(
-      HttpStatus.FOUND,
-      `${frontendUrl}/auth/oauth-result?token=${token}`
-    );
-  }
-
 
   @Get('facebook')
   @UseGuards(PassportAuthGuard('facebook'))

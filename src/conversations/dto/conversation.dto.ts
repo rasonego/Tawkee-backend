@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsUrl } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsUrl, IsBoolean } from 'class-validator';
 
 export class ConversationDto {
   @ApiProperty({
@@ -53,4 +53,11 @@ export class ConversationDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiProperty({
+    description: 'Indicates whether agent response will be audio or text',
+    required: true,
+  })
+  @IsBoolean()
+  respondViaAudio: boolean;
 }

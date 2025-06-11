@@ -4,7 +4,11 @@ import { AgentsService } from '../agents/agents.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { CreateIntentionDto } from './dto/create-intention.dto';
 import { UpdateIntentionDto } from './dto/update-intention.dto';
-import { createGoogleCalendarIntention } from './google-calendar-intention';
+import { 
+  createGoogleCalendarIntention,
+  suggestAvailableGoogleMeetingSlotsIntention,
+  cancelGoogleCalendarMeetingIntention
+} from './google-calendar/google-calendar-intention';
 import { FieldType, PreprocessingType, Prisma } from '@prisma/client';
 
 @Injectable()
@@ -171,27 +175,63 @@ export class IntentionsService {
     return { success: true };
   }
 
-  async remove(id: string): Promise<{ success: boolean }> {
-    // Ensure intention exists
-    const intention = await this.prisma.intention.findUnique({
-      where: { id },
-    });
+  async remove(id?: string, agentId?: string, toolName?: string): Promise<{ success: boolean }> {
+    // console.log('🗑️ [remove] Attempting to remove intention...');
+    console.log('🔍 [remove] Received parameters:', { id, agentId, toolName });
 
-    if (!intention) {
-      throw new NotFoundException(`Intention with ID ${id} not found`);
+    let whereClause: Prisma.IntentionWhereInput | null = null;
+
+    if (id) {
+      whereClause = { id };
+      console.log('📌 [remove] Built where clause using id:', whereClause);
+    } else if (agentId && toolName) {
+      whereClause = { agentId, toolName };
+      console.log('📌 [remove] Built where clause using agentId and toolName:', whereClause);
+    } else {
+      console.warn('⚠️ [remove] Invalid parameters. Either `id` or both `agentId` and `toolName` must be provided.');
+      throw new BadRequestException('Must provide either id or both agentId and toolName.');
     }
 
-    // Delete intention (cascading will handle related records)
+    const intention = await this.prisma.intention.findFirst({ where: whereClause });
+
+    if (!intention) {
+      // console.warn('❌ [remove] No matching intention found for:', whereClause);
+      throw new NotFoundException(
+        `Intention with ID ${id} or agentId ${agentId} & toolName ${toolName} not found`
+      );
+    }
+
+    // console.log('✅ [remove] Found intention. Proceeding to delete:', { intentionId: intention.id });
+
     await this.prisma.intention.delete({
-      where: { id },
+      where: { id: intention.id },
     });
+
+    // console.log('🧹 [remove] Successfully deleted intention:', { deletedId: intention.id });
 
     return { success: true };
   }
 
-  async registerGoogleCalendarIntention(agentId: string) {
+
+  async registerGoogleCalendarIntentions(agentId: string) {
     await this.agentsService.findOne(agentId);
 
+    await this.registerGoogleCalendarSuggestSlotsIntention(agentId);
+    await this.registerGoogleCalendarCancelMeetingIntention(agentId);
+    return await this.registerGoogleCalendarScheduleIntention(agentId);
+  }
+
+  async removeGoogleCalendarIntentions(agentId: string) {
+    await this.agentsService.findOne(agentId);
+
+    await this.remove(undefined, agentId, 'schedule_google_meeting');
+    await this.remove(undefined, agentId, 'cancel_google_meeting');
+    await this.remove(undefined, agentId, 'suggest_available_google_meeting_slots');
+    
+    return await this.registerGoogleCalendarScheduleIntention(agentId);
+  }
+
+  private async registerGoogleCalendarScheduleIntention(agentId: string) {
     const {
       fields,
       headers,
@@ -260,6 +300,164 @@ export class IntentionsService {
           fields: true,
           headers: true,
           params: true
+        },
+      });
+
+      return intention;
+    });
+  }
+
+  private async registerGoogleCalendarSuggestSlotsIntention(agentId: string) {
+    const {
+      fields,
+      headers,
+      authentication,       // ❌ runtime-only, stripped
+      responseProcessing,   // ❌ runtime-only, stripped
+      ...intentionData
+    } = suggestAvailableGoogleMeetingSlotsIntention;
+
+    const normalizeFieldType = (raw: string): FieldType => {
+      const map: Record<string, FieldType> = {
+        TEXT: FieldType.TEXT,
+        BOOLEAN: FieldType.BOOLEAN,
+        NUMBER: FieldType.NUMBER,
+        DATE: FieldType.DATE,
+        DATETIME: FieldType.DATE_TIME,
+        DATE_TIME: FieldType.DATE_TIME,
+        URL: FieldType.URL,
+      };
+
+      const key = raw.toUpperCase();
+      const normalized = map[key];
+
+      if (!normalized) {
+        throw new Error(`Invalid field type: "${raw}"`);
+      }
+
+      return normalized;
+    };
+
+    const castedFields = (fields || []).map(({ validation, defaultValue, ...field }) => ({
+      ...field,
+      type: normalizeFieldType(field.type),
+    }));
+
+    return this.prisma.$transaction(async (prisma) => {
+      const intention = await prisma.intention.create({
+        data: {
+          ...intentionData,
+          preprocessingMessage: intentionData.preprocessingMessage as PreprocessingType,
+          agent: {
+            connect: { id: agentId },
+          },
+          fields: {
+            create: castedFields,
+          },
+          headers: {
+            create: headers || [],
+          },
+        } as Prisma.IntentionCreateInput,
+        include: {
+          fields: true,
+          headers: true,
+          params: true
+        },
+      });
+
+      return intention;
+    });
+  } 
+
+  private async registerGoogleCalendarCancelMeetingIntention(agentId: string) {
+    const {
+      fields,
+      headers,
+      preconditions,
+      queryParams,          // ✅ Extract queryParams from root level
+      authentication,       // ❌ runtime-only, stripped
+      responseProcessing,   // ❌ runtime-only, stripped
+      errorHandling,        // ❌ runtime-only, stripped
+      ...intentionData
+    } = cancelGoogleCalendarMeetingIntention;
+
+    const formattedPreconditions = (preconditions || []).map(pre => ({
+      name: pre.name,
+      url: pre.url,
+      httpMethod: pre.httpMethod,
+      failureCondition: pre.failureCondition,
+      failureMessage: pre.failureMessage,
+      successAction: pre.successAction, // ✅ Include successAction if it exists
+      headers: {
+        create: pre.headers || [],
+      },
+      queryParams: pre.queryParams?.length
+        ? { create: pre.queryParams }
+        : undefined,
+    }));
+
+    const normalizeFieldType = (raw: string): FieldType => {
+      const map: Record<string, FieldType> = {
+        TEXT: FieldType.TEXT,
+        BOOLEAN: FieldType.BOOLEAN,
+        NUMBER: FieldType.NUMBER,
+        DATE: FieldType.DATE,
+        DATETIME: FieldType.DATE_TIME,
+        DATE_TIME: FieldType.DATE_TIME,
+        URL: FieldType.URL,
+      };
+
+      const key = raw.toUpperCase();
+      const normalized = map[key];
+
+      if (!normalized) {
+        throw new Error(`Invalid field type: "${raw}"`);
+      }
+
+      return normalized;
+    };
+
+    const castedFields = (fields || []).map(({ validation, defaultValue, ...field }) => ({
+      ...field,
+      type: normalizeFieldType(field.type),
+    }));
+
+    // ✅ Format root-level queryParams as params for Prisma
+    const formattedParams = (queryParams || []).map(param => ({
+      name: param.name,
+      value: param.value,
+    }));
+
+    return this.prisma.$transaction(async (prisma) => {
+      const intention = await prisma.intention.create({
+        data: {
+          ...intentionData,
+          preprocessingMessage: intentionData.preprocessingMessage as PreprocessingType,
+          agent: {
+            connect: { id: agentId },
+          },
+          fields: {
+            create: castedFields,
+          },
+          headers: {
+            create: headers || [],
+          },
+          params: {     
+            create: formattedParams,
+          },
+          preconditions: {
+            create: formattedPreconditions,
+          },
+        },
+        include: {
+          fields: true,
+          headers: true,
+          params: true,      
+          preconditions: { 
+            include: {
+              headers: true,
+              queryParams: true,
+            },
+          },
         },
       });
 

@@ -11,7 +11,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { IntentionsService } from './intentions.service';
-import { ElevenLabsService } from './elevenlabs/elevenlabs.service';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -34,8 +33,7 @@ import { AuthGuard } from '../auth/auth.guard';
 @Controller()
 export class IntentionsController {
   constructor(
-    private readonly intentionsService: IntentionsService,
-    private readonly elevenLabsService: ElevenLabsService
+    private readonly intentionsService: IntentionsService
   ) {}
 
   @Get('agent/:agentId/intentions')
@@ -126,97 +124,6 @@ export class IntentionsController {
     return this.intentionsService.remove(intentionId);
   }
 
-  // ElevenLabs Integration Endpoints
-  @Post('agent/:agentId/intentions/elevenlabs/setup')
-  @ApiOperation({ 
-    summary: 'Setup ElevenLabs intentions',
-    description: 'Creates all ElevenLabs AI voice synthesis intentions (Text-to-Speech, Voice Cloning, Speech-to-Speech) for an agent'
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'ElevenLabs intentions created successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        textToSpeech: { $ref: '#/components/schemas/IntentionDto' },
-        voiceCloning: { $ref: '#/components/schemas/IntentionDto' },
-        speechToSpeech: { $ref: '#/components/schemas/IntentionDto' },
-      },
-    },
-  })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Agent not found' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid agent ID or setup failed' })
-  @ApiParam({ name: 'agentId', description: 'Agent ID to setup ElevenLabs intentions for' })
-  async setupElevenLabsIntentions(
-    @Param('agentId') agentId: string
-  ): Promise<{
-    textToSpeech: IntentionDto;
-    voiceCloning: IntentionDto;
-    speechToSpeech: IntentionDto;
-  }> {
-    return this.elevenLabsService.createElevenLabsIntentions(agentId);
-  }
-
-  @Post('agent/:agentId/intentions/elevenlabs/text-to-speech')
-  @ApiOperation({ 
-    summary: 'Create ElevenLabs Text-to-Speech intention',
-    description: 'Creates a single Text-to-Speech intention using ElevenLabs AI voice synthesis'
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Text-to-Speech intention created successfully',
-    type: IntentionDto,
-  })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Agent not found' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input' })
-  @ApiParam({ name: 'agentId', description: 'Agent ID' })
-  async createTextToSpeechIntention(
-    @Param('agentId') agentId: string
-  ): Promise<IntentionDto> {
-    const { elevenLabsTextToSpeechIntention } = await import('./elevenlabs/elevenlabs.intentions');
-    return this.intentionsService.create(agentId, elevenLabsTextToSpeechIntention);
-  }
-
-  @Post('agent/:agentId/intentions/elevenlabs/voice-cloning')
-  @ApiOperation({ 
-    summary: 'Create ElevenLabs Voice Cloning intention',
-    description: 'Creates a Voice Cloning intention using ElevenLabs instant voice cloning from audio samples'
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Voice Cloning intention created successfully',
-    type: IntentionDto,
-  })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Agent not found' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input' })
-  @ApiParam({ name: 'agentId', description: 'Agent ID' })
-  async createVoiceCloningIntention(
-    @Param('agentId') agentId: string
-  ): Promise<IntentionDto> {
-    const { elevenLabsVoiceCloningIntention } = await import('./elevenlabs/elevenlabs.intentions');
-    return this.intentionsService.create(agentId, elevenLabsVoiceCloningIntention);
-  }
-
-  @Post('agent/:agentId/intentions/elevenlabs/speech-to-speech')
-  @ApiOperation({ 
-    summary: 'Create ElevenLabs Speech-to-Speech intention',
-    description: 'Creates a Speech-to-Speech intention to convert speech audio to different voice using ElevenLabs technology'
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Speech-to-Speech intention created successfully',
-    type: IntentionDto,
-  })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Agent not found' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input' })
-  @ApiParam({ name: 'agentId', description: 'Agent ID' })
-  async createSpeechToSpeechIntention(
-    @Param('agentId') agentId: string
-  ): Promise<IntentionDto> {
-    const { elevenLabsSpeechToSpeechIntention } = await import('./elevenlabs/elevenlabs.intentions');
-    return this.intentionsService.create(agentId, elevenLabsSpeechToSpeechIntention);
-  }
-
   @Post('agent/:agentId/intentions/google-calendar/schedule-meeting')
   @ApiOperation({ 
     summary: 'Create Google Calendar scheduling intention',
@@ -233,6 +140,6 @@ export class IntentionsController {
   async createGoogleCalendarIntention(
     @Param('agentId') agentId: string
   ): Promise<IntentionDto> {
-    return this.intentionsService.registerGoogleCalendarIntention(agentId);
+    return this.intentionsService.registerGoogleCalendarIntentions(agentId);
   }
 }

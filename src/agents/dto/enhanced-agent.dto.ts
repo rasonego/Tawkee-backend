@@ -12,6 +12,7 @@ import { Type } from 'class-transformer';
 import { AgentSettingsDto } from '../../agent-settings/dto/agent-settings.dto';
 import { AgentWebhooksDto } from '../../agent-webhooks/dto/agent-webhooks.dto';
 import { IntentionDto } from 'src/intentions/dto/intention.dto';
+import { PartialScheduleSettingsDto, ScheduleSettingsDto } from 'src/intentions/google-calendar/schedule-validation/dto/schedule-validation.dto';
 
 class BasicAgentInfo {
   @ApiProperty({
@@ -151,4 +152,10 @@ export class EnhancedAgentDto {
   @ValidateNested()
   @Type(() => AgentWebhooksDto)
   webhooks: AgentWebhooksDto;
+
+  @ApiProperty({
+    description: 'Agent Schedule Settings',
+    type: PartialScheduleSettingsDto
+  })
+  scheduleSettings: PartialScheduleSettingsDto;
 }

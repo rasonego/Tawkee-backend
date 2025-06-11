@@ -7,7 +7,9 @@ import { AuthModule } from '../auth/auth.module';
 import { DeepseekModule } from '../deepseek/deepseek.module';
 import { OpenAiModule } from '../openai/openai.module';
 import { TrainingsModule } from '../trainings/trainings.module';
-import { GoogleCalendarOAuthModule } from 'src/intentions/google-calendar/google-calendar-oauth.module';
+import { GoogleCalendarOAuthModule } from '../intentions/google-calendar/google-calendar-oauth.module';
+import { ScheduleValidationModule } from '../intentions/google-calendar/schedule-validation/schedule-validation.module';
+import { ElevenLabsService } from 'src/elevenlabs/elevenlabs.service';
 
 @Module({
   imports: [
@@ -17,10 +19,11 @@ import { GoogleCalendarOAuthModule } from 'src/intentions/google-calendar/google
     DeepseekModule,
     OpenAiModule,
     TrainingsModule,
-    GoogleCalendarOAuthModule
+    GoogleCalendarOAuthModule,
+    ScheduleValidationModule
   ],
   controllers: [ConversationsController],
-  providers: [ConversationsService],
+  providers: [ConversationsService, ElevenLabsService],
   exports: [ConversationsService],
 })
 export class ConversationsModule {}

@@ -64,4 +64,20 @@ export class AgentSettingsDto {
   @IsEnum(GroupingTime)
   @IsOptional()
   messageGroupingTime?: GroupingTime;
+
+  @ApiProperty({
+    description: 'If true, the agent will always respond using audio',
+    example: true,
+    required: false,
+  })
+  @IsBoolean()
+  alwaysRespondWithAudio: boolean;
+
+  @ApiProperty({
+    description: 'If true, the agent will respond with audio when user sends audio',
+    example: true,
+    required: false,
+  })
+  @IsBoolean()
+  respondAudioWithAudio: boolean;
 }

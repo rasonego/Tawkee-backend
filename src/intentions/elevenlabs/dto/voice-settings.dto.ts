@@ -1,1 +1,0 @@
-export { VoiceSettingsDto } from './text-to-speech.dto';

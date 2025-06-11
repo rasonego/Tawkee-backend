@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as crypto from 'crypto';
 import { google, Auth } from 'googleapis';
+import { IntentionsService } from '../intentions.service';
+import { ScheduleValidationService } from './schedule-validation/schedule-validation.service';
 
 export interface GoogleTokens {
   access_token: string;
@@ -20,10 +22,12 @@ export class GoogleCalendarOAuthService {
   private readonly stateSecret: string;
   private readonly scopes: string[];
   private readonly oauth2Client: Auth.OAuth2Client;
-
+  
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly intentionsService: IntentionsService,
+    private readonly scheduleValidationService: ScheduleValidationService
   ) {
     this.clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
@@ -50,29 +54,85 @@ export class GoogleCalendarOAuthService {
     }
   }
 
-  async getAuthUrl(agentId: string): Promise<{ authUrl: string, state: string }> {
-    // Ensure the agent exists before performing the upsert
-    const agentExists = await this.prisma.agent.findUnique({
+  private base64UrlEncode(str: string): string {
+    return Buffer.from(str)
+      .toString('base64')
+      .replace(/\+/g, '-') // URL-safe replacements
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  }
+
+  getSocialLoginAuthUrl(): { authUrl: string; state: string } {
+    const payloadObj = {
+      type: 'social-login',
+      nonce: this.generateNonce(),
+      timestamp: Date.now(),
+    };
+    
+    // Stringify payload first
+    const payloadString = JSON.stringify(payloadObj);
+    
+    // Generate signature from stringified payload
+    const signature = this.generateSignature(payloadString);
+    
+    // Compose state object with string payload
+    const stateObject = { payload: payloadString, signature };
+    
+    // Base64 encode state JSON string
+    const state = Buffer.from(JSON.stringify(stateObject)).toString('base64');
+
+    const authUrl = this.oauth2Client.generateAuthUrl({
+      access_type: 'online',
+      scope: ['openid', 'email', 'profile'],
+      prompt: 'consent',
+      state,
+    });
+
+    return { authUrl, state };
+  }
+
+  generateNonce(length = 16): string {
+    // Generate `length` bytes of cryptographically strong random data, then hex encode it
+    return crypto.randomBytes(length).toString('hex');
+  }
+
+  generateSignature(payloadString: string): string {
+    const secret = this.configService.get<string>('STATE_SIGNING_SECRET') || 'victorx';
+
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(payloadString);
+
+    return hmac.digest('hex');
+  }
+
+  verifySignature(payloadString: string, signature: string): boolean {
+    const expected = this.generateSignature(payloadString);
+    return expected === signature;
+  }
+
+  async getCalendarAuthUrl(agentId: string): Promise<{ authUrl: string; state: string }> {
+    const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },
       select: { id: true },
     });
 
-    if (!agentExists) {
-      console.error(`Agent with ID ${agentId} does not exist. Aborting auth URL generation.`);
-      throw new Error(`Agent with ID ${agentId} not found`);
+    if (!agent) {
+      throw new BadRequestException(`Agent with ID ${agentId} not found`);
     }
 
     const state = this.generateState(agentId);
+
     const authUrl = this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: this.scopes,
       prompt: 'consent',
       state,
     });
+
     return { authUrl, state };
   }
 
-  async exchangeCodeForTokens(code: string, state: string) {
+  async exchangeCodeForTokens(code: string, state: string): Promise<string> {
     const agentId = this.verifyState(state);
 
     const { tokens } = await this.oauth2Client.getToken(code);
@@ -86,9 +146,85 @@ export class GoogleCalendarOAuthService {
       token_type: tokens.token_type ?? 'Bearer',
     };
 
+    // Set the access token for user info call
+    this.oauth2Client.setCredentials({ access_token: tokens.access_token });
+
+    // Fetch user email using Google OAuth2 API
+    const oauth2 = google.oauth2({
+      auth: this.oauth2Client,
+      version: 'v2',
+    });
+
+    const userinfoResponse = await oauth2.userinfo.get();
+
+    const email = userinfoResponse?.data?.email;
+
+    if (!email) {
+      throw new UnauthorizedException('Failed to retrieve email for authorized calendar account');
+    }
+
     await this.storeAgentTokens(agentId, googleTokens);
-    return googleTokens;
+
+    return email;
   }
+
+  async exchangeSocialLoginCode(
+    code: string,
+    statePayload: { type: string; nonce: string; timestamp: number }
+  ): Promise<{
+    tokens: GoogleTokens;
+    profile: {
+      email: string;
+      name: string;
+      picture: string;
+      sub: string;
+    };
+  }> {
+    // Validate the state payload structure
+    if (!statePayload || statePayload.type !== 'social-login') {
+      throw new BadRequestException('Invalid state for social login');
+    }
+
+    // Optionally, you can add nonce or timestamp validation here for extra security
+
+    // Exchange code for tokens
+    const { tokens } = await this.oauth2Client.getToken(code);
+    const expires_at = tokens.expiry_date ?? (Date.now() + 3600 * 1000);
+
+    const googleTokens: GoogleTokens = {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at,
+      scope: tokens.scope ?? 'openid email profile',
+      token_type: tokens.token_type ?? 'Bearer',
+    };
+
+    // Set the access token on the client for subsequent API calls
+    this.oauth2Client.setCredentials({ access_token: tokens.access_token });
+
+    // Use Google's OpenID endpoint to fetch profile info
+    const oauth2 = google.oauth2({
+      auth: this.oauth2Client,
+      version: 'v2',
+    });
+
+    const userinfoResponse = await oauth2.userinfo.get();
+
+    if (!userinfoResponse?.data?.email) {
+      throw new UnauthorizedException('Failed to retrieve user profile from Google');
+    }
+
+    return {
+      tokens: googleTokens,
+      profile: {
+        email: userinfoResponse.data.email,
+        name: userinfoResponse.data.name,
+        picture: userinfoResponse.data.picture,
+        sub: userinfoResponse.data.id,
+      },
+    };
+  }
+
 
   async getAuthStatus(agentId: string): Promise<{
     isAuthenticated: boolean;
@@ -180,26 +316,69 @@ export class GoogleCalendarOAuthService {
     const tokens = await this.getAgentTokens(agentId);
     if (tokens?.access_token) await this.oauth2Client.revokeToken(tokens.access_token);
     await this.prisma.agentGoogleToken.deleteMany({ where: { agentId } });
+
+    await this.intentionsService.removeGoogleCalendarIntentions(agentId);
+    await this.scheduleValidationService.updateScheduleSettings(agentId, { email: '' });
+
     return { success: true };
   }
 
   private generateState(agentId: string): string {
     const timestamp = Date.now();
-    const payload = JSON.stringify({ agentId, timestamp });
-    const signature = crypto.createHmac('sha256', this.stateSecret).update(payload).digest('hex');
-    return Buffer.from(JSON.stringify({ payload, signature })).toString('base64');
+    const payloadObj = { agentId, timestamp };
+    const payloadString = JSON.stringify(payloadObj);
+
+    // Use generateSignature expecting a string payload
+    const signature = this.generateSignature(payloadString);
+
+    const stateObject = { payload: payloadString, signature };
+    const encodedState = Buffer.from(JSON.stringify(stateObject)).toString('base64');
+
+    // Logging
+    // console.log('--- Generating OAuth State ---');
+    // console.log('Agent ID:', agentId);
+    // console.log('Timestamp:', timestamp);
+    // console.log('Payload (stringified):', payloadString);
+    // console.log('Generated Signature:', signature);
+    // console.log('Encoded State:', encodedState);
+
+    return encodedState;
   }
 
   private verifyState(state: string): string {
-    const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
-    const { payload, signature } = decoded;
-    const expected = crypto.createHmac('sha256', this.stateSecret).update(payload).digest('hex');
-    if (expected !== signature) throw new BadRequestException('Invalid state signature');
+    try {
+      const decodedState = Buffer.from(state, 'base64').toString();
+      const { payload, signature } = JSON.parse(decodedState);
 
-    const { agentId, timestamp } = JSON.parse(payload);
-    if (Date.now() - timestamp > 3600000) throw new BadRequestException('State expired');
+      if (!payload || !signature) {
+        throw new BadRequestException('Invalid state structure');
+      }
 
-    return agentId;
+      const expectedSignature = this.generateSignature(payload);
+
+      // Logging
+      // console.log('--- Verifying OAuth State ---');
+      // console.log('Decoded State:', decodedState);
+      // console.log('Payload (stringified):', payload);
+      // console.log('Provided Signature:', signature);
+      // console.log('Expected Signature:', expectedSignature);
+
+      if (signature !== expectedSignature) {
+        throw new BadRequestException('Invalid state signature');
+      }
+
+      const parsedPayload = JSON.parse(payload);
+      const { agentId, timestamp } = parsedPayload;
+
+      if (Date.now() - timestamp > 1000 * 60 * 60) {
+        throw new BadRequestException('State expired');
+      }
+
+      return agentId;
+    } catch (err) {
+      console.error('Failed to verify state:', err);
+      throw new BadRequestException('Invalid state format');
+    }
   }
 
   private async storeAgentTokens(agentId: string, tokens: GoogleTokens) {

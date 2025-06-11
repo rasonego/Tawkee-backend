@@ -6,8 +6,10 @@ import {
   UseGuards,
   Get,
   Query,
+  Delete,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
+import { ElevenLabsService } from 'src/elevenlabs/elevenlabs.service';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -22,13 +24,50 @@ import { ConversationResponseDto } from './dto/conversation-response.dto';
 import { AddMessageDto } from './dto/add-message.dto';
 import { getCommunicationGuide } from '../common/utils/communication-guides';
 import { getGoalGuide } from '../common/utils/goal-guides';
+import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator';
+
+class TextToAudioDto {
+  @IsString()
+  text: string;
+
+  @IsString()
+  voiceId: string;
+
+  @IsOptional()
+  @IsString()
+  modelId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  stability?: number;
+
+  @IsOptional()
+  @IsNumber()
+  similarityBoost?: number;
+}
+
+class VoiceCloningDto {
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  files: string[]; // This would typically be handled by file upload middleware
+}
 
 @ApiTags('Conversations')
 @ApiBearerAuth()
 @UseGuards(AuthGuard)
 @Controller()
 export class ConversationsController {
-  constructor(private readonly conversationsService: ConversationsService) {}
+  constructor(
+    private readonly conversationsService: ConversationsService,
+    private readonly elevenLabsService: ElevenLabsService
+  ) {}
 
   @Post('agent/:agentId/conversation')
   @ApiOperation({ summary: 'Start or continue a conversation with an agent' })
@@ -125,5 +164,29 @@ export class ConversationsController {
       type,
       guide: getGoalGuide(type),
     };
+  }
+
+  @Post('text-to-audio')
+  @ApiOperation({ summary: 'Convert text to audio using ElevenLabs' })
+  @ApiResponse({ status: 200, description: 'Audio generated successfully', type: Buffer })
+  async textToAudio(@Body() textToAudioDto: TextToAudioDto): Promise<any> {
+    return this.elevenLabsService.textToAudio(textToAudioDto);
+  }
+
+  @Post('voice-cloning')
+  @ApiOperation({ summary: 'Clone a voice using ElevenLabs' })
+  @ApiResponse({ status: 200, description: 'Voice cloned successfully' })
+  async cloneVoice(@Body() voiceCloningDto: VoiceCloningDto): Promise<any> {
+    // In a real application, 'files' would be handled via NestJS Multer or similar
+    // For this example, we're passing file paths, assuming they are accessible by the service
+    return this.elevenLabsService.cloneVoice(voiceCloningDto);
+  }
+
+  @Delete('voice/:voiceId')
+  @ApiOperation({ summary: 'Delete a cloned voice from ElevenLabs' })
+  @ApiParam({ name: 'voiceId', description: 'ID of the voice to delete' })
+  @ApiResponse({ status: 200, description: 'Voice deleted successfully' })
+  async deleteVoice(@Param('voiceId') voiceId: string): Promise<any> {
+    return this.elevenLabsService.deleteVoice({ voiceId });
   }
 }
