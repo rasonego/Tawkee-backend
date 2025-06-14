@@ -28,7 +28,7 @@ model User {
   verificationExpires DateTime?
   verificationToken   String?
   workspace           Workspace @relation(fields: [workspaceId], references: [id])
-   
+
   @@index([provider, providerId])
   @@index([verificationToken])
   @@index([resetToken])
@@ -39,12 +39,16 @@ model Workspace {
   name               String
   credits            Int                @default(0)
   subscriptionStatus SubscriptionStatus @default(TRIAL)
+  stripeCustomerId   String?            @unique
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
-  agents             Agent[]
-  chats              Chat[]
-  interactions       Interaction[]
-  user               User?
+
+  agents        Agent[]
+  chats         Chat[]
+  interactions  Interaction[]
+  subscriptions Subscription[]
+  usageRecords  UsageRecord[]
+  user          User?
 }
 
 model Agent {
@@ -70,16 +74,16 @@ model Agent {
   intentions        Intention[]
   interactions      Interaction[]
   trainings         Training[]
-  
-  googleToken AgentGoogleToken?
-  scheduleSettings ScheduleSettings?
+
+  googleToken        AgentGoogleToken?
+  scheduleSettings   ScheduleSettings?
   elevenLabsSettings ElevenLabsSettings?
 }
 
 model AgentSettings {
   id                   String       @id @default(uuid())
   preferredModel       AIModel      @default(GPT_4_1)
-  timezone             String       
+  timezone             String
   enabledHumanTransfer Boolean      @default(true)
   enabledReminder      Boolean      @default(true)
   splitMessages        Boolean      @default(true)
@@ -90,7 +94,7 @@ model AgentSettings {
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
-  agent                Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
 
 model AgentWebhooks {
@@ -106,44 +110,44 @@ model AgentWebhooks {
 }
 
 model ScheduleSettings {
-  id                  String   @id @default(uuid())
-  agentId             String   @unique
-  agent               Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  id      String @id @default(uuid())
+  agentId String @unique
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
-  email               String   @default("")
-  availableTimes      Json     // { "monday": [["08:00", "12:00"], ["14:00", "18:00"]], ... }
-  minAdvanceMinutes   Int?
-  maxAdvanceDays      Int?
-  maxEventDuration    Int?
-  alwaysOpen          Boolean  @default(false)
+  email             String  @default("")
+  availableTimes    Json // { "monday": [["08:00", "12:00"], ["14:00", "18:00"]], ... }
+  minAdvanceMinutes Int?
+  maxAdvanceDays    Int?
+  maxEventDuration  Int?
+  alwaysOpen        Boolean @default(false)
 
-  askForContactName   Boolean? @default(false)
-  askForContactPhone  Boolean? @default(false)
+  askForContactName     Boolean? @default(false)
+  askForContactPhone    Boolean? @default(false)
   askForMeetingDuration Boolean? @default(false)
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ElevenLabsSettings {
-  id                   String       @id @default(uuid())
-  agentId              String       @unique
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
-  connected            Boolean @default(false)
-  respondAudioWithAudio Boolean @default(false)
-  alwaysRespondWithAudio Boolean @default(false)
-  stability                  Float        @default(0.75)
-  similarityBoost            Float        @default(0.75)
+  id                        String   @id @default(uuid())
+  agentId                   String   @unique
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  connected                 Boolean  @default(false)
+  respondAudioWithAudio     Boolean  @default(false)
+  alwaysRespondWithAudio    Boolean  @default(false)
+  stability                 Float    @default(0.75)
+  similarityBoost           Float    @default(0.75)
   selectedElevenLabsVoiceId String?
-  subscriptionTier    String
-  characterCount      Int
-  characterLimit      Int
-  userName            String
-  elevenLabsApiKey String?
+  subscriptionTier          String
+  characterCount            Int
+  characterLimit            Int
+  userName                  String
+  elevenLabsApiKey          String?
 
-  agent                Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
-}  
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
 
 model Training {
   id               String       @id @default(uuid())
@@ -165,7 +169,7 @@ model Training {
 
 model Intention {
   id                   String            @id @default(uuid())
-  toolName             String            
+  toolName             String
   description          String
   preprocessingMessage PreprocessingType @default(DISABLED)
   preprocessingText    String?
@@ -183,7 +187,7 @@ model Intention {
   headers              IntentionHeader[]
   params               IntentionParam[]
 
-  preconditions        IntentionPrecondition[]
+  preconditions IntentionPrecondition[]
 
   @@index([toolName])
 }
@@ -216,37 +220,37 @@ model IntentionParam {
 }
 
 model IntentionPrecondition {
-  id             String    @id @default(uuid())
-  name           String
-  url            String
-  httpMethod     String    @default("POST")
-  requestBody    String?
+  id               String  @id @default(uuid())
+  name             String
+  url              String
+  httpMethod       String  @default("POST")
+  requestBody      String?
   failureCondition String
-  failureMessage String
-  successAction String?
+  failureMessage   String
+  successAction    String?
 
-  intentionId    String
-  intention      Intention @relation(fields: [intentionId], references: [id], onDelete: Cascade)
+  intentionId String
+  intention   Intention @relation(fields: [intentionId], references: [id], onDelete: Cascade)
 
-  headers        IntentionPreconditionHeader[]
-  queryParams      IntentionPreconditionQueryParam[]
+  headers     IntentionPreconditionHeader[]
+  queryParams IntentionPreconditionQueryParam[]
 }
 
 model IntentionPreconditionHeader {
-  id              String    @id @default(uuid())
-  name            String
-  value           String
-  preconditionId  String
-  precondition    IntentionPrecondition @relation(fields: [preconditionId], references: [id], onDelete: Cascade)
+  id             String                @id @default(uuid())
+  name           String
+  value          String
+  preconditionId String
+  precondition   IntentionPrecondition @relation(fields: [preconditionId], references: [id], onDelete: Cascade)
 }
 
 model IntentionPreconditionQueryParam {
-  id                      String                 @id @default(uuid())
-  name                    String
-  value                   String
+  id    String @id @default(uuid())
+  name  String
+  value String
 
-  preconditionId          String
-  precondition            IntentionPrecondition  @relation(fields: [preconditionId], references: [id], onDelete: Cascade)
+  preconditionId String
+  precondition   IntentionPrecondition @relation(fields: [preconditionId], references: [id], onDelete: Cascade)
 }
 
 model CreditSpent {
@@ -397,8 +401,8 @@ model BlacklistedToken {
 model AgentGoogleToken {
   id           String   @id @default(cuid())
   agentId      String   @unique
-  accessToken  String   // Encrypted
-  refreshToken String?  // Encrypted, optional
+  accessToken  String // Encrypted
+  refreshToken String? // Encrypted, optional
   expiresAt    BigInt
   scope        String
   tokenType    String   @default("Bearer")
@@ -410,11 +414,99 @@ model AgentGoogleToken {
   @@map("agent_google_tokens")
 }
 
+// Adicione essas tabelas ao seu schema existente
+
+model Plan {
+  id              String       @id @default(uuid())
+  name            String       @unique
+  stripePriceId   String       @unique
+  stripeProductId String
+  description     String?
+  price           Decimal      @db.Decimal(10, 2)
+  currency        String       @default("USD")
+  interval        PlanInterval
+  intervalCount   Int          @default(1)
+  features        Json? // Array de features do plano
+  apiRequestLimit Int? // Limite de requests da API
+  agentLimit      Int? // Limite de agents
+  isActive        Boolean      @default(true)
+  isEnterprise    Boolean      @default(false)
+  trialDays       Int?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  workspaceId          String
+  planId               String
+  stripeSubscriptionId String             @unique
+  stripeCustomerId     String
+  status               SubscriptionStatus
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  canceledAt           DateTime?
+  trialStart           DateTime?
+  trialEnd             DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan        Plan          @relation(fields: [planId], references: [id])
+  UsageRecord UsageRecord[]
+
+  @@map("subscriptions")
+}
+
+model StripeWebhook {
+  id              String    @id @default(uuid())
+  stripeEventId   String    @unique
+  eventType       String
+  processed       Boolean   @default(false)
+  processingError String?
+  data            Json
+  createdAt       DateTime  @default(now())
+  processedAt     DateTime?
+
+  @@map("stripe_webhooks")
+}
+
+model UsageRecord {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  subscriptionId String?
+  requestType    String // 'api_call', 'text_to_speech', etc.
+  quantity       Int      @default(1)
+  cost           Decimal? @db.Decimal(10, 4)
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@index([subscriptionId, createdAt])
+  @@map("usage_records")
+}
+
+enum PlanInterval {
+  MONTH
+  YEAR
+}
+
 enum SubscriptionStatus {
   TRIAL
   ACTIVE
   PAST_DUE
   CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  UNPAID
 }
 
 enum CommunicationType {

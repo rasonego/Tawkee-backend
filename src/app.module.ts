@@ -26,6 +26,7 @@ import { UsersModule } from './users/users.module';
 import { GoogleCalendarOAuthModule } from './intentions/google-calendar/google-calendar-oauth.module';
 import * as Joi from 'joi';
 import { ScheduleValidationModule } from './intentions/google-calendar/schedule-validation/schedule-validation.module';
+import { StripeModule } from './stripe/stripe.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { ScheduleValidationModule } from './intentions/google-calendar/schedule-
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    StripeModule,
     WorkspacesModule,
     AgentsModule,
     AgentSettingsModule,

@@ -22,6 +22,7 @@
     "@nestjs/common": "^11.1.0",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.0",
+    "@nestjs/event-emitter": "^3.0.1",
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.0",
@@ -66,6 +67,7 @@
     "resend": "^4.5.1",
     "rxjs": "^7.8.2",
     "socket.io": "^4.8.1",
+    "stripe": "^18.2.1",
     "textract": "^2.5.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
