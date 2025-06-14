@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsBoolean, IsEnum, IsOptional } from 'class-validator';
+import { IsString, IsBoolean, IsEnum, IsOptional, IsNumber, Min, Max } from 'class-validator';
 import { AIModel, GroupingTime } from '@prisma/client';
 
 export class AgentSettingsDto {
@@ -59,27 +59,39 @@ export class AgentSettingsDto {
     description: 'Message grouping time setting',
     enum: GroupingTime,
     example: GroupingTime.NO_GROUP,
-    required: false
   })
   @IsEnum(GroupingTime)
-  @IsOptional()
   messageGroupingTime?: GroupingTime;
 
   @ApiProperty({
     description: 'If true, the agent will always respond using audio',
     example: true,
-    required: false,
   })
-  @IsOptional()
   @IsBoolean()
   alwaysRespondWithAudio?: boolean;
 
   @ApiProperty({
     description: 'If true, the agent will respond with audio when user sends audio',
     example: true,
-    required: false,
   })
-  @IsOptional()
   @IsBoolean()
   respondAudioWithAudio?: boolean;
+
+  @ApiProperty({
+    description: 'Voice stability for ElevenLabs (range 0.0 to 1.0)',
+    example: 0.75,
+  })
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  stability?: number;
+
+  @ApiProperty({
+    description: 'Similarity boost for ElevenLabs (range 0.0 to 1.0)',
+    example: 0.6,
+  })
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  similarityBoost?: number;  
 }

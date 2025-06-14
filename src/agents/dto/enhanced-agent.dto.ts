@@ -13,6 +13,7 @@ import { AgentSettingsDto } from '../../agent-settings/dto/agent-settings.dto';
 import { AgentWebhooksDto } from '../../agent-webhooks/dto/agent-webhooks.dto';
 import { IntentionDto } from 'src/intentions/dto/intention.dto';
 import { PartialScheduleSettingsDto, ScheduleSettingsDto } from 'src/intentions/google-calendar/schedule-validation/dto/schedule-validation.dto';
+import { ElevenLabsSettingsDto } from 'src/elevenlabs/dto/elevenlabs.dto';
 
 class BasicAgentInfo {
   @ApiProperty({
@@ -158,4 +159,10 @@ export class EnhancedAgentDto {
     type: PartialScheduleSettingsDto
   })
   scheduleSettings: PartialScheduleSettingsDto;
+
+  @ApiProperty({
+    description: 'Agent ElevenLabs Settings',
+    type: ElevenLabsSettingsDto
+  })
+  elevenLabsSettings: Partial<ElevenLabsSettingsDto>;
 }

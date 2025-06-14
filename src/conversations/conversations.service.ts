@@ -332,10 +332,9 @@ export class ConversationsService {
             // Intention executed, now check for audio response
             if (conversationDto.respondViaAudio && responseText) {
               try {
-                const audioData = await this.elevenLabsService.textToAudio({
-                  text: responseText,
-                  voiceId: enhancedAgent.settings.elevenLabsVoiceId || 'IRHApOXLvnW57QJPQH2P', // Use agent's configured voice or a default
-                });
+                const audioData = await this.elevenLabsService.textToAudio(
+                  enhancedAgent.id, { text: responseText }
+                );
                 if (audioData) {
                   audios.push(audioData); // Add the audio data (Buffer) to the audios array
                 }
@@ -372,10 +371,9 @@ export class ConversationsService {
             // Intention error, now check for audio response
             if (conversationDto.respondViaAudio && responseText) {
               try {
-                const audioData = await this.elevenLabsService.textToAudio({
-                  text: responseText,
-                  voiceId: enhancedAgent.settings.elevenLabsVoiceId || 'IRHApOXLvnW57QJPQH2P', // Use agent's configured voice or a default
-                });
+                const audioData = await this.elevenLabsService.textToAudio(
+                  enhancedAgent.id, { text: responseText }
+                );
                 if (audioData) {
                   audios.push(audioData);
                 }
@@ -520,10 +518,9 @@ export class ConversationsService {
       // After generating responseText (either from intention or fallback AI), check if audio response is needed
       if (conversationDto.respondViaAudio && responseText) {
         try {
-          const audioData = await this.elevenLabsService.textToAudio({
-            text: responseText,
-            voiceId: enhancedAgent.settings.elevenLabsVoiceId || 'IRHApOXLvnW57QJPQH2P', // Use agent's configured voice or a default
-          });
+          const audioData = await this.elevenLabsService.textToAudio(
+            enhancedAgent.id, { text: responseText }
+          );
           if (audioData) {
             audios.push(audioData);
           }

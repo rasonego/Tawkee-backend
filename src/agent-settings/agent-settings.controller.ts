@@ -96,7 +96,7 @@ export class AgentSettingsController {
   @ApiParam({ name: 'agentId', description: 'Agent ID' })
   async updateSettings(
     @Param('agentId') agentId: string,
-    @Body() agentSettingsDto: AgentSettingsDto
+    @Body() agentSettingsDto: Partial<AgentSettingsDto>
   ): Promise<{ updatedSettingsDto: AgentSettingsDto }> {
     return this.agentSettingsService.updateSettings(agentId, agentSettingsDto);
   }

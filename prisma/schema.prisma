@@ -73,6 +73,7 @@ model Agent {
   
   googleToken AgentGoogleToken?
   scheduleSettings ScheduleSettings?
+  elevenLabsSettings ElevenLabsSettings?
 }
 
 model AgentSettings {
@@ -88,9 +89,6 @@ model AgentSettings {
   agentId              String       @unique
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
-
-  respondAudioWithAudio Boolean @default(false)
-  alwaysRespondWithAudio Boolean @default(false)
 
   agent                Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
@@ -126,6 +124,26 @@ model ScheduleSettings {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
+
+model ElevenLabsSettings {
+  id                   String       @id @default(uuid())
+  agentId              String       @unique
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  connected            Boolean @default(false)
+  respondAudioWithAudio Boolean @default(false)
+  alwaysRespondWithAudio Boolean @default(false)
+  stability                  Float        @default(0.75)
+  similarityBoost            Float        @default(0.75)
+  selectedElevenLabsVoiceId String?
+  subscriptionTier    String
+  characterCount      Int
+  characterLimit      Int
+  userName            String
+  elevenLabsApiKey String?
+
+  agent                Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}  
 
 model Training {
   id               String       @id @default(uuid())
@@ -292,7 +310,8 @@ model Message {
   audioUrl           String?
   documentUrl        String?
   fileName           String?
-  midiaContent       String?
+  mediaContent       String?
+  mimetype           String?
   width              Int?
   height             Int?
   whatsappMessageId  String?        @unique

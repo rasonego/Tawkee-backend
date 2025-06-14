@@ -43,9 +43,7 @@ export class AgentSettingsService {
         splitMessages: settings.splitMessages,
         enabledEmoji: settings.enabledEmoji,
         limitSubjects: settings.limitSubjects,
-        messageGroupingTime: settings.messageGroupingTime,
-        alwaysRespondWithAudio: settings.alwaysRespondWithAudio,
-        respondAudioWithAudio: settings.respondAudioWithAudio
+        messageGroupingTime: settings.messageGroupingTime
       };
     } catch (error) {
       this.logger.error(
@@ -80,7 +78,7 @@ export class AgentSettingsService {
 
   async updateSettings(
     agentId: string,
-    agentSettingsDto: AgentSettingsDto
+    agentSettingsDto: Partial<AgentSettingsDto>
   ): Promise<{ updatedSettingsDto: AgentSettingsDto }> {
     try {
       // Update existing settings
@@ -134,8 +132,11 @@ export class AgentSettingsService {
         enabledEmoji: true,
         limitSubjects: true,
         messageGroupingTime: 'NO_GROUP',
+
         respondAudioWithAudio: false,
-        alwaysRespondWithAudio: false
+        alwaysRespondWithAudio: false,
+        similarityBoost: 0.75,
+        stability: 0.75
       };
 
       await this.prisma.agentSettings.create({

@@ -65,6 +65,33 @@ export class AgentsService {
             messageGroupingTime: true,
           },
         },
+        scheduleSettings:  {
+          select: {
+            email: true,
+            availableTimes: true,
+            minAdvanceMinutes: true,
+            maxAdvanceDays: true,
+            maxEventDuration: true,
+            alwaysOpen: true,
+            askForContactName: true,
+            askForContactPhone: true,
+            askForMeetingDuration: true
+          }
+        },
+        elevenLabsSettings: {
+          select: {
+            connected: true,
+            respondAudioWithAudio: true,
+            alwaysRespondWithAudio: true,
+            stability: true,
+            similarityBoost: true,
+            selectedElevenLabsVoiceId: true,
+            subscriptionTier: true,
+            characterCount: true,
+            characterLimit: true,
+            userName: true            
+          }
+        },
         webhooks: {
           select: {
             onNewMessage: true,
@@ -203,9 +230,20 @@ export class AgentsService {
           askForContactPhone: false,
           askForMeetingDuration: false,
         },
-      });      
+      });
+      
+      const elevenLabsSettings = await tx.elevenLabsSettings.create({
+        data: {
+            agentId: agent.id,
+            selectedElevenLabsVoiceId: '',
+            subscriptionTier: 'free',
+            characterCount: 10000,
+            characterLimit: 10000,
+            userName: 'unkown'     
+        }
+      })
 
-      return { agent, settings, webhooks, scheduleSettings };
+      return { agent, settings, webhooks, scheduleSettings, elevenLabsSettings };
     });
 
     // Return the combined data as EnhancedAgentDto
@@ -223,9 +261,7 @@ export class AgentsService {
         splitMessages: result.settings.splitMessages,
         enabledEmoji: result.settings.enabledEmoji,
         limitSubjects: result.settings.limitSubjects,
-        messageGroupingTime: result.settings.messageGroupingTime,
-        respondAudioWithAudio: result.settings.respondAudioWithAudio,
-        alwaysRespondWithAudio: result.settings.alwaysRespondWithAudio
+        messageGroupingTime: result.settings.messageGroupingTime
       },
       webhooks: {
         onNewMessage: result.webhooks.onNewMessage,
@@ -242,7 +278,13 @@ export class AgentsService {
         askForContactName: result.scheduleSettings.askForContactName,
         askForContactPhone: result.scheduleSettings.askForContactPhone,
         askForMeetingDuration: result.scheduleSettings.askForMeetingDuration        
-      }
+      },
+      elevenLabsSettings: {
+        subscriptionTier: 'free',
+        characterCount: 10000,
+        characterLimit: 10000,
+        userName: 'unknown'
+      },
     };
   }
 
@@ -292,20 +334,31 @@ export class AgentsService {
             updatedAt: true,
           },
         },
-        scheduleSettings: {
+        scheduleSettings:  {
           select: {
-            id: true,
             email: true,
-            agentId: true,
-            createdAt: true,
-            updatedAt: true,
+            availableTimes: true,
             minAdvanceMinutes: true,
+            maxAdvanceDays: true,
             maxEventDuration: true,
             alwaysOpen: true,
-            availableTimes: true,
             askForContactName: true,
             askForContactPhone: true,
-            askForMeetingDuration: true   
+            askForMeetingDuration: true
+          }
+        },
+        elevenLabsSettings: {
+          select: {
+            connected: true,
+            respondAudioWithAudio: true,
+            alwaysRespondWithAudio: true,
+            stability: true,
+            similarityBoost: true,
+            selectedElevenLabsVoiceId: true,
+            subscriptionTier: true,
+            characterCount: true,
+            characterLimit: true,
+            userName: true            
           }
         },
         intentions: {
@@ -380,7 +433,15 @@ export class AgentsService {
       throw new NotFoundException(`Agent with ID ${id} not found`);
     }
 
-    const { settings, webhooks, channels, intentions, scheduleSettings, ...agentData } = agent as any;
+    const {
+      settings,
+      webhooks,
+      channels,
+      intentions,
+      scheduleSettings,
+      elevenLabsSettings,
+      ...agentData
+    } = agent as any;
 
     return {
       agent: {
@@ -407,6 +468,9 @@ export class AgentsService {
       scheduleSettings: {
         ...scheduleSettings,
         availableTimes: scheduleSettings.availableTimes as AvailableTimesDto
+      },
+      elevenLabsSettings: {
+        ...elevenLabsSettings
       }
     };
   }
@@ -526,9 +590,7 @@ export class AgentsService {
         splitMessages: true,
         enabledEmoji: true,
         limitSubjects: true,
-        messageGroupingTime: true,
-        respondAudioWithAudio: true,
-        alwaysRespondWithAudio: true
+        messageGroupingTime: true
       },
     });
 
@@ -558,6 +620,22 @@ export class AgentsService {
       }
     })
 
+    // Fetch the agent's elevenLabs settings
+    const elevenLabsSettings = await this.prisma.elevenLabsSettings.findUnique({
+      where: { agentId: id },
+      select: {
+        respondAudioWithAudio: true,
+        alwaysRespondWithAudio: true,
+        stability: true,
+        similarityBoost: true,
+        selectedElevenLabsVoiceId: true,
+        subscriptionTier: true,
+        characterCount: true,
+        characterLimit: true,
+        userName: true
+      }
+    })
+
     // Return the combined data as EnhancedAgentDto
     return {
       agent: updatedAgent,
@@ -582,6 +660,9 @@ export class AgentsService {
       scheduleSettings: {
         ...scheduleSettings,
         availableTimes: scheduleSettings.availableTimes as AvailableTimesDto
+      },
+      elevenLabsSettings: {
+        ...elevenLabsSettings
       }
     };
   }

@@ -375,7 +375,8 @@ export class WebhooksService {
           include: { 
             agent: {
               include: {
-                settings: true
+                settings: true,
+                elevenLabsSettings: true
               }
             }
           }
@@ -665,8 +666,8 @@ export class WebhooksService {
             }
 
             // Determine if audio response is requested
-            const respondViaAudio = webhookEvent.channel.agent.settings?.alwaysRespondWithAudio === true || (
-              webhookEvent.messageType === 'audio' && webhookEvent.channel.agent.settings?.respondAudioWithAudio === true
+            const respondViaAudio = webhookEvent.channel.agent.elevenLabsSettings?.alwaysRespondWithAudio === true || (
+              webhookEvent.messageType === 'audio' && webhookEvent.channel.agent.elevenLabsSettings?.respondAudioWithAudio === true
             );
 
             const agentResponse = await this.conversationsService.converse(
@@ -684,7 +685,7 @@ export class WebhooksService {
             }
 
             // Handle text message
-            if (agentResponse.message) {
+            if (agentResponse?.audios.length == 0 && agentResponse.message) {
               this.logger.log(`Got agent text response: "${agentResponse.message.substring(0, 50)}${agentResponse.message.length > 50 ? '...' : ''}"`);
               const botMessage = await this.prisma.message.create({
                 data: {
@@ -721,7 +722,7 @@ export class WebhooksService {
             }
 
             // Handle audio messages
-            if (agentResponse.audios && agentResponse.audios.length > 0) {
+            else if (agentResponse?.audios.length > 0) {
               for (const audioData of agentResponse.audios) {
                 this.logger.log(`Got agent audio response.`);
                 const botAudioMessage = await this.prisma.message.create({
@@ -739,7 +740,6 @@ export class WebhooksService {
 
                 try {
                   this.logger.log(`Sending audio response to ${phoneNumber}`);
-                  // Assuming wahaApiService.sendMediaMessage exists and can take a Buffer
                   const mediaResponseData = await this.wahaApiService.sendWhatsAppMessage(
                     webhookEvent.channel.agentId,
                     phoneNumber,
@@ -747,20 +747,26 @@ export class WebhooksService {
                     {
                       url: audioData,
                       type: 'audio',
-                      mimetype: 'string',
+                      mimetype: 'audio/ogg; codecs=opus',
                       caption: 'caption',
-                      filename: 'audio.'                      
+                      filename: 'audio.ogg'                      
                     }
                   );
 
                   if (mediaResponseData) {
-                    const messageId: string = mediaResponseData.id.id;
+                    const mediaData = mediaResponseData._data;
+                    const messageId: string = mediaResponseData.id._serialized;
+
                     await this.prisma.message.update({
                       where: { id: botAudioMessage.id },
                       data: {
                         sentToEvolution: true,
+                        type: mediaResponseData.type, // usually 'ppt'
+                        audioUrl: mediaData.deprecatedMms3Url,
+                        mimetype: mediaData.mimetype,
                         whatsappMessageId: messageId,
-                        audioUrl: mediaResponseData.url || 'sent_audio_placeholder', // Update with actual URL if returned
+                        whatsappTimestamp: mediaResponseData.timestamp,
+                        fileName: 'audio.ogg'
                       },
                     });
                   }
@@ -776,10 +782,10 @@ export class WebhooksService {
             await this.prisma.chat.update({
               where: { id: chat.id },
               data: {
-                read: true,
-                unReadCount: 0,
-                finished: true, // Assuming conversation is finished after agent response
-              },
+                read: false,
+                unReadCount: { increment: 1 },
+                finished: false
+              }
             });
 
             const updatedChatAfterResponse = await this.prisma.chat.findUnique({ where: { id: chat.id } });

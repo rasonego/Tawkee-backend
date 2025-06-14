@@ -25,6 +25,7 @@ import { AddMessageDto } from './dto/add-message.dto';
 import { getCommunicationGuide } from '../common/utils/communication-guides';
 import { getGoalGuide } from '../common/utils/goal-guides';
 import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator';
+import { ElevenLabsSettingsDto } from 'src/elevenlabs/dto/elevenlabs.dto';
 
 class TextToAudioDto {
   @IsString()
@@ -166,27 +167,46 @@ export class ConversationsController {
     };
   }
 
-  @Post('text-to-audio')
-  @ApiOperation({ summary: 'Convert text to audio using ElevenLabs' })
-  @ApiResponse({ status: 200, description: 'Audio generated successfully', type: Buffer })
-  async textToAudio(@Body() textToAudioDto: TextToAudioDto): Promise<any> {
-    return this.elevenLabsService.textToAudio(textToAudioDto);
+  @Post('elevenlabs-activate/:agentId')
+  @ApiOperation({ summary: 'Activate ElevenLabs integration for this agent' })
+  @ApiResponse({ status: 200, description: 'ElevenLabs integration activated successfully' })
+  async activateElevenLabs(
+    @Param('agentId') agentId: string,
+    @Body() body: { apiKey: string }
+  ): Promise<{ message: string }> {
+    await this.elevenLabsService.activateIntegration({ apiKey: body.apiKey, agentId });
+    return { message: 'ElevenLabs integration activated successfully' };
   }
 
-  @Post('voice-cloning')
-  @ApiOperation({ summary: 'Clone a voice using ElevenLabs' })
-  @ApiResponse({ status: 200, description: 'Voice cloned successfully' })
-  async cloneVoice(@Body() voiceCloningDto: VoiceCloningDto): Promise<any> {
-    // In a real application, 'files' would be handled via NestJS Multer or similar
-    // For this example, we're passing file paths, assuming they are accessible by the service
-    return this.elevenLabsService.cloneVoice(voiceCloningDto);
+  @Post('elevenlabs-deactivate/:agentId')
+  @ApiOperation({ summary: 'Deactivate ElevenLabs integration for this agent' })
+  @ApiResponse({ status: 200, description: 'ElevenLabs integration deactivated successfully' })
+  async deactivateElevenLabs(
+    @Param('agentId') agentId: string
+  ): Promise<{ message: string }> {
+    await this.elevenLabsService.deactivateIntegration(agentId);
+    return { message: 'ElevenLabs integration deactivated successfully' };
   }
 
-  @Delete('voice/:voiceId')
-  @ApiOperation({ summary: 'Delete a cloned voice from ElevenLabs' })
-  @ApiParam({ name: 'voiceId', description: 'ID of the voice to delete' })
-  @ApiResponse({ status: 200, description: 'Voice deleted successfully' })
-  async deleteVoice(@Param('voiceId') voiceId: string): Promise<any> {
-    return this.elevenLabsService.deleteVoice({ voiceId });
+  @Get('elevenlabs-data/:agentId')
+  @ApiOperation({ summary: 'Fetch ElevenLabs voices and user data for an agent' })
+  @ApiResponse({ status: 200, description: 'Voices retrieved successfully' })
+  async getElevenLabsData(
+    @Param('agentId') agentId: string,
+  ): Promise<any> {
+    return this.elevenLabsService.getData(agentId);
+  }
+
+  @Post('elevenlabs-update-settings/:agentId')
+  @ApiOperation({ summary: 'Update ElevenLabs settings for this agent' })
+  @ApiResponse({ status: 200, description: 'Voice selection updated successfully' })
+  async updateElevenLabsSettings(
+    @Param('agentId') agentId: string,
+    @Body() body: Partial<ElevenLabsSettingsDto>
+  ): Promise<{ message: string }> {
+
+    await this.elevenLabsService.updateData(agentId, body);
+
+    return { message: `Agent '${agentId} ElevenLabs settings updated!'` };
   }
 }

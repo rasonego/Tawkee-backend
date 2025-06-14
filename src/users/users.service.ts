@@ -9,7 +9,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { User } from './types/user.types';
-import { scrypt, randomBytes, timingSafeEqual, randomUUID, scryptSync, createHmac, createCipheriv } from 'crypto';
+import { scrypt, randomBytes, timingSafeEqual, randomUUID } from 'crypto';
 import { promisify } from 'util';
 import { JwtService } from '@nestjs/jwt';
 import { VerificationService } from '../email/verification.service';
