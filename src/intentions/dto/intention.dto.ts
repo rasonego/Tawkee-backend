@@ -224,5 +224,5 @@ export class IntentionDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => IntentionParamDto)
-  queryParams?: IntentionParamDto[]; 
+  queryParams?: IntentionParamDto[];
 }

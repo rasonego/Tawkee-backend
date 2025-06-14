@@ -15,27 +15,44 @@ export class InteractionWithMessagesDto {
   @ApiProperty({ description: 'Avatar URL of the agent', nullable: true })
   agentAvatar: string | null;
 
-  @ApiProperty({ description: 'ID of the chat associated with the interaction' })
+  @ApiProperty({
+    description: 'ID of the chat associated with the interaction',
+  })
   chatId: string;
 
   @ApiProperty({ description: 'Name of the chat', nullable: true })
   chatName: string | null;
 
-  @ApiProperty({ description: 'Current status of the interaction', enum: InteractionStatus })
+  @ApiProperty({
+    description: 'Current status of the interaction',
+    enum: InteractionStatus,
+  })
   status: InteractionStatus;
 
   @ApiProperty({ description: 'Timestamp when the interaction started' })
   startAt: Date;
 
-  @ApiProperty({ description: 'Timestamp when the interaction was transferred', nullable: true })
+  @ApiProperty({
+    description: 'Timestamp when the interaction was transferred',
+    nullable: true,
+  })
   transferAt: Date | null;
 
-  @ApiProperty({ description: 'Timestamp when the interaction was resolved', nullable: true })
+  @ApiProperty({
+    description: 'Timestamp when the interaction was resolved',
+    nullable: true,
+  })
   resolvedAt: Date | null;
 
-  @ApiProperty({ description: 'ID of the user associated with the interaction', nullable: true })
+  @ApiProperty({
+    description: 'ID of the user associated with the interaction',
+    nullable: true,
+  })
   userId: string | null;
 
-  @ApiProperty({ description: 'List of messages in this interaction', type: [MessageDto] })
+  @ApiProperty({
+    description: 'List of messages in this interaction',
+    type: [MessageDto],
+  })
   messages: MessageDto[];
 }

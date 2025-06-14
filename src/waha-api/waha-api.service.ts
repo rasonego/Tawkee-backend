@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaDto } from 'src/chats/dto/send-message.dto';
-import { start } from 'repl';
 
 interface CreateInstanceOptions {
   workspaceId: string;
@@ -79,7 +78,8 @@ export class WahaApiService {
         `Checking actual ${finalPhoneNumber} chatId value using instance ${instanceName} on ${serverUrl}`
       );
       let response = await axios.get(
-        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`, {
+        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`,
+        {
           headers: {
             'Content-Type': 'application/json',
             'x-api-key': apiKey,
@@ -353,7 +353,7 @@ export class WahaApiService {
         fileName,
         instanceName,
         serverUrl,
-        apiKey
+        apiKey,
       } = options;
 
       // Ensure phone number is properly formatted - remove any non-numeric characters except +
@@ -369,10 +369,11 @@ export class WahaApiService {
         `Checking actual ${finalPhoneNumber} chatId value using instance ${instanceName}`
       );
       let response = await axios.get(
-        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`, {
+        `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`,
+        {
           headers: {
-            'x-api-key': apiKey
-          }
+            'x-api-key': apiKey,
+          },
         }
       );
 
@@ -413,13 +414,13 @@ export class WahaApiService {
         case 'audio': {
           endpoint = 'sendVoice';
           // payload.caption = caption;
-          this.logger.debug("Converting data to base64...");
+          this.logger.debug('Converting data to base64...');
           const base64String = mediaUrl.toString('base64');
 
           payload.file = {
             mimetype: 'audio/ogg; codecs=opus',
             filename: 'audio.ogg',
-            data: base64String
+            data: base64String,
           };
           payload.convert = true;
           break;
@@ -443,17 +444,13 @@ export class WahaApiService {
       );
 
       // According to Waha API docs, use instanceName instead of instanceId
-      response = await axios.post(
-        `${serverUrl}/${endpoint}`,
-        payload,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-          },
-          timeout: 60000, // 60 seconds timeout for media (larger than text timeout)
-        }
-      );
+      response = await axios.post(`${serverUrl}/${endpoint}`, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+        },
+        timeout: 60000, // 60 seconds timeout for media (larger than text timeout)
+      });
 
       // Apply the same improved validation logic as for text messages
       if (response.status === 200 || response.status === 201) {
@@ -579,19 +576,24 @@ export class WahaApiService {
    */
   async createInstance(options: CreateInstanceOptions): Promise<any> {
     try {
-      const { workspaceId, agentId, channelId, instanceName, serverUrl, apiKey, webhookUrl } = options;
-     
+      const {
+        workspaceId,
+        agentId,
+        channelId,
+        instanceName,
+        serverUrl,
+        apiKey,
+        webhookUrl,
+      } = options;
+
       // First, check if the instance already exists
       try {
-        const response = await axios.get(
-          `${serverUrl}/sessions`,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey,
-            },
-          }
-        );
+        const response = await axios.get(`${serverUrl}/sessions`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+        });
 
         // If the instance already exists, return it
         if (response.data && Array.isArray(response.data)) {
@@ -642,7 +644,8 @@ export class WahaApiService {
             ],
           },
         },
-        { // Maybe will be required in production to make request with auth
+        {
+          // Maybe will be required in production to make request with auth
           headers: {
             'Content-Type': 'application/json',
             'x-api-key': apiKey,
@@ -733,12 +736,13 @@ export class WahaApiService {
 
       // According to Waha API docs, use logout endpoint with instance name
       const response = await axios.post(
-        `${serverUrl}/sessions/${instanceName}/logout`, {},
+        `${serverUrl}/sessions/${instanceName}/logout`,
+        {},
         {
           headers: {
             'Content-Type': 'application/json',
             'x-api-key': apiKey,
-          }
+          },
         }
       );
 
@@ -851,13 +855,7 @@ export class WahaApiService {
     let mediaCaption;
 
     if (media) {
-      const { 
-        url,
-        type,
-        mimetype,
-        filename,
-        caption
-      } = media;
+      const { url, type, mimetype, filename, caption } = media;
 
       mediaUrl = url;
       mediaType = type;

@@ -183,8 +183,8 @@ export class ChannelsService {
         id: channel.id,
       },
       data: {
-        config
-      }
+        config,
+      },
     });
 
     // Create a sanitized version of config that doesn't expose sensitive data

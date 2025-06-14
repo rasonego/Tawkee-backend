@@ -9,8 +9,6 @@ import {
   UseGuards,
   Query,
   Res,
-  Request,
-  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -68,9 +66,10 @@ export class GoogleCalendarOAuthController {
   async handleOAuthCallback(
     @Res() res,
     @Query('code') code?: string,
-    @Query('state') state?: string,
+    @Query('state') state?: string
   ) {
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
     // console.log('--- [Google OAuth] Callback triggered ---');
     // console.log('Received code:', code);
@@ -78,7 +77,9 @@ export class GoogleCalendarOAuthController {
 
     if (!code || !state) {
       console.warn('[OAuth] Missing code or state in callback');
-      return res.redirect(`${frontendUrl}/auth/oauth-result?error=missing_code_or_state`);
+      return res.redirect(
+        `${frontendUrl}/auth/oauth-result?error=missing_code_or_state`
+      );
     }
 
     try {
@@ -91,11 +92,16 @@ export class GoogleCalendarOAuthController {
       // console.log('[OAuth] Signature:', signature);
 
       if (!payload || !signature) {
-        throw new Error('Invalid state structure: missing payload or signature');
+        throw new Error(
+          'Invalid state structure: missing payload or signature'
+        );
       }
 
       // Verify signature using the raw payload string (do NOT parse before verification)
-      const isSignatureValid = this.googleCalendarOAuthService.verifySignature(payload, signature);
+      const isSignatureValid = this.googleCalendarOAuthService.verifySignature(
+        payload,
+        signature
+      );
       // console.log('[OAuth] Signature valid:', isSignatureValid);
 
       if (!isSignatureValid) {
@@ -110,38 +116,54 @@ export class GoogleCalendarOAuthController {
       if (payloadObj.agentId) {
         // Calendar OAuth flow
         // console.log('[OAuth] Processing calendar OAuth flow');
-        const email = await this.googleCalendarOAuthService.exchangeCodeForTokens(code, state);
+        const email =
+          await this.googleCalendarOAuthService.exchangeCodeForTokens(
+            code,
+            state
+          );
 
-        await this.scheduleValidationService.updateScheduleSettings(payloadObj.agentId, { email });
+        await this.scheduleValidationService.updateScheduleSettings(
+          payloadObj.agentId,
+          { email }
+        );
 
-        await this.intentionsService.registerGoogleCalendarIntentions(payloadObj.agentId);
-        
+        await this.intentionsService.registerGoogleCalendarIntentions(
+          payloadObj.agentId
+        );
+
         const agent = await this.prisma.agent.findUnique({
           where: { id: payloadObj.agentId },
-          select: { 
+          select: {
             id: true,
-            workspaceId: true
-          }
+            workspaceId: true,
+          },
         });
 
-        const scheduleSettings = await this.scheduleValidationService.getScheduleSettings(agent.id);
+        const scheduleSettings =
+          await this.scheduleValidationService.getScheduleSettings(agent.id);
 
         this.websocketService.sendToClient(
           agent.workspaceId,
           'agentScheduleSettingsUpdate',
           {
             agentId: agent.id,
-            scheduleSettings
+            scheduleSettings,
           }
         );
 
-        return res.redirect(`${frontendUrl}/auth/oauth-result?token=google-calendar-${email}`);
+        return res.redirect(
+          `${frontendUrl}/auth/oauth-result?token=google-calendar-${email}`
+        );
       }
 
       if (payloadObj.type === 'social-login') {
         // Social login flow
         // console.log('[OAuth] Processing social login flow');
-        const result = await this.googleCalendarOAuthService.exchangeSocialLoginCode(code, payloadObj);
+        const result =
+          await this.googleCalendarOAuthService.exchangeSocialLoginCode(
+            code,
+            payloadObj
+          );
 
         // Create/find user in DB, then generate JWT token for them
         const user = await this.authService.findOrCreateOAuthUser({
@@ -158,10 +180,14 @@ export class GoogleCalendarOAuthController {
       }
 
       console.warn('[OAuth] Unknown state payload');
-      return res.redirect(`${frontendUrl}/auth/oauth-result?error=invalid_state`);
+      return res.redirect(
+        `${frontendUrl}/auth/oauth-result?error=invalid_state`
+      );
     } catch (err) {
       console.error('[OAuth] Callback processing failed:', err);
-      return res.redirect(`${frontendUrl}/auth/oauth-result?error=callback_failed`);
+      return res.redirect(
+        `${frontendUrl}/auth/oauth-result?error=callback_failed`
+      );
     }
   }
 
@@ -199,7 +225,9 @@ export class GoogleCalendarOAuthController {
   }
 
   @Get('valid-token/:agentId')
-  @ApiOperation({ summary: 'Get valid (possibly refreshed) access token for agent' })
+  @ApiOperation({
+    summary: 'Get valid (possibly refreshed) access token for agent',
+  })
   @ApiResponse({
     status: 200,
     schema: {
@@ -210,7 +238,8 @@ export class GoogleCalendarOAuthController {
     },
   })
   async getValidToken(@Param('agentId') agentId: string) {
-    const accessToken = await this.googleCalendarOAuthService.getValidAccessToken(agentId);
+    const accessToken =
+      await this.googleCalendarOAuthService.getValidAccessToken(agentId);
     return { access_token: accessToken };
   }
 

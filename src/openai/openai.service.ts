@@ -6,13 +6,11 @@ import { ChatCompletionTool, CreateEmbeddingResponse } from 'openai/resources';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { promisify } from 'util';
+import ffmpegStatic from 'ffmpeg-static';
+import ffmpeg from 'fluent-ffmpeg';
+import axios from 'axios';
 import { ChatDto } from 'src/chats/dto/chat.dto';
 import { ScheduleSettings } from '@prisma/client';
-
-// Import ffmpeg-static and fluent-ffmpeg
-const ffmpegStatic = require('ffmpeg-static');
-const ffmpeg = require('fluent-ffmpeg');
 
 // Set the ffmpeg path
 ffmpeg.setFfmpegPath(ffmpegStatic);
@@ -545,7 +543,8 @@ export class OpenAiService {
         transcriptionParams.prompt = prompt;
       }
 
-      const response = await this.openai.audio.transcriptions.create(transcriptionParams);
+      const response =
+        await this.openai.audio.transcriptions.create(transcriptionParams);
 
       this.logger.log(
         `Successfully transcribed audio: ${response.text.substring(0, 100)}...`
@@ -570,11 +569,10 @@ export class OpenAiService {
       this.logger.debug(`Transcribing audio from URL: ${audioUrl}`);
 
       // Download the audio file using axios (consistent with your existing pattern)
-      const axios = require('axios');
-      const response = await axios.get(audioUrl, { 
-        responseType: 'arraybuffer'
+      const response = await axios.get(audioUrl, {
+        responseType: 'arraybuffer',
       });
-      
+
       const buffer = Buffer.from(response.data);
 
       // Convert buffer to blob for OpenAI API
@@ -626,7 +624,11 @@ export class OpenAiService {
       const formData = new FormData();
       formData.append('file', audioBlob, filename);
 
-      const transcription = await this.transcribeAudio(formData, language, prompt);
+      const transcription = await this.transcribeAudio(
+        formData,
+        language,
+        prompt
+      );
 
       this.logger.log(
         `Successfully transcribed audio from buffer: ${transcription.substring(0, 100)}...`
@@ -638,7 +640,9 @@ export class OpenAiService {
         `Error transcribing audio from buffer: ${error.message}`,
         error.stack
       );
-      throw new Error(`Failed to transcribe audio from buffer: ${error.message}`);
+      throw new Error(
+        `Failed to transcribe audio from buffer: ${error.message}`
+      );
     }
   }
 
@@ -654,7 +658,7 @@ export class OpenAiService {
       frameWidth = 512,
       batchSize = 3, // Reduced batch size since we have fewer frames
       detailLevel = 'high',
-      extractFrames = true // Default to true for backward compatibility
+      extractFrames = true, // Default to true for backward compatibility
     } = options;
 
     let tempVideoPath: string;
@@ -662,7 +666,9 @@ export class OpenAiService {
     let tempFramesDir: string;
 
     try {
-      this.logger.log(`Extracting and transcribing video content from buffer, mime type: ${mimeType}`);
+      this.logger.log(
+        `Extracting and transcribing video content from buffer, mime type: ${mimeType}`
+      );
 
       // Create temporary file paths
       const tempDir = os.tmpdir();
@@ -683,7 +689,7 @@ export class OpenAiService {
       if (extractFrames) {
         await new Promise<void>((resolve, reject) => {
           const frameOutputPath = path.join(tempFramesDir, 'keyframe_%04d.jpg');
-          
+
           ffmpeg(tempVideoPath)
             // Audio extraction settings
             .audioCodec('pcm_s16le')
@@ -691,18 +697,24 @@ export class OpenAiService {
             .audioChannels(1)
             .format('wav')
             .output(tempAudioPath)
-            
+
             // Key frame extraction settings with more selective filtering
             .outputOptions([
-              '-vf', `select='key*gte(key\\,0)*not(mod(n\\,30))',scale=${frameWidth}:-1`, // More selective: key frames every 30 frames
-              '-vsync', 'vfr',
-              '-frames:v', maxKeyFrames.toString(),
-              '-q:v', '2' // High quality JPEG
+              '-vf',
+              `select='key*gte(key\\,0)*not(mod(n\\,30))',scale=${frameWidth}:-1`, // More selective: key frames every 30 frames
+              '-vsync',
+              'vfr',
+              '-frames:v',
+              maxKeyFrames.toString(),
+              '-q:v',
+              '2', // High quality JPEG
             ])
             .output(frameOutputPath)
-            
+
             .on('end', () => {
-              this.logger.debug('Audio and key frame extraction completed successfully');
+              this.logger.debug(
+                'Audio and key frame extraction completed successfully'
+              );
               resolve();
             })
             .on('error', (err) => {
@@ -723,7 +735,7 @@ export class OpenAiService {
             .audioChannels(1)
             .format('wav')
             .output(tempAudioPath)
-            
+
             .on('end', () => {
               this.logger.debug('Audio extraction completed successfully');
               resolve();
@@ -740,17 +752,27 @@ export class OpenAiService {
       }
 
       // Process audio and optionally frames
-      const audioTranscription = await this.processAudio(tempAudioPath, language, prompt);
-      
-      let frameDescriptions: Array<{ timestamp: number; description: string }> = [];
+      const audioTranscription = await this.processAudio(
+        tempAudioPath,
+        language,
+        prompt
+      );
+
+      let frameDescriptions: Array<{ timestamp: number; description: string }> =
+        [];
       if (extractFrames) {
-        frameDescriptions = await this.processKeyFramesWithAI(tempFramesDir, batchSize, detailLevel, prompt);
+        frameDescriptions = await this.processKeyFramesWithAI(
+          tempFramesDir,
+          batchSize,
+          detailLevel,
+          prompt
+        );
       }
 
       // Combine audio and visual content into structured text
       const combinedTranscription = this.createStructuredTranscription(
-        audioTranscription, 
-        frameDescriptions, 
+        audioTranscription,
+        frameDescriptions,
         prompt,
         extractFrames
       );
@@ -760,7 +782,6 @@ export class OpenAiService {
       );
 
       return combinedTranscription;
-
     } catch (error) {
       this.logger.error(
         `Error transcribing video content from buffer: ${error.message}`,
@@ -781,32 +802,36 @@ export class OpenAiService {
       this.logger.debug(`Transcribing video content from URL: ${videoUrl}`);
 
       // Download the video file using axios
-      const axios = require('axios');
-      const response = await axios.get(videoUrl, { 
+      const response = await axios.get(videoUrl, {
         responseType: 'arraybuffer',
-        timeout: 180000 // Extended timeout for video files
+        timeout: 180000, // Extended timeout for video files
       });
-      
+
       const videoBuffer = Buffer.from(response.data);
 
       // Determine MIME type from URL or use default
       const mimeType = this.determineMimeTypeFromUrl(videoUrl);
 
       // Use the buffer method to extract content
-      return this.transcribeVideoContentFromBuffer(videoBuffer, mimeType, options);
-
+      return this.transcribeVideoContentFromBuffer(
+        videoBuffer,
+        mimeType,
+        options
+      );
     } catch (error) {
       this.logger.error(
         `Error transcribing video content from URL: ${error.message}`,
         error.stack
       );
-      throw new Error(`Failed to transcribe video content from URL: ${error.message}`);
+      throw new Error(
+        `Failed to transcribe video content from URL: ${error.message}`
+      );
     }
   }
 
   private async processAudio(
-    audioPath: string, 
-    language?: string, 
+    audioPath: string,
+    language?: string,
     prompt?: string
   ): Promise<string> {
     try {
@@ -824,15 +849,16 @@ export class OpenAiService {
   }
 
   private async processKeyFramesWithAI(
-    framesDir: string, 
+    framesDir: string,
     batchSize: number = 5,
     detailLevel: 'low' | 'high' = 'high',
     contextPrompt?: string
   ): Promise<Array<{ timestamp: number; description: string }>> {
     try {
       // Get all frame files sorted by name (which corresponds to timestamp)
-      const frameFiles = fs.readdirSync(framesDir)
-        .filter(file => file.endsWith('.jpg'))
+      const frameFiles = fs
+        .readdirSync(framesDir)
+        .filter((file) => file.endsWith('.jpg'))
         .sort();
 
       if (frameFiles.length === 0) {
@@ -840,42 +866,51 @@ export class OpenAiService {
         return [];
       }
 
-      const frameDescriptions: Array<{ timestamp: number; description: string }> = [];
+      const frameDescriptions: Array<{
+        timestamp: number;
+        description: string;
+      }> = [];
 
       // Custom prompt for video frames
-      const framePrompt = contextPrompt 
+      const framePrompt = contextPrompt
         ? `Describe this video frame in detail, focusing on visual elements that complement this context: "${contextPrompt}". Include any text, objects, people, actions, and settings visible.`
         : 'Describe this video frame in detail, including any text you can see, objects, people, actions, settings, and overall visual context.';
 
       // Process frames in batches to avoid overwhelming the API
       for (let i = 0; i < frameFiles.length; i += batchSize) {
         const batch = frameFiles.slice(i, i + batchSize);
-        
+
         const batchPromises = batch.map(async (fileName) => {
           const framePath = path.join(framesDir, fileName);
           const frameNumber = parseInt(fileName.match(/\d+/)?.[0] || '0');
-          
+
           // Estimate timestamp (approximate - based on key frame sequence)
           const estimatedTimestamp = frameNumber * 10; // Increased interval since we have fewer frames
-          
+
           try {
             // Convert image file to base64 data URL for the API
             const imageBuffer = fs.readFileSync(framePath);
             const base64Image = imageBuffer.toString('base64');
             const dataUrl = `data:image/jpeg;base64,${base64Image}`;
-            
+
             // Use the existing describeImage method
-            const description = await this.describeImage(dataUrl, framePrompt, detailLevel);
-            
+            const description = await this.describeImage(
+              dataUrl,
+              framePrompt,
+              detailLevel
+            );
+
             return {
               timestamp: estimatedTimestamp,
-              description
+              description,
             };
           } catch (error) {
-            this.logger.warn(`Failed to describe frame ${fileName}: ${error.message}`);
+            this.logger.warn(
+              `Failed to describe frame ${fileName}: ${error.message}`
+            );
             return {
               timestamp: estimatedTimestamp,
-              description: `[Frame at ${estimatedTimestamp}s - Description unavailable]`
+              description: `[Frame at ${estimatedTimestamp}s - Description unavailable]`,
             };
           }
         });
@@ -885,13 +920,14 @@ export class OpenAiService {
 
         // Add delay between batches to respect API rate limits
         if (i + batchSize < frameFiles.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
 
-      this.logger.debug(`Processed ${frameDescriptions.length} key frames with AI descriptions`);
+      this.logger.debug(
+        `Processed ${frameDescriptions.length} key frames with AI descriptions`
+      );
       return frameDescriptions.sort((a, b) => a.timestamp - b.timestamp);
-
     } catch (error) {
       this.logger.error(`Key frame AI processing failed: ${error.message}`);
       throw error;
@@ -919,9 +955,11 @@ export class OpenAiService {
     // Add visual content section only if frames were processed
     if (includeFrames && frameDescriptions.length > 0) {
       sections.push('=== VISUAL CONTENT (KEY FRAMES) ===');
-      
+
       frameDescriptions.forEach((frame, index) => {
-        sections.push(`[${this.formatTimestamp(frame.timestamp)}] Frame ${index + 1}:`);
+        sections.push(
+          `[${this.formatTimestamp(frame.timestamp)}] Frame ${index + 1}:`
+        );
         sections.push(frame.description);
         sections.push('');
       });
@@ -929,10 +967,16 @@ export class OpenAiService {
 
     // Add summary section
     sections.push('=== CONTENT SUMMARY ===');
-    sections.push(`Audio Length: ~${Math.ceil(audioTranscription.length / 100)} segments`);
+    sections.push(
+      `Audio Length: ~${Math.ceil(audioTranscription.length / 100)} segments`
+    );
     if (includeFrames) {
-      sections.push(`Visual Frames: ${frameDescriptions.length} key moments captured`);
-      sections.push(`Total Content: Combined audio-visual transcription with temporal markers`);
+      sections.push(
+        `Visual Frames: ${frameDescriptions.length} key moments captured`
+      );
+      sections.push(
+        `Total Content: Combined audio-visual transcription with temporal markers`
+      );
     } else {
       sections.push(`Content Type: Audio-only transcription`);
     }
@@ -948,20 +992,20 @@ export class OpenAiService {
 
   private determineMimeTypeFromUrl(videoUrl: string): string {
     const urlLower = videoUrl.toLowerCase();
-    
+
     if (urlLower.includes('.mov')) return 'video/quicktime';
     if (urlLower.includes('.avi')) return 'video/x-msvideo';
     if (urlLower.includes('.mkv')) return 'video/x-matroska';
     if (urlLower.includes('.webm')) return 'video/webm';
     if (urlLower.includes('.wmv')) return 'video/x-ms-wmv';
     if (urlLower.includes('.flv')) return 'video/x-flv';
-    
+
     return 'video/mp4'; // Default
   }
 
   private async cleanupTempFiles(
-    videoPath?: string, 
-    audioPath?: string, 
+    videoPath?: string,
+    audioPath?: string,
     framesDir?: string
   ): Promise<void> {
     const cleanupTasks = [];
@@ -984,7 +1028,9 @@ export class OpenAiService {
       await Promise.all(cleanupTasks);
       this.logger.debug('Temporary files cleaned up successfully');
     } catch (cleanupError) {
-      this.logger.warn(`Failed to clean up some temporary files: ${cleanupError.message}`);
+      this.logger.warn(
+        `Failed to clean up some temporary files: ${cleanupError.message}`
+      );
     }
   }
 
@@ -1009,9 +1055,9 @@ export class OpenAiService {
         messages: [
           {
             role: 'system',
-            content: `You have access to function tools. Use the appropriate tool when user intent matches.`
+            content: `You have access to function tools. Use the appropriate tool when user intent matches.`,
           },
-          { role: 'user', content: userPrompt }
+          { role: 'user', content: userPrompt },
         ],
         tools: toolSchemas,
         tool_choice: 'auto',
@@ -1023,8 +1069,12 @@ export class OpenAiService {
 
       if (toolCalls && toolCalls.length > 0) {
         const toolCall = toolCalls[0];
-        this.logger.debug(`[OpenAiService] Tool called: ${toolCall.function.name}`);
-        this.logger.debug(`[OpenAiService] Raw arguments: ${toolCall.function.arguments}`);
+        this.logger.debug(
+          `[OpenAiService] Tool called: ${toolCall.function.name}`
+        );
+        this.logger.debug(
+          `[OpenAiService] Raw arguments: ${toolCall.function.arguments}`
+        );
 
         const args = JSON.parse(toolCall.function.arguments || '{}');
 
@@ -1036,7 +1086,7 @@ export class OpenAiService {
 
       this.logger.warn('[OpenAiService] No tool call returned by OpenAI.');
       return {
-        fallbackMessage: response.choices?.[0].message?.content ?? undefined
+        fallbackMessage: response.choices?.[0].message?.content ?? undefined,
       };
     } catch (error) {
       this.logger.error(`Error in callWithToolDetection: ${error.message}`);
@@ -1100,22 +1150,26 @@ export class OpenAiService {
         messages: [
           {
             role: 'system',
-            content: 'You are a natural-sounding assistant who responds warmly and clearly after completing tasks.'
+            content:
+              'You are a natural-sounding assistant who responds warmly and clearly after completing tasks.',
           },
           {
             role: 'user',
-            content: prompt
-          }
+            content: prompt,
+          },
         ],
         temperature: 0.7,
-        max_tokens: 300
+        max_tokens: 300,
       });
 
-      return response.choices?.[0]?.message?.content?.trim() ??
-        `Great! I’ve successfully completed the ${intention.description.toLowerCase()} for you.`;
-
+      return (
+        response.choices?.[0]?.message?.content?.trim() ??
+        `Great! I’ve successfully completed the ${intention.description.toLowerCase()} for you.`
+      );
     } catch (error: any) {
-      this.logger?.error?.(`Error generating intention success response: ${error.message}`);
+      this.logger?.error?.(
+        `Error generating intention success response: ${error.message}`
+      );
       return `All set! Your request to ${intention.description.toLowerCase()} was completed.`;
     }
   }
@@ -1160,22 +1214,26 @@ export class OpenAiService {
         messages: [
           {
             role: 'system',
-            content: 'You write empathetic, natural assistant responses for failed actions.'
+            content:
+              'You write empathetic, natural assistant responses for failed actions.',
           },
           {
             role: 'user',
-            content: prompt
-          }
+            content: prompt,
+          },
         ],
         temperature: 0.6,
-        max_tokens: 200
+        max_tokens: 200,
       });
 
-      return response.choices[0]?.message?.content?.trim()
-        || `I couldn’t complete the request to ${intention.description.toLowerCase()}. Could you try another time or adjust the request?`;
-
+      return (
+        response.choices[0]?.message?.content?.trim() ||
+        `I couldn’t complete the request to ${intention.description.toLowerCase()}. Could you try another time or adjust the request?`
+      );
     } catch (error) {
-      this.logger.error(`Error generating intention error response: ${error.message}`);
+      this.logger.error(
+        `Error generating intention error response: ${error.message}`
+      );
       return `Sorry, something went wrong trying to ${intention.description.toLowerCase()}. Let’s try again with a different time.`;
     }
   }
@@ -1192,13 +1250,14 @@ export class OpenAiService {
     try {
       const userName = chat?.userName || 'the user';
 
-      const collectedInfo = Object.keys(collectedFields).length > 0
-        ? `I’ve already gathered some info: ${JSON.stringify(collectedFields, null, 2)}`
-        : `I don’t have any details yet.`;
+      const collectedInfo =
+        Object.keys(collectedFields).length > 0
+          ? `I’ve already gathered some info: ${JSON.stringify(collectedFields, null, 2)}`
+          : `I don’t have any details yet.`;
 
       const missingList = intention.fields
-        .filter(f => missingFields.includes(f.name))
-        .map(f => `- ${f.name}: ${f.description}`)
+        .filter((f) => missingFields.includes(f.name))
+        .map((f) => `- ${f.name}: ${f.description}`)
         .join('\n');
 
       const prompt = `
@@ -1233,22 +1292,26 @@ export class OpenAiService {
         messages: [
           {
             role: 'system',
-            content: 'You write friendly assistant responses when asking for more info.'
+            content:
+              'You write friendly assistant responses when asking for more info.',
           },
           {
             role: 'user',
-            content: prompt
-          }
+            content: prompt,
+          },
         ],
         temperature: 0.7,
-        max_tokens: 400
+        max_tokens: 400,
       });
 
-      return response.choices[0]?.message?.content?.trim()
-        || `To help you with ${intention.description.toLowerCase()}, I just need the following: ${missingFields.join(', ')}.`;
-
+      return (
+        response.choices[0]?.message?.content?.trim() ||
+        `To help you with ${intention.description.toLowerCase()}, I just need the following: ${missingFields.join(', ')}.`
+      );
     } catch (error) {
-      this.logger.error(`Error generating clarification message: ${error.message}`);
+      this.logger.error(
+        `Error generating clarification message: ${error.message}`
+      );
       return `To complete your request to ${intention.description.toLowerCase()}, I need some more details: ${missingFields.join(', ')}`;
     }
   }

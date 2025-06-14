@@ -15,7 +15,7 @@ import { WebsocketModule } from 'src/websocket/websocket.module';
     AuthModule,
     ScheduleValidationModule,
     IntentionsModule,
-    WebsocketModule
+    WebsocketModule,
   ],
   controllers: [GoogleCalendarOAuthController],
   providers: [GoogleCalendarOAuthService],

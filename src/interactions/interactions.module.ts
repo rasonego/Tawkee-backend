@@ -10,6 +10,6 @@ import { WebsocketModule } from 'src/websocket/websocket.module';
   controllers: [InteractionsController],
   providers: [InteractionsService],
 
-  exports: [InteractionsService]
+  exports: [InteractionsService],
 })
 export class InteractionsModule {}

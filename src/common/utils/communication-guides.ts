@@ -38,7 +38,6 @@ Empathy: Acknowledge the user’s experience or frustration with grace and encou
 Length: Be detailed when necessary, but remain accessible. Aim for an average of 80-150 words per message.
 `;
 
-
 /**
  * Guide for NORMAL communication style
  */
@@ -73,7 +72,6 @@ Empathy: Acknowledge the user’s situation with care and offer reassurance.
 
 Length: Aim for balanced responses that are informative but not overwhelming. Aim for an average of 50-100 words per message.
 `;
-
 
 /**
  * Guide for RELAXED communication style
@@ -111,7 +109,6 @@ Humor: A dash of light humor is welcome — keep it appropriate and friendly.
 
 Length: Be concise. Say just enough to help, then pause and let them respond. Aim for an average of 20-60 words per message.
 `;
-
 
 /**
  * Get the appropriate communication guide based on the communication type

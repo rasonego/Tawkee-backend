@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsBoolean, IsEnum, IsOptional, IsNumber, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  Min,
+  Max,
+} from 'class-validator';
 import { AIModel, GroupingTime } from '@prisma/client';
 
 export class AgentSettingsDto {
@@ -71,7 +78,8 @@ export class AgentSettingsDto {
   alwaysRespondWithAudio?: boolean;
 
   @ApiProperty({
-    description: 'If true, the agent will respond with audio when user sends audio',
+    description:
+      'If true, the agent will respond with audio when user sends audio',
     example: true,
   })
   @IsBoolean()
@@ -93,5 +101,5 @@ export class AgentSettingsDto {
   @IsNumber()
   @Min(0)
   @Max(1)
-  similarityBoost?: number;  
+  similarityBoost?: number;
 }

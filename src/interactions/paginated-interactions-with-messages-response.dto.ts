@@ -4,7 +4,8 @@ import { PaginationMetaDto } from '../common/dto/paginated-response.dto';
 
 export class PaginatedInteractionsWithMessagesResponseDto {
   @ApiProperty({
-    description: 'List of interactions with their messages for the current page',
+    description:
+      'List of interactions with their messages for the current page',
     type: [InteractionWithMessagesDto],
   })
   data: InteractionWithMessagesDto[];
@@ -30,4 +31,3 @@ export class PaginationMetaDto {
   totalPages: number;
 }
 */
-

@@ -95,7 +95,7 @@ import { ScheduleValidationModule } from './intentions/google-calendar/schedule-
     MediaModule,
     WebsocketModule,
     GoogleCalendarOAuthModule,
-    ScheduleValidationModule
+    ScheduleValidationModule,
   ],
 })
 export class AppModule {}

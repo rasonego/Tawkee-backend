@@ -12,7 +12,9 @@ export class DeepseekService {
     const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY');
 
     if (!apiKey) {
-      this.logger.error('Deepseek API key (DEEPSEEK_API_KEY) is not configured!');
+      this.logger.error(
+        'Deepseek API key (DEEPSEEK_API_KEY) is not configured!'
+      );
       // Optionally throw an error or handle appropriately
     }
 
@@ -89,20 +91,28 @@ export class DeepseekService {
         model: modelId,
         messages: messages,
         temperature: 0.7, // Keep similar default settings
-        max_tokens: 500,  // Keep similar default settings
+        max_tokens: 500, // Keep similar default settings
         // Add other Deepseek-specific parameters if needed
       });
 
       // Ensure response and choices exist
-      if (response.choices && response.choices.length > 0 && response.choices[0].message) {
+      if (
+        response.choices &&
+        response.choices.length > 0 &&
+        response.choices[0].message
+      ) {
         return response.choices[0].message.content || '';
       } else {
-        this.logger.error('Received an unexpected response structure from Deepseek API');
+        this.logger.error(
+          'Received an unexpected response structure from Deepseek API'
+        );
         throw new Error('Invalid response structure from Deepseek API');
       }
-
     } catch (error: any) {
-      this.logger.error(`Error generating response from Deepseek: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error generating response from Deepseek: ${error.message}`,
+        error.stack
+      );
       throw error;
     }
   }
@@ -134,7 +144,8 @@ export class DeepseekService {
       prompt += '\n\n## PROFESSIONAL CONTEXT';
       if (agent.jobName) prompt += `\n- Role: ${agent.jobName}`;
       if (agent.jobSite) prompt += `\n- Company Website: ${agent.jobSite}`;
-      if (agent.jobDescription) prompt += `\n- Job Description: ${agent.jobDescription}`;
+      if (agent.jobDescription)
+        prompt += `\n- Job Description: ${agent.jobDescription}`;
     }
 
     prompt += `\n\n## COMMUNICATION STYLE GUIDE\n${communicationGuide}`;
@@ -145,16 +156,20 @@ export class DeepseekService {
       if (agent.settings.enabledEmoji === false) {
         prompt += '\n- Do not use emojis in your responses.';
       } else {
-        prompt += '\n- Feel free to use appropriate emojis in your responses when suitable.';
+        prompt +=
+          '\n- Feel free to use appropriate emojis in your responses when suitable.';
       }
       if (agent.settings.limitSubjects === true) {
-        prompt += '\n- Only discuss topics directly related to the company, product, or your specific role. Politely decline to discuss unrelated subjects.';
+        prompt +=
+          '\n- Only discuss topics directly related to the company, product, or your specific role. Politely decline to discuss unrelated subjects.';
       }
       if (agent.settings.enabledHumanTransfer === true) {
-        prompt += "\n- If you can't resolve an issue or if the user explicitly asks for a human, acknowledge that you can transfer them to a human agent.";
+        prompt +=
+          "\n- If you can't resolve an issue or if the user explicitly asks for a human, acknowledge that you can transfer them to a human agent.";
       }
       if (agent.settings.splitMessages === true) {
-        prompt += '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs.';
+        prompt +=
+          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs.';
       } else {
         prompt += '\n- Aim to provide complete answers in a single response.';
       }
@@ -180,7 +195,8 @@ export class DeepseekService {
     if (retrievedContext && retrievedContext.length > 0) {
       prompt += '\n\n## RETRIEVED KNOWLEDGE';
       prompt += `\n${retrievedContext}`;
-      prompt += "\n\nUse the above retrieved knowledge to inform your response when relevant to the user's query.";
+      prompt +=
+        "\n\nUse the above retrieved knowledge to inform your response when relevant to the user's query.";
     }
 
     if (conversationContext && conversationContext.length > 0) {
@@ -188,7 +204,7 @@ export class DeepseekService {
     }
 
     prompt += `\n\n## CURRENT USER MESSAGE\n${userMessage}`;
-    prompt += `\n\nRespond to the user message according to your professional context, communication style guide, goal guide, and behavior settings provided above. Be concise, helpful, and true to your assigned role and communication style. Do not include labels like \"Assistant:\" in your response.`;
+    prompt += `\n\nRespond to the user message according to your professional context, communication style guide, goal guide, and behavior settings provided above. Be concise, helpful, and true to your assigned role and communication style. Do not include labels like "Assistant:" in your response.`;
 
     return prompt;
   }
@@ -230,7 +246,9 @@ export class DeepseekService {
     if (agent.settings && agent.settings.preferredModel) {
       // Ensure the preferredModel name matches keys in getModelId map
       modelPreference = agent.settings.preferredModel;
-      this.logger.debug(`Using agent's preferred Deepseek model: ${modelPreference}`);
+      this.logger.debug(
+        `Using agent's preferred Deepseek model: ${modelPreference}`
+      );
     }
 
     // Generate the response using the main generateResponse method

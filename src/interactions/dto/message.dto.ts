@@ -10,7 +10,11 @@ export class MessageDto {
   @ApiProperty({ description: 'Role of the sender (e.g., user, agent)' })
   role: string;
 
-  @ApiProperty({ description: 'Name of the user if role is user', nullable: true, required: false })
+  @ApiProperty({
+    description: 'Name of the user if role is user',
+    nullable: true,
+    required: false,
+  })
   userName?: string | null;
 
   @ApiProperty({ description: 'Timestamp when the message was created' })

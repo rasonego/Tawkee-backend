@@ -223,8 +223,8 @@ export class WebhooksService {
       // Find the matching channel
       const eventChannel = await this.prisma.channel.findUnique({
         where: {
-          id: metadata.channelId
-        }
+          id: metadata.channelId,
+        },
       });
 
       // Process session.status events to update channel status
@@ -269,17 +269,16 @@ export class WebhooksService {
             this.logger.log(
               `Updated channel ${eventChannel.id} connection status to: ${isConnected ? 'connected' : 'disconnected'}`
             );
-           
+
             this.websocketService.sendToClient(
               metadata.workspaceId,
               'channelConnectionStatusUpdate',
               {
                 agentId: metadata.agentId,
                 channelId: metadata.channelId,
-                connectionStatus: connectionState
+                connectionStatus: connectionState,
               }
             );
-
           } catch (error) {
             this.logger.error(
               `Failed to update channel connection status: ${error.message}`
@@ -370,32 +369,38 @@ export class WebhooksService {
   private async processWebhookEvent(webhookEventId: string): Promise<void> {
     const webhookEvent = await this.prisma.webhookEvent.findUnique({
       where: { id: webhookEventId },
-      include: { 
+      include: {
         channel: {
-          include: { 
+          include: {
             agent: {
               include: {
                 settings: true,
-                elevenLabsSettings: true
-              }
-            }
-          }
-        }
+                elevenLabsSettings: true,
+              },
+            },
+          },
+        },
       },
     });
 
     if (!webhookEvent) {
-      this.logger.error(`Could not find webhook event with ID: ${webhookEventId}`);
+      this.logger.error(
+        `Could not find webhook event with ID: ${webhookEventId}`
+      );
       return;
     }
 
     if (webhookEvent.processed) {
-      this.logger.debug(`Webhook event ${webhookEventId} already processed, skipping`);
+      this.logger.debug(
+        `Webhook event ${webhookEventId} already processed, skipping`
+      );
       return;
     }
 
     if (!webhookEvent.channel) {
-      this.logger.error(`Webhook event ${webhookEventId} has no associated channel`);
+      this.logger.error(
+        `Webhook event ${webhookEventId} has no associated channel`
+      );
       await this.prisma.webhookEvent.update({
         where: { id: webhookEventId },
         data: {
@@ -408,7 +413,9 @@ export class WebhooksService {
     }
 
     if (!webhookEvent.channel.agent) {
-      this.logger.error(`Channel ${webhookEvent.channel.id} has no associated agent`);
+      this.logger.error(
+        `Channel ${webhookEvent.channel.id} has no associated agent`
+      );
       await this.prisma.webhookEvent.update({
         where: { id: webhookEventId },
         data: {
@@ -423,7 +430,9 @@ export class WebhooksService {
     let agentIsInactive: boolean = false;
 
     if (webhookEvent.channel.agent.isActive === false) {
-      this.logger.log(`Skipping message processing for inactive agent: ${webhookEvent.channel.agent.id}`);
+      this.logger.log(
+        `Skipping message processing for inactive agent: ${webhookEvent.channel.agent.id}`
+      );
       await this.prisma.webhookEvent.update({
         where: { id: webhookEventId },
         data: {
@@ -455,7 +464,9 @@ export class WebhooksService {
 
         let chat: Chat;
         try {
-          this.logger.log(`Looking for existing chat with phone: ${phoneNumber} and agent: ${webhookEvent.channel.agentId}`);
+          this.logger.log(
+            `Looking for existing chat with phone: ${phoneNumber} and agent: ${webhookEvent.channel.agentId}`
+          );
           chat = await this.prisma.chat.findFirst({
             where: {
               whatsappPhone: phoneNumber,
@@ -464,9 +475,13 @@ export class WebhooksService {
           });
 
           if (!chat) {
-            this.logger.log(`No existing chat found, creating new chat for phone: ${phoneNumber}`);
+            this.logger.log(
+              `No existing chat found, creating new chat for phone: ${phoneNumber}`
+            );
             if (!webhookEvent.channel.agent?.workspaceId) {
-              throw new Error(`Unable to create chat: Missing workspaceId from agent data`);
+              throw new Error(
+                `Unable to create chat: Missing workspaceId from agent data`
+              );
             }
             const chatData = {
               title: `Chat with ${phoneNumber}`,
@@ -476,10 +491,14 @@ export class WebhooksService {
               workspaceId: webhookEvent.channel.agent.workspaceId,
               agentId: webhookEvent.channel.agentId,
             };
-            this.logger.log(`Creating new chat with data: ${JSON.stringify(chatData)}`);
+            this.logger.log(
+              `Creating new chat with data: ${JSON.stringify(chatData)}`
+            );
             chat = await this.prisma.chat.create({ data: chatData });
             this.logger.log(`Chat created successfully with ID: ${chat.id}`);
-            this.logger.log(`Creating initial interaction for chat: ${chat.id}`);
+            this.logger.log(
+              `Creating initial interaction for chat: ${chat.id}`
+            );
             await this.prisma.interaction.create({
               data: {
                 workspaceId: webhookEvent.channel.agent.workspaceId,
@@ -488,12 +507,17 @@ export class WebhooksService {
                 status: 'RUNNING',
               },
             });
-            this.logger.log(`Interaction created successfully for chat: ${chat.id}`);
+            this.logger.log(
+              `Interaction created successfully for chat: ${chat.id}`
+            );
           } else {
             this.logger.log(`Found existing chat with ID: ${chat.id}`);
           }
         } catch (error) {
-          this.logger.error(`Error in chat creation process: ${error.message}`, error.stack);
+          this.logger.error(
+            `Error in chat creation process: ${error.message}`,
+            error.stack
+          );
           await this.prisma.webhookEvent.update({
             where: { id: webhookEvent.id },
             data: {
@@ -508,12 +532,12 @@ export class WebhooksService {
         let latestInteraction = await this.prisma.interaction.findFirst({
           where: {
             chatId: chat.id,
-            status: { not: 'RESOLVED' }
+            status: { not: 'RESOLVED' },
           },
           orderBy: { startAt: 'desc' },
           select: {
-            id: true
-          }
+            id: true,
+          },
         });
 
         if (!latestInteraction) {
@@ -529,9 +553,13 @@ export class WebhooksService {
 
         let message: Message;
         try {
-          this.logger.log(`Creating message for chat ${chat.id} with content: "${webhookEvent.messageContent}"`);
+          this.logger.log(
+            `Creating message for chat ${chat.id} with content: "${webhookEvent.messageContent}"`
+          );
           if (!webhookEvent.messageContent) {
-            this.logger.warn(`Empty message content for webhook ID: ${webhookEvent.id}, using fallback text`);
+            this.logger.warn(
+              `Empty message content for webhook ID: ${webhookEvent.id}, using fallback text`
+            );
           }
 
           const messageData: Partial<Message> = {
@@ -545,7 +573,10 @@ export class WebhooksService {
             interactionId: latestInteraction.id,
           };
 
-          if (webhookEvent.messageType === 'image' || webhookEvent.messageType === 'video') {
+          if (
+            webhookEvent.messageType === 'image' ||
+            webhookEvent.messageType === 'video'
+          ) {
             messageData.imageUrl = webhookEvent.mediaUrl;
           } else if (webhookEvent.messageType === 'audio') {
             messageData.audioUrl = webhookEvent.mediaUrl;
@@ -553,8 +584,12 @@ export class WebhooksService {
             messageData.documentUrl = webhookEvent.mediaUrl;
           }
 
-          message = await this.prisma.message.create({ data: messageData as Message });
-          this.logger.log(`Message created successfully with ID: ${message.id}`);
+          message = await this.prisma.message.create({
+            data: messageData as Message,
+          });
+          this.logger.log(
+            `Message created successfully with ID: ${message.id}`
+          );
 
           this.logger.log(`Updating chat ${chat.id} as unread`);
           await this.prisma.chat.update({
@@ -562,11 +597,13 @@ export class WebhooksService {
             data: {
               read: false,
               unReadCount: { increment: 1 },
-              finished: false
-            }
+              finished: false,
+            },
           });
 
-          this.logger.log(`Linking message ${message.id} to webhook event ${webhookEvent.id}`);
+          this.logger.log(
+            `Linking message ${message.id} to webhook event ${webhookEvent.id}`
+          );
           await this.prisma.webhookEvent.update({
             where: { id: webhookEvent.id },
             data: {
@@ -576,15 +613,20 @@ export class WebhooksService {
             },
           });
 
-          const updatedChat = await this.prisma.chat.findUnique({ where: { id: chat.id } });
+          const updatedChat = await this.prisma.chat.findUnique({
+            where: { id: chat.id },
+          });
           await this.prisma.interaction.update({
             where: { id: latestInteraction.id },
-            data: { status: 'RUNNING' }
+            data: { status: 'RUNNING' },
           });
-          const paginatedInteractions = await this.interactionsService.findLatestInteractionByChatWithMessages(chat.id);
+          const paginatedInteractions =
+            await this.interactionsService.findLatestInteractionByChatWithMessages(
+              chat.id
+            );
           const agent = await this.prisma.agent.findFirst({
             where: { id: chat.agentId },
-            select: { workspaceId: true }
+            select: { workspaceId: true },
           });
           this.websocketService.sendToClient(
             agent.workspaceId,
@@ -595,12 +637,15 @@ export class WebhooksService {
               latestMessage: {
                 ...message,
                 whatsappTimestamp: message?.whatsappTimestamp?.toString(),
-                time: message?.time?.toString()
-              }
+                time: message?.time?.toString(),
+              },
             }
           );
         } catch (error) {
-          this.logger.error(`Error in message creation process: ${error.message}`, error.stack);
+          this.logger.error(
+            `Error in message creation process: ${error.message}`,
+            error.stack
+          );
           await this.prisma.webhookEvent.update({
             where: { id: webhookEvent.id },
             data: {
@@ -623,8 +668,13 @@ export class WebhooksService {
               time: Date.now(),
             },
           });
-          const updatedChat = await this.prisma.chat.findUnique({ where: { id: chat.id } });
-          const paginatedInteractions = await this.interactionsService.findLatestInteractionByChatWithMessages(chat.id);
+          const updatedChat = await this.prisma.chat.findUnique({
+            where: { id: chat.id },
+          });
+          const paginatedInteractions =
+            await this.interactionsService.findLatestInteractionByChatWithMessages(
+              chat.id
+            );
           this.websocketService.sendToClient(
             webhookEvent.channel.agent.workspaceId,
             'messageChatUpdate',
@@ -634,41 +684,50 @@ export class WebhooksService {
               latestMessage: {
                 ...systemMessage,
                 whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
-                time: systemMessage?.time?.toString()
-              }
+                time: systemMessage?.time?.toString(),
+              },
             }
           );
           return;
         }
 
         if (!chat.humanTalk) {
-          this.logger.log(`Chat ${chat.id} is in automated mode, generating agent response`);
+          this.logger.log(
+            `Chat ${chat.id} is in automated mode, generating agent response`
+          );
           try {
             if (!webhookEvent.channel.agent?.id) {
               throw new Error('Missing agent ID for generating response');
             }
-            this.logger.log(`Requesting agent response for agent: ${webhookEvent.channel.agent.id}, message: "${webhookEvent.messageContent}"`);
+            this.logger.log(
+              `Requesting agent response for agent: ${webhookEvent.channel.agent.id}, message: "${webhookEvent.messageContent}"`
+            );
 
             const serializedWebhookEvent = {
               ...webhookEvent,
-              messageTimestamp: webhookEvent?.messageTimestamp.toString()
+              messageTimestamp: webhookEvent?.messageTimestamp.toString(),
             };
 
             let prompt: string = serializedWebhookEvent.messageContent;
             if (serializedWebhookEvent.messageType !== 'chat') {
               const { apiKey } = this.wahaApiService.getWahaConfig();
-              const documentTextContent = await this.mediaService.extractTextFromMedia(
-                serializedWebhookEvent.mediaUrl,
-                JSON.parse(serializedWebhookEvent.rawData as string)?.mimetype,
-                apiKey
-              );
+              const documentTextContent =
+                await this.mediaService.extractTextFromMedia(
+                  serializedWebhookEvent.mediaUrl,
+                  JSON.parse(serializedWebhookEvent.rawData as string)
+                    ?.mimetype,
+                  apiKey
+                );
               prompt += `\nMedia content as text:\n${documentTextContent}`;
             }
 
             // Determine if audio response is requested
-            const respondViaAudio = webhookEvent.channel.agent.elevenLabsSettings?.alwaysRespondWithAudio === true || (
-              webhookEvent.messageType === 'audio' && webhookEvent.channel.agent.elevenLabsSettings?.respondAudioWithAudio === true
-            );
+            const respondViaAudio =
+              webhookEvent.channel.agent.elevenLabsSettings
+                ?.alwaysRespondWithAudio === true ||
+              (webhookEvent.messageType === 'audio' &&
+                webhookEvent.channel.agent.elevenLabsSettings
+                  ?.respondAudioWithAudio === true);
 
             const agentResponse = await this.conversationsService.converse(
               webhookEvent.channel.agent.id,
@@ -680,13 +739,19 @@ export class WebhooksService {
               } as ConversationDto // Cast to ConversationDto to include respondViaAudio
             );
 
-            if (!agentResponse || (!agentResponse.message && (!agentResponse.audios || agentResponse.audios.length === 0))) {
+            if (
+              !agentResponse ||
+              (!agentResponse.message &&
+                (!agentResponse.audios || agentResponse.audios.length === 0))
+            ) {
               throw new Error('Empty or invalid response from agent');
             }
 
             // Handle text message
             if (agentResponse?.audios.length == 0 && agentResponse.message) {
-              this.logger.log(`Got agent text response: "${agentResponse.message.substring(0, 50)}${agentResponse.message.length > 50 ? '...' : ''}"`);
+              this.logger.log(
+                `Got agent text response: "${agentResponse.message.substring(0, 50)}${agentResponse.message.length > 50 ? '...' : ''}"`
+              );
               const botMessage = await this.prisma.message.create({
                 data: {
                   text: agentResponse.message,
@@ -694,18 +759,23 @@ export class WebhooksService {
                   type: 'chat',
                   chatId: chat.id,
                   sentToEvolution: false,
-                  interactionId: latestInteraction.id
+                  interactionId: latestInteraction.id,
                 },
               });
-              this.logger.log(`Bot text message created with ID: ${botMessage.id}`);
+              this.logger.log(
+                `Bot text message created with ID: ${botMessage.id}`
+              );
 
               try {
-                this.logger.log(`Sending text response to ${phoneNumber}: "${agentResponse.message}"`);
-                const responseData = await this.wahaApiService.sendWhatsAppMessage(
-                  webhookEvent.channel.agentId,
-                  phoneNumber,
-                  agentResponse.message
+                this.logger.log(
+                  `Sending text response to ${phoneNumber}: "${agentResponse.message}"`
                 );
+                const responseData =
+                  await this.wahaApiService.sendWhatsAppMessage(
+                    webhookEvent.channel.agentId,
+                    phoneNumber,
+                    agentResponse.message
+                  );
                 if (responseData) {
                   const messageId: string = responseData.id.id;
                   await this.prisma.message.update({
@@ -717,7 +787,10 @@ export class WebhooksService {
                   });
                 }
               } catch (error) {
-                this.logger.error(`Error sending text message to WhatsApp: ${error.message}`, error.stack);
+                this.logger.error(
+                  `Error sending text message to WhatsApp: ${error.message}`,
+                  error.stack
+                );
               }
             }
 
@@ -736,22 +809,25 @@ export class WebhooksService {
                     // audioUrl will be updated after sending
                   },
                 });
-                this.logger.log(`Bot audio message created with ID: ${botAudioMessage.id}`);
+                this.logger.log(
+                  `Bot audio message created with ID: ${botAudioMessage.id}`
+                );
 
                 try {
                   this.logger.log(`Sending audio response to ${phoneNumber}`);
-                  const mediaResponseData = await this.wahaApiService.sendWhatsAppMessage(
-                    webhookEvent.channel.agentId,
-                    phoneNumber,
-                    agentResponse.message,
-                    {
-                      url: audioData,
-                      type: 'audio',
-                      mimetype: 'audio/ogg; codecs=opus',
-                      caption: 'caption',
-                      filename: 'audio.ogg'                      
-                    }
-                  );
+                  const mediaResponseData =
+                    await this.wahaApiService.sendWhatsAppMessage(
+                      webhookEvent.channel.agentId,
+                      phoneNumber,
+                      agentResponse.message,
+                      {
+                        url: audioData,
+                        type: 'audio',
+                        mimetype: 'audio/ogg; codecs=opus',
+                        caption: 'caption',
+                        filename: 'audio.ogg',
+                      }
+                    );
 
                   if (mediaResponseData) {
                     const mediaData = mediaResponseData._data;
@@ -766,12 +842,15 @@ export class WebhooksService {
                         mimetype: mediaData.mimetype,
                         whatsappMessageId: messageId,
                         whatsappTimestamp: mediaResponseData.timestamp,
-                        fileName: 'audio.ogg'
+                        fileName: 'audio.ogg',
                       },
                     });
                   }
                 } catch (error) {
-                  this.logger.error(`Error sending audio message to WhatsApp: ${error.message}`, error.stack);
+                  this.logger.error(
+                    `Error sending audio message to WhatsApp: ${error.message}`,
+                    error.stack
+                  );
                 }
               }
             }
@@ -784,15 +863,20 @@ export class WebhooksService {
               data: {
                 read: false,
                 unReadCount: { increment: 1 },
-                finished: false
-              }
+                finished: false,
+              },
             });
 
-            const updatedChatAfterResponse = await this.prisma.chat.findUnique({ where: { id: chat.id } });
-            const paginatedInteractionsAfterResponse = await this.interactionsService.findLatestInteractionByChatWithMessages(chat.id);
+            const updatedChatAfterResponse = await this.prisma.chat.findUnique({
+              where: { id: chat.id },
+            });
+            const paginatedInteractionsAfterResponse =
+              await this.interactionsService.findLatestInteractionByChatWithMessages(
+                chat.id
+              );
             const agentAfterResponse = await this.prisma.agent.findFirst({
               where: { id: chat.agentId },
-              select: { workspaceId: true }
+              select: { workspaceId: true },
             });
 
             // Fetch the latest message (could be text or audio) to send in websocket update
@@ -809,14 +893,17 @@ export class WebhooksService {
                 paginatedInteractions: paginatedInteractionsAfterResponse,
                 latestMessage: {
                   ...latestMessageSent,
-                  whatsappTimestamp: latestMessageSent?.whatsappTimestamp?.toString(),
-                  time: latestMessageSent?.time?.toString()
-                }
+                  whatsappTimestamp:
+                    latestMessageSent?.whatsappTimestamp?.toString(),
+                  time: latestMessageSent?.time?.toString(),
+                },
               }
             );
-
           } catch (error) {
-            this.logger.error(`Error generating or sending agent response: ${error.message}`, error.stack);
+            this.logger.error(
+              `Error generating or sending agent response: ${error.message}`,
+              error.stack
+            );
             // Update webhook event with error
             await this.prisma.webhookEvent.update({
               where: { id: webhookEvent.id },
@@ -830,7 +917,10 @@ export class WebhooksService {
         }
       }
     } catch (error) {
-      this.logger.error(`Error processing webhook event ${webhookEventId}: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error processing webhook event ${webhookEventId}: ${error.message}`,
+        error.stack
+      );
       await this.prisma.webhookEvent.update({
         where: { id: webhookEventId },
         data: {
@@ -1068,8 +1158,6 @@ export class WebhooksService {
       this.logger.debug(
         `Processing webhook: ${event} for channel ${channel.id} with message: "${messageContent}"`
       );
-
-
 
       // Build the webhook event data object
       const webhookEventData = {

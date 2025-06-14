@@ -5,12 +5,9 @@ import { AgentsModule } from '../agents/agents.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [
-    AuthModule,
-    AgentsModule
-  ],
+  imports: [AuthModule, AgentsModule],
   controllers: [IntentionsController],
   providers: [IntentionsService],
-  exports: [IntentionsService]
+  exports: [IntentionsService],
 })
 export class IntentionsModule {}

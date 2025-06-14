@@ -6,7 +6,7 @@ import {
   ValidateNested,
   Min,
   IsNotEmpty,
-  IsDate
+  IsDate,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 

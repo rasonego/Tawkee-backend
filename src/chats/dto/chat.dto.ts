@@ -143,7 +143,7 @@ export class ChatDto {
 
   @ApiProperty({
     description: 'Latest message',
-    example: 'Yes, thanks...'
+    example: 'Yes, thanks...',
   })
   latestMessage?: Message;
 }

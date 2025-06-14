@@ -8,14 +8,19 @@ import { AuthGuard } from '../../../auth/auth.guard';
 @UseGuards(AuthGuard)
 @ApiBearerAuth()
 export class ScheduleValidationController {
-  constructor(private readonly scheduleValidationService: ScheduleValidationService) {}
+  constructor(
+    private readonly scheduleValidationService: ScheduleValidationService
+  ) {}
 
   @Patch(':agentId/schedule-settings')
   async updateScheduleSettings(
     @Param('agentId') agentId: string,
     @Body() updateDto: Partial<ScheduleSettingsDto>
   ) {
-    return this.scheduleValidationService.updateScheduleSettings(agentId, updateDto);
+    return this.scheduleValidationService.updateScheduleSettings(
+      agentId,
+      updateDto
+    );
   }
 
   @Get(':agentId/schedule-settings')
@@ -25,4 +30,3 @@ export class ScheduleValidationController {
     return this.scheduleValidationService.getScheduleSettings(agentId);
   }
 }
-

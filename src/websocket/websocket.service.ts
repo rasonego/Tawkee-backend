@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Server, Socket } from 'socket.io';
+import { Server } from 'socket.io';
 
 // Interfaces podem ser movidas para um arquivo de tipos dedicado (e.g., websocket.types.ts)
 export interface MessagePayload {
@@ -36,32 +36,44 @@ export class WebsocketService {
    * @param eventName O nome do evento a ser emitido para o cliente.
    * @param payload O conteúdo da mensagem.
    */
-  sendToClient(targetClientId: string, eventName: string, payload: any): boolean {
+  sendToClient(
+    targetClientId: string,
+    eventName: string,
+    payload: any
+  ): boolean {
     if (!this.server) {
-      this.logger.error('Socket.IO Server not initialized in WebsocketService. Call initialize() first.');
+      this.logger.error(
+        'Socket.IO Server not initialized in WebsocketService. Call initialize() first.'
+      );
       return false;
     }
     // O método .to() do servidor Socket.IO direciona a mensagem para o socketId fornecido.
     const result = this.server.to(targetClientId).emit(eventName, payload);
     if (result) {
-        this.logger.log(`Message sent to client ${targetClientId} on event ${eventName}`);
+      this.logger.log(
+        `Message sent to client ${targetClientId} on event ${eventName}`
+      );
     } else {
-        // Isso pode acontecer se o namespace não existir ou se houver um problema interno no socket.io
-        // mas geralmente, se o socketId não for encontrado, ele simplesmente não envia sem erro explícito aqui.
-        // A verificação se o cliente existe pode ser feita antes se necessário.
-        this.logger.warn(`Attempted to send message to client ${targetClientId} on event ${eventName}, but emit returned false (client might not be connected or room might not exist).`);
+      // Isso pode acontecer se o namespace não existir ou se houver um problema interno no socket.io
+      // mas geralmente, se o socketId não for encontrado, ele simplesmente não envia sem erro explícito aqui.
+      // A verificação se o cliente existe pode ser feita antes se necessário.
+      this.logger.warn(
+        `Attempted to send message to client ${targetClientId} on event ${eventName}, but emit returned false (client might not be connected or room might not exist).`
+      );
     }
     return result;
   }
 
-   /**
+  /**
    * Desconecta um cliente específico pelo seu socketId.
    * @param clientId O ID do socket do cliente a ser desconectado.
    * @param closeConnection Se true, fecha a conexão subjacente. Default: false.
    */
   disconnectClient(clientId: string, closeConnection: boolean = false): void {
     if (!this.server) {
-      this.logger.error('Socket.IO Server not initialized in WebsocketService.');
+      this.logger.error(
+        'Socket.IO Server not initialized in WebsocketService.'
+      );
       return;
     }
     const clientSocket = this.server.sockets.sockets.get(clientId);

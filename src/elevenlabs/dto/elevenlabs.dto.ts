@@ -4,7 +4,7 @@ import {
   IsBoolean,
   IsOptional,
   IsNumber,
-  IsInt
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 

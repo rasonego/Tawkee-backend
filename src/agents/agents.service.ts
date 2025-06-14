@@ -65,7 +65,7 @@ export class AgentsService {
             messageGroupingTime: true,
           },
         },
-        scheduleSettings:  {
+        scheduleSettings: {
           select: {
             email: true,
             availableTimes: true,
@@ -75,8 +75,8 @@ export class AgentsService {
             alwaysOpen: true,
             askForContactName: true,
             askForContactPhone: true,
-            askForMeetingDuration: true
-          }
+            askForMeetingDuration: true,
+          },
         },
         elevenLabsSettings: {
           select: {
@@ -89,8 +89,8 @@ export class AgentsService {
             subscriptionTier: true,
             characterCount: true,
             characterLimit: true,
-            userName: true            
-          }
+            userName: true,
+          },
         },
         webhooks: {
           select: {
@@ -211,11 +211,26 @@ export class AgentsService {
       });
 
       const defaultAvailableTimes = {
-        monday: [['09:00', '12:00'], ['13:00', '18:00']],
-        tuesday: [['09:00', '12:00'], ['13:00', '18:00']],
-        wednesday: [['09:00', '12:00'], ['13:00', '18:00']],
-        thursday: [['09:00', '12:00'], ['13:00', '18:00']],
-        friday: [['09:00', '12:00'], ['13:00', '18:00']],
+        monday: [
+          ['09:00', '12:00'],
+          ['13:00', '18:00'],
+        ],
+        tuesday: [
+          ['09:00', '12:00'],
+          ['13:00', '18:00'],
+        ],
+        wednesday: [
+          ['09:00', '12:00'],
+          ['13:00', '18:00'],
+        ],
+        thursday: [
+          ['09:00', '12:00'],
+          ['13:00', '18:00'],
+        ],
+        friday: [
+          ['09:00', '12:00'],
+          ['13:00', '18:00'],
+        ],
       };
 
       const scheduleSettings = await tx.scheduleSettings.create({
@@ -231,19 +246,25 @@ export class AgentsService {
           askForMeetingDuration: false,
         },
       });
-      
+
       const elevenLabsSettings = await tx.elevenLabsSettings.create({
         data: {
-            agentId: agent.id,
-            selectedElevenLabsVoiceId: '',
-            subscriptionTier: 'free',
-            characterCount: 10000,
-            characterLimit: 10000,
-            userName: 'unkown'     
-        }
-      })
+          agentId: agent.id,
+          selectedElevenLabsVoiceId: '',
+          subscriptionTier: 'free',
+          characterCount: 10000,
+          characterLimit: 10000,
+          userName: 'unkown',
+        },
+      });
 
-      return { agent, settings, webhooks, scheduleSettings, elevenLabsSettings };
+      return {
+        agent,
+        settings,
+        webhooks,
+        scheduleSettings,
+        elevenLabsSettings,
+      };
     });
 
     // Return the combined data as EnhancedAgentDto
@@ -251,7 +272,7 @@ export class AgentsService {
       agent: {
         ...result.agent,
         channels: [],
-        intentions: []
+        intentions: [],
       },
       settings: {
         preferredModel: result.settings.preferredModel,
@@ -261,7 +282,7 @@ export class AgentsService {
         splitMessages: result.settings.splitMessages,
         enabledEmoji: result.settings.enabledEmoji,
         limitSubjects: result.settings.limitSubjects,
-        messageGroupingTime: result.settings.messageGroupingTime
+        messageGroupingTime: result.settings.messageGroupingTime,
       },
       webhooks: {
         onNewMessage: result.webhooks.onNewMessage,
@@ -274,16 +295,17 @@ export class AgentsService {
         maxAdvanceDays: result.scheduleSettings.maxAdvanceDays,
         maxEventDuration: result.scheduleSettings.maxEventDuration,
         alwaysOpen: result.scheduleSettings.alwaysOpen,
-        availableTimes: result.scheduleSettings.availableTimes as AvailableTimesDto,
+        availableTimes: result.scheduleSettings
+          .availableTimes as AvailableTimesDto,
         askForContactName: result.scheduleSettings.askForContactName,
         askForContactPhone: result.scheduleSettings.askForContactPhone,
-        askForMeetingDuration: result.scheduleSettings.askForMeetingDuration        
+        askForMeetingDuration: result.scheduleSettings.askForMeetingDuration,
       },
       elevenLabsSettings: {
         subscriptionTier: 'free',
         characterCount: 10000,
         characterLimit: 10000,
-        userName: 'unknown'
+        userName: 'unknown',
       },
     };
   }
@@ -334,7 +356,7 @@ export class AgentsService {
             updatedAt: true,
           },
         },
-        scheduleSettings:  {
+        scheduleSettings: {
           select: {
             email: true,
             availableTimes: true,
@@ -344,8 +366,8 @@ export class AgentsService {
             alwaysOpen: true,
             askForContactName: true,
             askForContactPhone: true,
-            askForMeetingDuration: true
-          }
+            askForMeetingDuration: true,
+          },
         },
         elevenLabsSettings: {
           select: {
@@ -358,8 +380,8 @@ export class AgentsService {
             subscriptionTier: true,
             characterCount: true,
             characterLimit: true,
-            userName: true            
-          }
+            userName: true,
+          },
         },
         intentions: {
           select: {
@@ -381,7 +403,7 @@ export class AgentsService {
                 jsonName: true,
                 description: true,
                 type: true,
-                required: true
+                required: true,
               },
             },
             headers: {
@@ -413,17 +435,17 @@ export class AgentsService {
                     id: true,
                     name: true,
                     value: true,
-                  }
+                  },
                 },
                 queryParams: {
                   select: {
                     id: true,
                     name: true,
-                    value: true
-                  }
-                }
-              }
-            }
+                    value: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -467,11 +489,11 @@ export class AgentsService {
       },
       scheduleSettings: {
         ...scheduleSettings,
-        availableTimes: scheduleSettings.availableTimes as AvailableTimesDto
+        availableTimes: scheduleSettings.availableTimes as AvailableTimesDto,
       },
       elevenLabsSettings: {
-        ...elevenLabsSettings
-      }
+        ...elevenLabsSettings,
+      },
     };
   }
 
@@ -530,7 +552,7 @@ export class AgentsService {
                 jsonName: true,
                 description: true,
                 type: true,
-                required: true
+                required: true,
               },
             },
             headers: {
@@ -562,20 +584,19 @@ export class AgentsService {
                     id: true,
                     name: true,
                     value: true,
-                  }
+                  },
                 },
                 queryParams: {
                   select: {
                     id: true,
                     name: true,
-                    value: true
-                  }
-                }
-              }
-            }
+                    value: true,
+                  },
+                },
+              },
+            },
           },
         },
-
       },
     });
 
@@ -590,7 +611,7 @@ export class AgentsService {
         splitMessages: true,
         enabledEmoji: true,
         limitSubjects: true,
-        messageGroupingTime: true
+        messageGroupingTime: true,
       },
     });
 
@@ -616,9 +637,9 @@ export class AgentsService {
         availableTimes: true,
         askForContactName: true,
         askForContactPhone: true,
-        askForMeetingDuration: true         
-      }
-    })
+        askForMeetingDuration: true,
+      },
+    });
 
     // Fetch the agent's elevenLabs settings
     const elevenLabsSettings = await this.prisma.elevenLabsSettings.findUnique({
@@ -632,9 +653,9 @@ export class AgentsService {
         subscriptionTier: true,
         characterCount: true,
         characterLimit: true,
-        userName: true
-      }
-    })
+        userName: true,
+      },
+    });
 
     // Return the combined data as EnhancedAgentDto
     return {
@@ -649,7 +670,7 @@ export class AgentsService {
         limitSubjects: true,
         messageGroupingTime: GroupingTime.NO_GROUP,
         respondAudioWithAudio: false,
-        alwaysRespondWithAudio: false
+        alwaysRespondWithAudio: false,
       },
       webhooks: webhooks || {
         onNewMessage: null,
@@ -659,11 +680,11 @@ export class AgentsService {
       },
       scheduleSettings: {
         ...scheduleSettings,
-        availableTimes: scheduleSettings.availableTimes as AvailableTimesDto
+        availableTimes: scheduleSettings.availableTimes as AvailableTimesDto,
       },
       elevenLabsSettings: {
-        ...elevenLabsSettings
-      }
+        ...elevenLabsSettings,
+      },
     };
   }
 

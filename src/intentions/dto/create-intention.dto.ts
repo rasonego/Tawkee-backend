@@ -25,7 +25,7 @@ export class CreateIntentionDto {
   @IsString()
   @IsNotEmpty()
   toolName: string;
-  
+
   @ApiProperty({
     description: 'Intention description',
     example: 'Get customer information',

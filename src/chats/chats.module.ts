@@ -8,7 +8,13 @@ import { WebsocketModule } from 'src/websocket/websocket.module';
 import { InteractionsModule } from 'src/interactions/interactions.module';
 
 @Module({
-  imports: [AuthModule, PrismaModule, WahaApiModule, WebsocketModule, InteractionsModule],
+  imports: [
+    AuthModule,
+    PrismaModule,
+    WahaApiModule,
+    WebsocketModule,
+    InteractionsModule,
+  ],
   controllers: [ChatsController],
   providers: [ChatsService],
   exports: [ChatsService],

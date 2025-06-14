@@ -15,7 +15,6 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
-  ApiQuery,
   ApiResponse,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
@@ -103,8 +102,9 @@ export class InteractionsController {
   @ApiPaginationQueries()
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'The interactions and their messages have been successfully retrieved.',
-    type: PaginatedInteractionsWithMessagesResponseDto
+    description:
+      'The interactions and their messages have been successfully retrieved.',
+    type: PaginatedInteractionsWithMessagesResponseDto,
   })
   async findInteractionsByChat(
     @Param('chatId') chatId: string,

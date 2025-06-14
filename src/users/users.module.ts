@@ -22,7 +22,7 @@ import { GoogleCalendarOAuthModule } from 'src/intentions/google-calendar/google
         signOptions: { expiresIn: '7d' },
       }),
       inject: [ConfigService],
-    })
+    }),
   ],
   controllers: [UsersController],
   providers: [UsersService],

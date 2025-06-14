@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as crypto from 'crypto';
@@ -22,7 +26,7 @@ export class GoogleCalendarOAuthService {
   private readonly stateSecret: string;
   private readonly scopes: string[];
   private readonly oauth2Client: Auth.OAuth2Client;
-  
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
@@ -45,11 +49,18 @@ export class GoogleCalendarOAuthService {
       'https://www.googleapis.com/auth/calendar.events',
       'https://www.googleapis.com/auth/calendar.readonly',
       'https://www.googleapis.com/auth/calendar.events.freebusy',
-      'https://www.googleapis.com/auth/calendar.freebusy',     
-      'openid', 'email', 'profile',
+      'https://www.googleapis.com/auth/calendar.freebusy',
+      'openid',
+      'email',
+      'profile',
     ];
 
-    if (!this.clientId || !this.clientSecret || !this.redirectUri || !this.stateSecret) {
+    if (
+      !this.clientId ||
+      !this.clientSecret ||
+      !this.redirectUri ||
+      !this.stateSecret
+    ) {
       throw new Error('Missing required Google OAuth configuration');
     }
   }
@@ -68,16 +79,16 @@ export class GoogleCalendarOAuthService {
       nonce: this.generateNonce(),
       timestamp: Date.now(),
     };
-    
+
     // Stringify payload first
     const payloadString = JSON.stringify(payloadObj);
-    
+
     // Generate signature from stringified payload
     const signature = this.generateSignature(payloadString);
-    
+
     // Compose state object with string payload
     const stateObject = { payload: payloadString, signature };
-    
+
     // Base64 encode state JSON string
     const state = Buffer.from(JSON.stringify(stateObject)).toString('base64');
 
@@ -97,7 +108,8 @@ export class GoogleCalendarOAuthService {
   }
 
   generateSignature(payloadString: string): string {
-    const secret = this.configService.get<string>('STATE_SIGNING_SECRET') || 'victorx';
+    const secret =
+      this.configService.get<string>('STATE_SIGNING_SECRET') || 'victorx';
 
     const hmac = crypto.createHmac('sha256', secret);
     hmac.update(payloadString);
@@ -110,7 +122,9 @@ export class GoogleCalendarOAuthService {
     return expected === signature;
   }
 
-  async getCalendarAuthUrl(agentId: string): Promise<{ authUrl: string; state: string }> {
+  async getCalendarAuthUrl(
+    agentId: string
+  ): Promise<{ authUrl: string; state: string }> {
     const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },
       select: { id: true },
@@ -136,7 +150,7 @@ export class GoogleCalendarOAuthService {
     const agentId = this.verifyState(state);
 
     const { tokens } = await this.oauth2Client.getToken(code);
-    const expires_at = tokens.expiry_date ?? (Date.now() + 3600 * 1000);
+    const expires_at = tokens.expiry_date ?? Date.now() + 3600 * 1000;
 
     const googleTokens: GoogleTokens = {
       access_token: tokens.access_token,
@@ -160,7 +174,9 @@ export class GoogleCalendarOAuthService {
     const email = userinfoResponse?.data?.email;
 
     if (!email) {
-      throw new UnauthorizedException('Failed to retrieve email for authorized calendar account');
+      throw new UnauthorizedException(
+        'Failed to retrieve email for authorized calendar account'
+      );
     }
 
     await this.storeAgentTokens(agentId, googleTokens);
@@ -189,7 +205,7 @@ export class GoogleCalendarOAuthService {
 
     // Exchange code for tokens
     const { tokens } = await this.oauth2Client.getToken(code);
-    const expires_at = tokens.expiry_date ?? (Date.now() + 3600 * 1000);
+    const expires_at = tokens.expiry_date ?? Date.now() + 3600 * 1000;
 
     const googleTokens: GoogleTokens = {
       access_token: tokens.access_token,
@@ -211,7 +227,9 @@ export class GoogleCalendarOAuthService {
     const userinfoResponse = await oauth2.userinfo.get();
 
     if (!userinfoResponse?.data?.email) {
-      throw new UnauthorizedException('Failed to retrieve user profile from Google');
+      throw new UnauthorizedException(
+        'Failed to retrieve user profile from Google'
+      );
     }
 
     return {
@@ -224,7 +242,6 @@ export class GoogleCalendarOAuthService {
       },
     };
   }
-
 
   async getAuthStatus(agentId: string): Promise<{
     isAuthenticated: boolean;
@@ -248,9 +265,12 @@ export class GoogleCalendarOAuthService {
     }
 
     try {
-      const response = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      });
+      const response = await fetch(
+        'https://www.googleapis.com/calendar/v3/users/me/calendarList',
+        {
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
+        }
+      );
 
       return {
         isAuthenticated: response.ok,
@@ -258,7 +278,7 @@ export class GoogleCalendarOAuthService {
         expiresAt: tokens.expires_at,
         scopes: tokens.scope?.split(' ') || [],
       };
-    } catch (err) {
+    } catch {
       return {
         isAuthenticated: false,
         needsRefresh: true,
@@ -273,12 +293,15 @@ export class GoogleCalendarOAuthService {
     if (!tokens) throw new UnauthorizedException('Agent not authenticated.');
 
     const isExpired = Date.now() + 5 * 60 * 1000 >= tokens.expires_at;
-    return isExpired ? (await this.refreshAccessToken(agentId)).access_token : tokens.access_token;
+    return isExpired
+      ? (await this.refreshAccessToken(agentId)).access_token
+      : tokens.access_token;
   }
 
   async refreshAccessToken(agentId: string): Promise<GoogleTokens> {
     const tokens = await this.getAgentTokens(agentId);
-    if (!tokens?.refresh_token) throw new UnauthorizedException('Missing refresh token');
+    if (!tokens?.refresh_token)
+      throw new UnauthorizedException('Missing refresh token');
 
     this.oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
 
@@ -288,7 +311,7 @@ export class GoogleCalendarOAuthService {
     const updated: GoogleTokens = {
       access_token: refreshed.access_token,
       refresh_token: refreshed.refresh_token ?? tokens.refresh_token,
-      expires_at: refreshed.expiry_date ?? (Date.now() + 3600 * 1000),
+      expires_at: refreshed.expiry_date ?? Date.now() + 3600 * 1000,
       scope: refreshed.scope ?? tokens.scope,
       token_type: refreshed.token_type ?? 'Bearer',
     };
@@ -297,28 +320,33 @@ export class GoogleCalendarOAuthService {
     return updated;
   }
 
-  async findAllAgentTokens(): Promise<Array<{ agentId: string; expiresAt: number; scopes: string[] }>> {
-  const tokenRecords = await this.prisma.agentGoogleToken.findMany({
-    select: {
-      agentId: true,
-      expiresAt: true,
-      scope: true,
-    },
-  });
+  async findAllAgentTokens(): Promise<
+    Array<{ agentId: string; expiresAt: number; scopes: string[] }>
+  > {
+    const tokenRecords = await this.prisma.agentGoogleToken.findMany({
+      select: {
+        agentId: true,
+        expiresAt: true,
+        scope: true,
+      },
+    });
 
-  return tokenRecords.map(record => ({
-    agentId: record.agentId,
-    expiresAt: Number(record.expiresAt),
-    scopes: record.scope.split(' '),
-  }));
-}
+    return tokenRecords.map((record) => ({
+      agentId: record.agentId,
+      expiresAt: Number(record.expiresAt),
+      scopes: record.scope.split(' '),
+    }));
+  }
   async revokeAgentTokens(agentId: string) {
     const tokens = await this.getAgentTokens(agentId);
-    if (tokens?.access_token) await this.oauth2Client.revokeToken(tokens.access_token);
+    if (tokens?.access_token)
+      await this.oauth2Client.revokeToken(tokens.access_token);
     await this.prisma.agentGoogleToken.deleteMany({ where: { agentId } });
 
     await this.intentionsService.removeGoogleCalendarIntentions(agentId);
-    await this.scheduleValidationService.updateScheduleSettings(agentId, { email: '' });
+    await this.scheduleValidationService.updateScheduleSettings(agentId, {
+      email: '',
+    });
 
     return { success: true };
   }
@@ -332,7 +360,9 @@ export class GoogleCalendarOAuthService {
     const signature = this.generateSignature(payloadString);
 
     const stateObject = { payload: payloadString, signature };
-    const encodedState = Buffer.from(JSON.stringify(stateObject)).toString('base64');
+    const encodedState = Buffer.from(JSON.stringify(stateObject)).toString(
+      'base64'
+    );
 
     // Logging
     // console.log('--- Generating OAuth State ---');
@@ -389,12 +419,16 @@ export class GoogleCalendarOAuthService {
     });
 
     if (!agentExists) {
-      console.error(`Agent with ID ${agentId} does not exist. Aborting token storage.`);
+      console.error(
+        `Agent with ID ${agentId} does not exist. Aborting token storage.`
+      );
       throw new Error(`Agent with ID ${agentId} not found`);
     }
 
     const encryptedAccess = this.encryptToken(tokens.access_token);
-    const encryptedRefresh = tokens.refresh_token ? this.encryptToken(tokens.refresh_token) : null;
+    const encryptedRefresh = tokens.refresh_token
+      ? this.encryptToken(tokens.refresh_token)
+      : null;
 
     await this.prisma.agentGoogleToken.upsert({
       where: { agentId },
@@ -417,11 +451,15 @@ export class GoogleCalendarOAuthService {
   }
 
   private async getAgentTokens(agentId: string): Promise<GoogleTokens | null> {
-    const record = await this.prisma.agentGoogleToken.findUnique({ where: { agentId } });
+    const record = await this.prisma.agentGoogleToken.findUnique({
+      where: { agentId },
+    });
     if (!record) return null;
     return {
       access_token: this.decryptToken(record.accessToken),
-      refresh_token: record.refreshToken ? this.decryptToken(record.refreshToken) : null,
+      refresh_token: record.refreshToken
+        ? this.decryptToken(record.refreshToken)
+        : null,
       expires_at: Number(record.expiresAt),
       scope: record.scope,
       token_type: record.tokenType,
@@ -441,7 +479,11 @@ export class GoogleCalendarOAuthService {
   private decryptToken(data: string): string {
     const [ivHex, tagHex, enc] = data.split(':');
     const key = crypto.scryptSync(this.stateSecret, 'salt', 32);
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      key,
+      Buffer.from(ivHex, 'hex')
+    );
     decipher.setAAD(Buffer.from('google-token'));
     decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
     return decipher.update(enc, 'hex', 'utf8') + decipher.final('utf8');

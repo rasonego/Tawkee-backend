@@ -1,14 +1,18 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentsService } from '../agents/agents.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { CreateIntentionDto } from './dto/create-intention.dto';
 import { UpdateIntentionDto } from './dto/update-intention.dto';
-import { 
+import {
   createGoogleCalendarIntention,
   suggestAvailableGoogleMeetingSlotsIntention,
   cancelGoogleCalendarMeetingIntention,
-  checkGoogleCalendarEventsIntention
+  checkGoogleCalendarEventsIntention,
 } from './google-calendar/google-calendar-intention';
 import { FieldType, PreprocessingType, Prisma } from '@prisma/client';
 
@@ -70,13 +74,16 @@ export class IntentionsService {
     });
 
     if (existing) {
-      throw new BadRequestException(`An intention with toolName "${createIntentionDto.toolName}" already exists.`);
+      throw new BadRequestException(
+        `An intention with toolName "${createIntentionDto.toolName}" already exists.`
+      );
     }
 
     // Extract nested data
-    const { fields, headers, params, preconditions, ...intentionData } = createIntentionDto;
+    const { fields, headers, params, preconditions, ...intentionData } =
+      createIntentionDto;
 
-    const formattedPreconditions = (preconditions || []).map(p => ({
+    const formattedPreconditions = (preconditions || []).map((p) => ({
       name: p.name,
       url: p.url,
       httpMethod: p.httpMethod,
@@ -84,8 +91,8 @@ export class IntentionsService {
       failureCondition: p.failureCondition,
       failureMessage: p.failureMessage,
       headers: {
-        create: p.headers || []
-      }
+        create: p.headers || [],
+      },
     }));
 
     // Create intention with nested data in a transaction
@@ -109,7 +116,7 @@ export class IntentionsService {
           fields: true,
           headers: true,
           params: true,
-          preconditions: true
+          preconditions: true,
         },
       });
 
@@ -131,7 +138,8 @@ export class IntentionsService {
     }
 
     // Extract nested data
-    const { fields, headers, params, preconditions, ...intentionData } = updateIntentionDto;
+    const { fields, headers, params, preconditions, ...intentionData } =
+      updateIntentionDto;
 
     // Update intention with nested data in a transaction
     await this.prisma.$transaction(async (prisma) => {
@@ -140,7 +148,7 @@ export class IntentionsService {
       await prisma.intentionHeader.deleteMany({ where: { intentionId: id } });
       await prisma.intentionParam.deleteMany({ where: { intentionId: id } });
 
-      const formattedPreconditions = (preconditions || []).map(p => ({
+      const formattedPreconditions = (preconditions || []).map((p) => ({
         name: p.name,
         url: p.url,
         httpMethod: p.httpMethod,
@@ -148,8 +156,8 @@ export class IntentionsService {
         failureCondition: p.failureCondition,
         failureMessage: p.failureMessage,
         headers: {
-          create: p.headers || []
-        }
+          create: p.headers || [],
+        },
       }));
 
       // Then update intention and create new related records
@@ -167,8 +175,8 @@ export class IntentionsService {
             create: params || [],
           },
           preconditions: {
-            create: formattedPreconditions
-          }
+            create: formattedPreconditions,
+          },
         },
       });
     });
@@ -176,7 +184,11 @@ export class IntentionsService {
     return { success: true };
   }
 
-  async remove(id?: string, agentId?: string, toolName?: string): Promise<{ success: boolean }> {
+  async remove(
+    id?: string,
+    agentId?: string,
+    toolName?: string
+  ): Promise<{ success: boolean }> {
     // console.log('🗑️ [remove] Attempting to remove intention...');
     // console.log('🔍 [remove] Received parameters:', { id, agentId, toolName });
 
@@ -190,10 +202,14 @@ export class IntentionsService {
       // console.log('📌 [remove] Built where clause using agentId and toolName:', whereClause);
     } else {
       // console.warn('⚠️ [remove] Invalid parameters. Either `id` or both `agentId` and `toolName` must be provided.');
-      throw new BadRequestException('Must provide either id or both agentId and toolName.');
+      throw new BadRequestException(
+        'Must provide either id or both agentId and toolName.'
+      );
     }
 
-    const intention = await this.prisma.intention.findFirst({ where: whereClause });
+    const intention = await this.prisma.intention.findFirst({
+      where: whereClause,
+    });
 
     if (!intention) {
       // console.warn('❌ [remove] No matching intention found for:', whereClause);
@@ -213,7 +229,6 @@ export class IntentionsService {
     return { success: true };
   }
 
-
   async registerGoogleCalendarIntentions(agentId: string) {
     await this.agentsService.findOne(agentId);
 
@@ -229,8 +244,12 @@ export class IntentionsService {
     await this.remove(undefined, agentId, 'schedule_google_meeting');
     await this.remove(undefined, agentId, 'cancel_google_meeting');
     await this.remove(undefined, agentId, 'check_google_calendar_events');
-    await this.remove(undefined, agentId, 'suggest_available_google_meeting_slots');
-    
+    await this.remove(
+      undefined,
+      agentId,
+      'suggest_available_google_meeting_slots'
+    );
+
     return await this.registerGoogleCalendarScheduleIntention(agentId);
   }
 
@@ -239,13 +258,16 @@ export class IntentionsService {
       fields,
       headers,
       preconditions,
-      authentication,       // ❌ runtime-only, stripped
-      errorHandling,        // ❌ runtime-only, stripped
-      responseProcessing,   // ❌ runtime-only, stripped
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      authentication: _authentication, // ❌ runtime-only, stripped
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      errorHandling: _errorHandling, // ❌ runtime-only, stripped
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      responseProcessing: _responseProcessing, // ❌ runtime-only, stripped
       ...intentionData
     } = createGoogleCalendarIntention;
 
-    const formattedPreconditions = (preconditions || []).map(pre => ({
+    const formattedPreconditions = (preconditions || []).map((pre) => ({
       name: pre.name,
       url: pre.url,
       httpMethod: pre.httpMethod,
@@ -278,16 +300,20 @@ export class IntentionsService {
       return normalized;
     };
 
-    const castedFields = (fields || []).map(({ validation, defaultValue, ...field }) => ({
-      ...field,
-      type: normalizeFieldType(field.type),
-    }));
+    const castedFields = (fields || []).map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ validation: _validation, defaultValue: _defaultValue, ...field }) => ({
+        ...field,
+        type: normalizeFieldType(field.type),
+      })
+    );
 
     return this.prisma.$transaction(async (prisma) => {
       const intention = await prisma.intention.create({
         data: {
           ...intentionData,
-          preprocessingMessage: intentionData.preprocessingMessage as PreprocessingType,
+          preprocessingMessage:
+            intentionData.preprocessingMessage as PreprocessingType,
           agent: {
             connect: { id: agentId },
           },
@@ -302,7 +328,7 @@ export class IntentionsService {
         include: {
           fields: true,
           headers: true,
-          params: true
+          params: true,
         },
       });
 
@@ -314,8 +340,10 @@ export class IntentionsService {
     const {
       fields,
       headers,
-      authentication,       // ❌ runtime-only, stripped
-      responseProcessing,   // ❌ runtime-only, stripped
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      authentication: _authentication, // ❌ runtime-only, stripped
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      responseProcessing: _responseProcessing, // ❌ runtime-only, stripped
       ...intentionData
     } = suggestAvailableGoogleMeetingSlotsIntention;
 
@@ -340,16 +368,20 @@ export class IntentionsService {
       return normalized;
     };
 
-    const castedFields = (fields || []).map(({ validation, defaultValue, ...field }) => ({
-      ...field,
-      type: normalizeFieldType(field.type),
-    }));
+    const castedFields = (fields || []).map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ validation: _validation, defaultValue: _defaultValue, ...field }) => ({
+        ...field,
+        type: normalizeFieldType(field.type),
+      })
+    );
 
     return this.prisma.$transaction(async (prisma) => {
       const intention = await prisma.intention.create({
         data: {
           ...intentionData,
-          preprocessingMessage: intentionData.preprocessingMessage as PreprocessingType,
+          preprocessingMessage:
+            intentionData.preprocessingMessage as PreprocessingType,
           agent: {
             connect: { id: agentId },
           },
@@ -363,27 +395,30 @@ export class IntentionsService {
         include: {
           fields: true,
           headers: true,
-          params: true
+          params: true,
         },
       });
 
       return intention;
     });
-  } 
+  }
 
   private async registerGoogleCalendarCancelMeetingIntention(agentId: string) {
     const {
       fields,
       headers,
       preconditions,
-      queryParams,          // ✅ Extract queryParams from root level
-      authentication,       // ❌ runtime-only, stripped
-      responseProcessing,   // ❌ runtime-only, stripped
-      errorHandling,        // ❌ runtime-only, stripped
+      queryParams, // ✅ Extract queryParams from root level
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      authentication: _authentication, // ❌ runtime-only, stripped
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      responseProcessing: _responseProcessing, // ❌ runtime-only, stripped
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      errorHandling: _errorHandling, // ❌ runtime-only, stripped
       ...intentionData
     } = cancelGoogleCalendarMeetingIntention;
 
-    const formattedPreconditions = (preconditions || []).map(pre => ({
+    const formattedPreconditions = (preconditions || []).map((pre) => ({
       name: pre.name,
       url: pre.url,
       httpMethod: pre.httpMethod,
@@ -419,13 +454,16 @@ export class IntentionsService {
       return normalized;
     };
 
-    const castedFields = (fields || []).map(({ validation, defaultValue, ...field }) => ({
-      ...field,
-      type: normalizeFieldType(field.type),
-    }));
+    const castedFields = (fields || []).map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ validation: _validation, defaultValue: _defaultValue, ...field }) => ({
+        ...field,
+        type: normalizeFieldType(field.type),
+      })
+    );
 
     // ✅ Format root-level queryParams as params for Prisma
-    const formattedParams = (queryParams || []).map(param => ({
+    const formattedParams = (queryParams || []).map((param) => ({
       name: param.name,
       value: param.value,
     }));
@@ -434,7 +472,8 @@ export class IntentionsService {
       const intention = await prisma.intention.create({
         data: {
           ...intentionData,
-          preprocessingMessage: intentionData.preprocessingMessage as PreprocessingType,
+          preprocessingMessage:
+            intentionData.preprocessingMessage as PreprocessingType,
           agent: {
             connect: { id: agentId },
           },
@@ -444,7 +483,7 @@ export class IntentionsService {
           headers: {
             create: headers || [],
           },
-          params: {     
+          params: {
             create: formattedParams,
           },
           preconditions: {
@@ -454,8 +493,8 @@ export class IntentionsService {
         include: {
           fields: true,
           headers: true,
-          params: true,      
-          preconditions: { 
+          params: true,
+          preconditions: {
             include: {
               headers: true,
               queryParams: true,
@@ -472,10 +511,13 @@ export class IntentionsService {
     const {
       fields,
       headers,
-      queryParams,          // ✅ Extract queryParams from root level
-      authentication,       // ❌ runtime-only, stripped
-      responseProcessing,   // ❌ runtime-only, stripped
-      errorHandling,        // ❌ runtime-only, stripped
+      queryParams, // ✅ Extract queryParams from root level
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      authentication: _authentication, // ❌ runtime-only, stripped
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      responseProcessing: _responseProcessing, // ❌ runtime-only, stripped
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      errorHandling: _errorHandling, // ❌ runtime-only, stripped
       ...intentionData
     } = checkGoogleCalendarEventsIntention;
 
@@ -500,13 +542,16 @@ export class IntentionsService {
       return normalized;
     };
 
-    const castedFields = (fields || []).map(({ validation, defaultValue, ...field }) => ({
-      ...field,
-      type: normalizeFieldType(field.type),
-    }));
+    const castedFields = (fields || []).map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ validation: _validation, defaultValue: _defaultValue, ...field }) => ({
+        ...field,
+        type: normalizeFieldType(field.type),
+      })
+    );
 
     // ✅ Format root-level queryParams as params for Prisma
-    const formattedParams = (queryParams || []).map(param => ({
+    const formattedParams = (queryParams || []).map((param) => ({
       name: param.name,
       value: param.value,
     }));
@@ -515,7 +560,8 @@ export class IntentionsService {
       const intention = await prisma.intention.create({
         data: {
           ...intentionData,
-          preprocessingMessage: intentionData.preprocessingMessage as PreprocessingType,
+          preprocessingMessage:
+            intentionData.preprocessingMessage as PreprocessingType,
           agent: {
             connect: { id: agentId },
           },
@@ -525,7 +571,7 @@ export class IntentionsService {
           headers: {
             create: headers || [],
           },
-          params: {     
+          params: {
             create: formattedParams,
           },
         },
@@ -538,5 +584,5 @@ export class IntentionsService {
 
       return intention;
     });
-  } 
+  }
 }

@@ -20,7 +20,7 @@ import { ElevenLabsService } from 'src/elevenlabs/elevenlabs.service';
     OpenAiModule,
     TrainingsModule,
     GoogleCalendarOAuthModule,
-    ScheduleValidationModule
+    ScheduleValidationModule,
   ],
   controllers: [ConversationsController],
   providers: [ConversationsService, ElevenLabsService],

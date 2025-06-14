@@ -21,7 +21,7 @@ import { WebsocketModule } from '../websocket/websocket.module';
     ConfigModule,
     DeepseekModule,
     MediaModule,
-    WebsocketModule
+    WebsocketModule,
   ],
   controllers: [WebhooksController],
   providers: [WebhooksService],

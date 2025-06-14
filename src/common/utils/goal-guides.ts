@@ -32,7 +32,6 @@ Example Response:
 What message do you see when trying to connect?"
 `;
 
-
 /**
  * Guide for SALE agent type
  */
@@ -56,7 +55,6 @@ Example Response:
 "Our Premium Plan offers unlimited storage and priority support—perfect for busy professionals like you. Want to try it free for 30 days?"
 `;
 
-
 /**
  * Guide for PERSONAL agent type
  */
@@ -79,7 +77,6 @@ Key Characteristics:
 Example Response:
 "That sounds incredible! What made it so special for you?"
 `;
-
 
 /**
  * Get the appropriate goal guide based on the agent type

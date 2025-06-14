@@ -1,6 +1,6 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { Type } from "class-transformer";
-import { IsArray, IsOptional, IsString, ValidateNested } from "class-validator";
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsArray, IsOptional, IsString, ValidateNested } from 'class-validator';
 
 export class IntentionPreconditionHeaderDto {
   @ApiProperty({ description: 'Header name', example: 'Authorization' })
@@ -17,13 +17,19 @@ export class IntentionPreconditionQueryParamDto {
   @IsString()
   name: string;
 
-  @ApiProperty({ description: 'Query parameter value, can use placeholders', example: '{{startDateTime}}' })
+  @ApiProperty({
+    description: 'Query parameter value, can use placeholders',
+    example: '{{startDateTime}}',
+  })
   @IsString()
   value: string;
 }
 
 export class IntentionPreconditionDto {
-  @ApiProperty({ description: 'Precondition name', example: 'Check Availability' })
+  @ApiProperty({
+    description: 'Precondition name',
+    example: 'Check Availability',
+  })
   @IsString()
   name: string;
 
@@ -31,7 +37,10 @@ export class IntentionPreconditionDto {
   @IsString()
   httpMethod: string;
 
-  @ApiProperty({ description: 'Endpoint URL', example: 'https://www.googleapis.com/calendar/v3/freeBusy' })
+  @ApiProperty({
+    description: 'Endpoint URL',
+    example: 'https://www.googleapis.com/calendar/v3/freeBusy',
+  })
   @IsString()
   url: string;
 
@@ -45,7 +54,8 @@ export class IntentionPreconditionDto {
   requestBody?: string;
 
   @ApiProperty({
-    description: 'JS expression that returns true when the check fails (e.g., response.data.busy.length > 0)',
+    description:
+      'JS expression that returns true when the check fails (e.g., response.data.busy.length > 0)',
     example: 'response.data.busy.length > 0',
   })
   @IsString()

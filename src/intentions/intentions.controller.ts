@@ -32,9 +32,7 @@ import { AuthGuard } from '../auth/auth.guard';
 @UseGuards(AuthGuard)
 @Controller()
 export class IntentionsController {
-  constructor(
-    private readonly intentionsService: IntentionsService
-  ) {}
+  constructor(private readonly intentionsService: IntentionsService) {}
 
   @Get('agent/:agentId/intentions')
   @ApiOperation({ summary: 'List agent intentions' })
@@ -125,9 +123,10 @@ export class IntentionsController {
   }
 
   @Post('agent/:agentId/intentions/google-calendar/schedule-meeting')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Create Google Calendar scheduling intention',
-    description: 'Creates a webhook intention to schedule meetings using Google Calendar API'
+    description:
+      'Creates a webhook intention to schedule meetings using Google Calendar API',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,

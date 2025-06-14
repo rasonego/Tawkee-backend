@@ -4,8 +4,8 @@ import { GoogleAuthUrlDto } from './google-auth-url.dto';
 import { GoogleTokenExchangeDto } from './google-token-exchange.dto';
 
 export {
-    GoogleRevokeTokensDto,
-    GoogleAuthStatusDto,
-    GoogleAuthUrlDto,
-    GoogleTokenExchangeDto
-}
+  GoogleRevokeTokensDto,
+  GoogleAuthStatusDto,
+  GoogleAuthUrlDto,
+  GoogleTokenExchangeDto,
+};

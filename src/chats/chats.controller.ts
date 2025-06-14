@@ -88,7 +88,7 @@ export class ChatsController {
   @ApiParam({ name: 'userId', description: 'User ID' })
   async markAsFinished(
     @Param('chatId') chatId: string,
-    @Param('userId') userId: string,
+    @Param('userId') userId: string
   ): Promise<{ success: boolean }> {
     // Assuming the service method handles the logic and potential errors (like not found)
     await this.chatsService.finishChat(chatId, userId);
@@ -116,12 +116,12 @@ export class ChatsController {
   @ApiParam({ name: 'userId', description: 'User ID' })
   async markAsUnfinished(
     @Param('chatId') chatId: string,
-    @Param('userId') userId: string,
+    @Param('userId') userId: string
   ): Promise<{ success: boolean }> {
     // Assuming the service method handles the logic and potential errors (like not found)
     await this.chatsService.unfinishChat(chatId, userId);
     return { success: true }; // Return success if no error is thrown by the service
-  }  
+  }
 
   // Endpoint to mark chat as read
   @Put('chats/:chatId/read')
@@ -141,7 +141,9 @@ export class ChatsController {
   })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Chat not found' })
   @ApiParam({ name: 'chatId', description: 'Chat ID' })
-  async markAsRead(@Param('chatId') chatId: string): Promise<{ success: boolean }> {
+  async markAsRead(
+    @Param('chatId') chatId: string
+  ): Promise<{ success: boolean }> {
     // Assuming the service method handles the logic and potential errors (like not found)
     await this.chatsService.readChat(chatId);
     return { success: true }; // Return success if no error is thrown by the service

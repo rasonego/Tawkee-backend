@@ -43,7 +43,7 @@ export class AgentSettingsService {
         splitMessages: settings.splitMessages,
         enabledEmoji: settings.enabledEmoji,
         limitSubjects: settings.limitSubjects,
-        messageGroupingTime: settings.messageGroupingTime
+        messageGroupingTime: settings.messageGroupingTime,
       };
     } catch (error) {
       this.logger.error(
@@ -136,7 +136,7 @@ export class AgentSettingsService {
         respondAudioWithAudio: false,
         alwaysRespondWithAudio: false,
         similarityBoost: 0.75,
-        stability: 0.75
+        stability: 0.75,
       };
 
       await this.prisma.agentSettings.create({

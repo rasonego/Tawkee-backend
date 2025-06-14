@@ -48,7 +48,6 @@ const timezoneMap: Record<string, string> = {
   '(GMT+12:00) Auckland': 'Pacific/Auckland',
 };
 
-
 @Injectable()
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
@@ -201,7 +200,7 @@ export class ConversationsService {
   async generateAgentResponse(
     d: { agent: any; settings: any },
     chat: any,
-    conversationDto: ConversationDto,
+    conversationDto: ConversationDto
   ) {
     const agent = d.agent;
     try {
@@ -249,49 +248,55 @@ export class ConversationsService {
         jobDescription: agent.jobDescription || '',
       };
 
-      this.logger.debug(`Analyzing message for matching intentions: "${conversationDto.prompt}"`);
+      this.logger.debug(
+        `Analyzing message for matching intentions: "${conversationDto.prompt}"`
+      );
       const detectionResult = await this.detectIntention(
         conversationDto.prompt,
         intentions,
         enhancedAgent.model,
         chat,
-        orderedHistory.map((msg => ({
+        orderedHistory.map((msg) => ({
           role: msg.role,
           text: msg.text,
-          createdAt: msg.createdAt.toISOString()
-        }))),
+          createdAt: msg.createdAt.toISOString(),
+        })),
         agent.settings
       );
 
-      const scheduleSettings = await this.prisma.scheduleSettings.findUnique(
-        { where: { agentId: enhancedAgent.id } }
-      );
+      const scheduleSettings = await this.prisma.scheduleSettings.findUnique({
+        where: { agentId: enhancedAgent.id },
+      });
 
       let responseText = '';
-      let audios: any[] = [];
+      const audios: any[] = [];
 
       if (detectionResult) {
-        const { matchedIntention, extractedFields, toolCallMessage } = detectionResult;
+        const { matchedIntention, extractedFields, toolCallMessage } =
+          detectionResult;
 
         if (!matchedIntention && toolCallMessage) {
-          this.logger.debug('[generateAgentResponse] OpenAI returned assistant message instead of tool call. Returning it directly.');
+          this.logger.debug(
+            '[generateAgentResponse] OpenAI returned assistant message instead of tool call. Returning it directly.'
+          );
           responseText = toolCallMessage;
         } else {
           const collectedFields = extractedFields || {};
           const missingFields = matchedIntention.fields
-            .filter(f => f.required && !collectedFields[f.jsonName])
-            .map(f => f.name);
+            .filter((f) => f.required && !collectedFields[f.jsonName])
+            .map((f) => f.name);
 
           if (missingFields.length > 0) {
-            responseText = await this.openAiService.generateClarificationMessage(
-              matchedIntention,
-              missingFields,
-              collectedFields,
-              enhancedAgent,
-              communicationGuide,
-              chat,
-              scheduleSettings
-            );
+            responseText =
+              await this.openAiService.generateClarificationMessage(
+                matchedIntention,
+                missingFields,
+                collectedFields,
+                enhancedAgent,
+                communicationGuide,
+                chat,
+                scheduleSettings
+              );
             return {
               message: responseText,
               images: [],
@@ -301,45 +306,59 @@ export class ConversationsService {
               pendingIntention: {
                 intentionId: matchedIntention.id,
                 collectedFields,
-                missingFields
-              }
+                missingFields,
+              },
             };
           }
 
           try {
-            this.logger.debug(`Executing intention: ${matchedIntention.description} with timezone ${enhancedAgent.settings}`);
-            
+            this.logger.debug(
+              `Executing intention: ${matchedIntention.description} with timezone ${enhancedAgent.settings}`
+            );
+
             let intentionResult;
             if (matchedIntention.toolName === 'schedule_google_meeting') {
               intentionResult = await this.executeScheduleMeetingIntention(
-                intentions, matchedIntention, collectedFields, agent.id, scheduleSettings, enhancedAgent.settings.timezone
+                intentions,
+                matchedIntention,
+                collectedFields,
+                agent.id,
+                scheduleSettings,
+                enhancedAgent.settings.timezone
               );
             } else {
               intentionResult = await this.executeIntention(
-                matchedIntention, collectedFields, agent.id, enhancedAgent.settings.timezone
+                matchedIntention,
+                collectedFields,
+                agent.id,
+                enhancedAgent.settings.timezone
               );
             }
 
-            responseText = await this.openAiService.generateIntentionSuccessResponse(
-              matchedIntention,
-              intentionResult,
-              enhancedAgent,
-              communicationGuide,
-              chat,
-              scheduleSettings
-            );
+            responseText =
+              await this.openAiService.generateIntentionSuccessResponse(
+                matchedIntention,
+                intentionResult,
+                enhancedAgent,
+                communicationGuide,
+                chat,
+                scheduleSettings
+              );
 
             // Intention executed, now check for audio response
             if (conversationDto.respondViaAudio && responseText) {
               try {
                 const audioData = await this.elevenLabsService.textToAudio(
-                  enhancedAgent.id, { text: responseText }
+                  enhancedAgent.id,
+                  { text: responseText }
                 );
                 if (audioData) {
                   audios.push(audioData); // Add the audio data (Buffer) to the audios array
                 }
               } catch (audioError) {
-                this.logger.error(`Error generating audio for intention response: ${audioError.message}`);
+                this.logger.error(
+                  `Error generating audio for intention response: ${audioError.message}`
+                );
               }
             }
 
@@ -352,33 +371,36 @@ export class ConversationsService {
               intentionExecuted: {
                 intention: matchedIntention.description,
                 result: intentionResult,
-                success: intentionResult.success
-              }
+                success: intentionResult.success,
+              },
             };
-
           } catch (error) {
             this.logger.error(`Error executing intention: ${error.message}`);
 
-            responseText = await this.openAiService.generateIntentionErrorResponse(
-              matchedIntention,
-              error,
-              enhancedAgent,
-              communicationGuide,
-              chat,
-              scheduleSettings
-            );
+            responseText =
+              await this.openAiService.generateIntentionErrorResponse(
+                matchedIntention,
+                error,
+                enhancedAgent,
+                communicationGuide,
+                chat,
+                scheduleSettings
+              );
 
             // Intention error, now check for audio response
             if (conversationDto.respondViaAudio && responseText) {
               try {
                 const audioData = await this.elevenLabsService.textToAudio(
-                  enhancedAgent.id, { text: responseText }
+                  enhancedAgent.id,
+                  { text: responseText }
                 );
                 if (audioData) {
                   audios.push(audioData);
                 }
               } catch (audioError) {
-                this.logger.error(`Error generating audio for intention error response: ${audioError.message}`);
+                this.logger.error(
+                  `Error generating audio for intention error response: ${audioError.message}`
+                );
               }
             }
 
@@ -390,14 +412,16 @@ export class ConversationsService {
               goalGuide,
               intentionError: {
                 intention: matchedIntention.description,
-                error: error.message
-              }
+                error: error.message,
+              },
             };
           }
         }
       }
 
-      this.logger.debug(`No matching intention found. Proceeding with fallback AI response.`);
+      this.logger.debug(
+        `No matching intention found. Proceeding with fallback AI response.`
+      );
 
       // STEP 5: If no intention matched, proceed with normal AI response generation
       try {
@@ -440,7 +464,8 @@ export class ConversationsService {
           intentions.forEach((intention, index) => {
             intentionContext += `${index + 1}. ${intention.description}\n`;
           });
-          intentionContext += '\nIf the user wants me to perform any of these actions, I should let them know I can help with that.\n';
+          intentionContext +=
+            '\nIf the user wants me to perform any of these actions, I should let them know I can help with that.\n';
         }
 
         // Use the preferred model to generate the response with RAG context
@@ -454,7 +479,7 @@ export class ConversationsService {
           AIModel.OPEN_AI_O1,
           AIModel.OPEN_AI_O3,
           AIModel.OPEN_AI_O3_MINI,
-          AIModel.OPEN_AI_O4_MINI
+          AIModel.OPEN_AI_O4_MINI,
         ];
 
         if (preferredModel == AIModel.DEEPSEEK_CHAT) {
@@ -474,7 +499,7 @@ export class ConversationsService {
             goalGuide,
             conversationContext,
             retrievedContext + intentionContext // Include both RAG and intention context
-          );          
+          );
         }
 
         this.logger.debug(`Generated AI response for agent ${agent.name}`);
@@ -502,7 +527,8 @@ export class ConversationsService {
             goalPrefix = "I'm here to help resolve your issue with";
             break;
           case 'SALE':
-            goalPrefix = "I'd like to tell you about our fantastic solution for";
+            goalPrefix =
+              "I'd like to tell you about our fantastic solution for";
             break;
           case 'PERSONAL':
             goalPrefix = "I'd love to chat with you about";
@@ -519,13 +545,16 @@ export class ConversationsService {
       if (conversationDto.respondViaAudio && responseText) {
         try {
           const audioData = await this.elevenLabsService.textToAudio(
-            enhancedAgent.id, { text: responseText }
+            enhancedAgent.id,
+            { text: responseText }
           );
           if (audioData) {
             audios.push(audioData);
           }
         } catch (audioError) {
-          this.logger.error(`Error generating audio for AI response: ${audioError.message}`);
+          this.logger.error(
+            `Error generating audio for AI response: ${audioError.message}`
+          );
         }
       }
 
@@ -548,8 +577,8 @@ export class ConversationsService {
     intentions: IntentionDto[],
     model: AIModel,
     chat: ChatDto,
-    conversationHistory?: { role: string, text: string, createdAt: string }[],
-    agentSettings?: { timezone?: string },
+    conversationHistory?: { role: string; text: string; createdAt: string }[],
+    agentSettings?: { timezone?: string }
   ): Promise<{
     matchedIntention?: IntentionDto;
     extractedFields?: Record<string, any>;
@@ -558,11 +587,15 @@ export class ConversationsService {
     const tools = this.mapIntentionsToTools(intentions);
 
     const latestTimestamp = conversationHistory?.length
-    ? conversationHistory[conversationHistory.length - 1]?.createdAt
-    : new Date().toISOString();
+      ? conversationHistory[conversationHistory.length - 1]?.createdAt
+      : new Date().toISOString();
 
-    const formattedHistory = conversationHistory?.map(msg =>
-      `${msg.role === 'user' ? 'user' : 'assistant'}: ${msg.text}`).join('\n') || '';
+    const formattedHistory =
+      conversationHistory
+        ?.map(
+          (msg) => `${msg.role === 'user' ? 'user' : 'assistant'}: ${msg.text}`
+        )
+        .join('\n') || '';
 
     const timezoneNote = agentSettings?.timezone
       ? `The timezone reference is always ${agentSettings.timezone}. Interpret all ambiguous time expressions accordingly.`
@@ -592,18 +625,15 @@ export class ConversationsService {
 
     `.trim();
 
-    const { toolCall, extractedFields, fallbackMessage } = await this.openAiService.callWithToolDetection(
-      prompt,
-      tools,
-      model
-    );
+    const { toolCall, extractedFields, fallbackMessage } =
+      await this.openAiService.callWithToolDetection(prompt, tools, model);
 
     if (!toolCall && fallbackMessage) {
       return {
         matchedIntention: null,
         extractedFields: null,
-        toolCallMessage: fallbackMessage
-      }
+        toolCallMessage: fallbackMessage,
+      };
     }
 
     if (!toolCall) return null;
@@ -615,65 +645,77 @@ export class ConversationsService {
     //   contactName: extractedFields?.contactName ?? chat.userName ?? undefined,
     // };
 
-    const matchedTool = intentions.find(i => i.toolName === toolCall.function.name);
+    const matchedTool = intentions.find(
+      (i) => i.toolName === toolCall.function.name
+    );
     return {
       matchedIntention: matchedTool,
       extractedFields: extractedFields,
     };
   }
 
-  private mapIntentionsToTools(intentions: IntentionDto[]): ChatCompletionTool[] {
-    return intentions.filter((intention) => {
-      const hasToolName = typeof intention.toolName === 'string' && intention.toolName.trim().length > 0;
-      const hasFields = Array.isArray(intention.fields);
+  private mapIntentionsToTools(
+    intentions: IntentionDto[]
+  ): ChatCompletionTool[] {
+    return intentions
+      .filter((intention) => {
+        const hasToolName =
+          typeof intention.toolName === 'string' &&
+          intention.toolName.trim().length > 0;
+        const hasFields = Array.isArray(intention.fields);
 
-      if (!hasToolName || !hasFields) {
-        this.logger.warn(`[mapIntentionsToTools] Skipping invalid intention:`, {
-          id: intention.id,
-          toolName: intention.toolName,
-          // fieldsType: typeof intention.fields,
-        });
-      }
-
-      return hasToolName && hasFields;
-    })
-    .map((intention) => {
-      const parameters: any = {
-        type: 'object',
-        properties: {},
-        required: [],
-      };
-
-      for (const field of intention.fields) {
-        if (!field.jsonName || typeof field.jsonName !== 'string') {
-          this.logger.warn(`[mapIntentionsToTools] Skipping field with invalid jsonName: ${JSON.stringify(field)}`);
-          continue;
+        if (!hasToolName || !hasFields) {
+          this.logger.warn(
+            `[mapIntentionsToTools] Skipping invalid intention:`,
+            {
+              id: intention.id,
+              toolName: intention.toolName,
+              // fieldsType: typeof intention.fields,
+            }
+          );
         }
 
-        const jsonType = this.convertFieldTypeToJsonSchema(field.type);
-        parameters.properties[field.jsonName] = {
-          type: jsonType,
-          description: field.description || '',
+        return hasToolName && hasFields;
+      })
+      .map((intention) => {
+        const parameters: any = {
+          type: 'object',
+          properties: {},
+          required: [],
         };
 
-        if (field.required) {
-          parameters.required.push(field.jsonName);
+        for (const field of intention.fields) {
+          if (!field.jsonName || typeof field.jsonName !== 'string') {
+            this.logger.warn(
+              `[mapIntentionsToTools] Skipping field with invalid jsonName: ${JSON.stringify(field)}`
+            );
+            continue;
+          }
+
+          const jsonType = this.convertFieldTypeToJsonSchema(field.type);
+          parameters.properties[field.jsonName] = {
+            type: jsonType,
+            description: field.description || '',
+          };
+
+          if (field.required) {
+            parameters.required.push(field.jsonName);
+          }
         }
-      }
 
-      const toolSchema: ChatCompletionTool = {
-        type: 'function',
-        function: {
-          name: intention.toolName.trim(),
-          description: intention.description || 'No description provided.',
-          parameters,
-        },
-      };
+        const toolSchema: ChatCompletionTool = {
+          type: 'function',
+          function: {
+            name: intention.toolName.trim(),
+            description: intention.description || 'No description provided.',
+            parameters,
+          },
+        };
 
-      // this.logger.debug(`[mapIntentionsToTools] Built tool schema for "${toolSchema.function.name}": ${JSON.stringify(toolSchema, null, 2)}`);
+        // this.logger.debug(`[mapIntentionsToTools] Built tool schema for "${toolSchema.function.name}": ${JSON.stringify(toolSchema, null, 2)}`);
 
-      return toolSchema;
-    });
+        return toolSchema;
+      });
   }
 
   private convertFieldTypeToJsonSchema(type: string): string {
@@ -692,7 +734,10 @@ export class ConversationsService {
     return typeMap[normalized] || 'string';
   }
 
-  private renderTemplate(template: string, context: Record<string, any>): string {
+  private renderTemplate(
+    template: string,
+    context: Record<string, any>
+  ): string {
     const compiled = Handlebars.compile(template, { noEscape: true });
     return compiled(context);
   }
@@ -706,8 +751,12 @@ export class ConversationsService {
 
         if (trimmed === 'true') normalized[key] = true;
         else if (trimmed === 'false') normalized[key] = false;
-        else if (trimmed.includes(',') && !trimmed.startsWith('[') && !trimmed.startsWith('{')) {
-          normalized[key] = trimmed.split(',').map(item => item.trim());
+        else if (
+          trimmed.includes(',') &&
+          !trimmed.startsWith('[') &&
+          !trimmed.startsWith('{')
+        ) {
+          normalized[key] = trimmed.split(',').map((item) => item.trim());
         }
       }
     }
@@ -722,10 +771,13 @@ export class ConversationsService {
     agentTimezone?: string
   ): Promise<any> {
     try {
-      this.logger.debug(`[executeIntention] Starting execution for intention: ${intention.description}`);
+      this.logger.debug(
+        `[executeIntention] Starting execution for intention: ${intention.description}`
+      );
 
       const fields = this.normalizeFields(inputFields);
-      const accessToken = await this.googleCalendarOAuthService.getValidAccessToken(agentId);
+      const accessToken =
+        await this.googleCalendarOAuthService.getValidAccessToken(agentId);
       this.logger.debug(`[executeIntention] Access token retrieved`);
 
       let timezone = 'UTC';
@@ -735,14 +787,25 @@ export class ConversationsService {
 
       const toISOStringWithTZ = (dt: string): string => {
         const date = new Date(dt);
-        const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+        const tzDate = new Date(
+          date.toLocaleString('en-US', { timeZone: timezone })
+        );
         return tzDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
       };
 
-      const appendOffsetToTimeString = (input: string, timezone: string): string => {
-        const date = input.endsWith('Z') ? new Date(input) : new Date(input + 'Z');
-        const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
-        const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+      const appendOffsetToTimeString = (
+        input: string,
+        timezone: string
+      ): string => {
+        const date = input.endsWith('Z')
+          ? new Date(input)
+          : new Date(input + 'Z');
+        const tzDate = new Date(
+          date.toLocaleString('en-US', { timeZone: timezone })
+        );
+        const utcDate = new Date(
+          date.toLocaleString('en-US', { timeZone: 'UTC' })
+        );
 
         const offsetMinutes = (tzDate.getTime() - utcDate.getTime()) / 60000;
         const offsetSign = offsetMinutes >= 0 ? '+' : '-';
@@ -755,11 +818,14 @@ export class ConversationsService {
         return `${base}${offset}`;
       };
 
-      ['startDateTime', 'endDateTime', 'startSearch', 'endSearch'].forEach(key => {
-        if (fields[key]) fields[key] = toISOStringWithTZ(fields[key]);
-      });
-      ['timeMin', 'timeMax'].forEach(key => {
-        if (fields[key]) fields[key] = appendOffsetToTimeString(fields[key], timezone);
+      ['startDateTime', 'endDateTime', 'startSearch', 'endSearch'].forEach(
+        (key) => {
+          if (fields[key]) fields[key] = toISOStringWithTZ(fields[key]);
+        }
+      );
+      ['timeMin', 'timeMax'].forEach((key) => {
+        if (fields[key])
+          fields[key] = appendOffsetToTimeString(fields[key], timezone);
       });
 
       fields.timeZone = timezone;
@@ -779,9 +845,14 @@ export class ConversationsService {
           }
 
           const preHeaders: Record<string, string> = {};
-          pre.headers?.forEach(h => {
-            let value = h.value.replace('{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}', accessToken);
-            Object.keys(fields).forEach(k => value = value.replace(`{{${k}}}`, fields[k]));
+          pre.headers?.forEach((h) => {
+            let value = h.value.replace(
+              '{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}',
+              accessToken
+            );
+            Object.keys(fields).forEach(
+              (k) => (value = value.replace(`{{${k}}}`, fields[k]))
+            );
             preHeaders[h.name] = value;
           });
 
@@ -791,24 +862,43 @@ export class ConversationsService {
             try {
               preBody = JSON.stringify(JSON.parse(rendered));
             } catch (err) {
-              this.logger.warn(`[executeIntention] Invalid precondition body`, { rawTemplate: pre.requestBody, rendered, fields, error: err.message });
+              this.logger.warn(`[executeIntention] Invalid precondition body`, {
+                rawTemplate: pre.requestBody,
+                rendered,
+                fields,
+                error: err.message,
+              });
               throw new Error('Invalid precondition request body format');
             }
           }
 
-          this.logger.debug(`[executeIntention] Executing precondition: ${pre.name}`, { url: finalPreUrl, headers: preHeaders, body: preBody || 'None' });
+          this.logger.debug(
+            `[executeIntention] Executing precondition: ${pre.name}`,
+            { url: finalPreUrl, headers: preHeaders, body: preBody || 'None' }
+          );
 
-          const preResponse = await fetch(finalPreUrl, { method: pre.httpMethod.toUpperCase(), headers: preHeaders, body: preBody || undefined });
+          const preResponse = await fetch(finalPreUrl, {
+            method: pre.httpMethod.toUpperCase(),
+            headers: preHeaders,
+            body: preBody || undefined,
+          });
           const preResponseText = await preResponse.text();
           const preJson = JSON.parse(preResponseText);
 
           if (!preResponse.ok) {
-            throw new Error(`Precondition "${pre.name}" failed with HTTP ${preResponse.status}: ${preJson?.error?.message || 'Unknown error'}`);
+            throw new Error(
+              `Precondition "${pre.name}" failed with HTTP ${preResponse.status}: ${preJson?.error?.message || 'Unknown error'}`
+            );
           }
 
           const sandbox = { preJson, ...fields, preconditions: [{}] };
-          if (pre.failureCondition && vm.runInNewContext(pre.failureCondition, sandbox)) {
-            throw new Error(pre.failureMessage || `Precondition "${pre.name}" failed.`);
+          if (
+            pre.failureCondition &&
+            vm.runInNewContext(pre.failureCondition, sandbox)
+          ) {
+            throw new Error(
+              pre.failureMessage || `Precondition "${pre.name}" failed.`
+            );
           }
 
           if (pre.successAction) {
@@ -821,13 +911,20 @@ export class ConversationsService {
 
       // Build finalUrl with template replacement and query parameters
       let finalUrl = intention.url;
-      
+
       // Replace preconditions[0].key in URL
-      finalUrl = finalUrl.replace(/\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g, (_, idx, key) => encodeURIComponent(preconditionResults?.[idx]?.[key] ?? ''));
-      
+      finalUrl = finalUrl.replace(
+        /\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g,
+        (_, idx, key) =>
+          encodeURIComponent(preconditionResults?.[idx]?.[key] ?? '')
+      );
+
       // Replace field templates in URL
-      Object.keys(fields).forEach(key => {
-        finalUrl = finalUrl.replace(`{{${key}}}`, encodeURIComponent(fields[key]));
+      Object.keys(fields).forEach((key) => {
+        finalUrl = finalUrl.replace(
+          `{{${key}}}`,
+          encodeURIComponent(fields[key])
+        );
       });
 
       // Handle query parameters for the main intention
@@ -836,7 +933,10 @@ export class ConversationsService {
         for (const param of intention.queryParams) {
           let value = param.value;
           // Replace preconditions references
-          value = value.replace(/\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g, (_, idx, key) => preconditionResults?.[idx]?.[key] ?? '');
+          value = value.replace(
+            /\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g,
+            (_, idx, key) => preconditionResults?.[idx]?.[key] ?? ''
+          );
           // Replace field templates
           value = this.resolveTemplate(value, fields);
           searchParams.append(param.name, value);
@@ -846,25 +946,35 @@ export class ConversationsService {
 
       // For GET requests, append inputFields as query parameters if they're not already included
       if (intention.httpMethod.toUpperCase() === 'GET') {
-        const existingParams = new URLSearchParams(finalUrl.split('?')[1] || '');
+        const existingParams = new URLSearchParams(
+          finalUrl.split('?')[1] || ''
+        );
         const additionalParams = new URLSearchParams();
-        
-        Object.keys(fields).forEach(key => {
+
+        Object.keys(fields).forEach((key) => {
           // Only add if not already present in URL or queryParams
           if (!existingParams.has(key)) {
             additionalParams.append(key, String(fields[key]));
           }
         });
-        
+
         if (additionalParams.toString()) {
           finalUrl += `${finalUrl.includes('?') ? '&' : '?'}${additionalParams.toString()}`;
         }
       }
 
-      const resolvedHeaders = intention.headers.map(header => {
-        let value = header.value.replace('{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}', accessToken);
-        value = value.replace(/\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g, (_, idx, key) => preconditionResults?.[idx]?.[key] ?? '');
-        Object.keys(fields).forEach(k => value = value.replace(`{{${k}}}`, fields[k]));
+      const resolvedHeaders = intention.headers.map((header) => {
+        let value = header.value.replace(
+          '{{DYNAMIC_GOOGLE_ACCESS_TOKEN}}',
+          accessToken
+        );
+        value = value.replace(
+          /\{\{preconditions\[(\d+)\]\.(.*?)\}\}/g,
+          (_, idx, key) => preconditionResults?.[idx]?.[key] ?? ''
+        );
+        Object.keys(fields).forEach(
+          (k) => (value = value.replace(`{{${k}}}`, fields[k]))
+        );
         return { name: header.name, value };
       });
 
@@ -874,35 +984,60 @@ export class ConversationsService {
         try {
           resolvedBody = JSON.stringify(JSON.parse(rawRendered));
         } catch (err) {
-          this.logger.warn(`[executeIntention] Request body is not valid JSON after templating`, { rawTemplate: intention.requestBody, resolvedBody: rawRendered, fields, error: err.message });
+          this.logger.warn(
+            `[executeIntention] Request body is not valid JSON after templating`,
+            {
+              rawTemplate: intention.requestBody,
+              resolvedBody: rawRendered,
+              fields,
+              error: err.message,
+            }
+          );
           throw new Error('Invalid request body format');
         }
       }
 
       const headers: Record<string, string> = {};
-      resolvedHeaders.forEach(h => headers[h.name] = h.value);
+      resolvedHeaders.forEach((h) => (headers[h.name] = h.value));
 
-      this.logger.debug(`[executeIntention] Making HTTP request`, { method: intention.httpMethod.toUpperCase(), url: finalUrl, headers, body: resolvedBody || 'None' });
+      this.logger.debug(`[executeIntention] Making HTTP request`, {
+        method: intention.httpMethod.toUpperCase(),
+        url: finalUrl,
+        headers,
+        body: resolvedBody || 'None',
+      });
 
-      const response = await fetch(finalUrl, { method: intention.httpMethod.toUpperCase(), headers, body: resolvedBody || undefined });
+      const response = await fetch(finalUrl, {
+        method: intention.httpMethod.toUpperCase(),
+        headers,
+        body: resolvedBody || undefined,
+      });
       const responseBody = await response.text();
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${responseBody}`);
+        throw new Error(
+          `HTTP ${response.status}: ${response.statusText} - ${responseBody}`
+        );
       }
 
       return {
         success: true,
         data: responseBody ? JSON.parse(responseBody) : {},
-        statusCode: response.status
+        statusCode: response.status,
       };
     } catch (error) {
-      this.logger.error(`[executeIntention] Intention execution failed: ${error.message}`, error.stack || '');
+      this.logger.error(
+        `[executeIntention] Intention execution failed: ${error.message}`,
+        error.stack || ''
+      );
       throw error;
     }
   }
 
-  private resolveTemplate(template: string, fields: Record<string, any>): string {
+  private resolveTemplate(
+    template: string,
+    fields: Record<string, any>
+  ): string {
     return template.replace(/{{(.*?)}}/g, (_, key) => {
       const value = fields[key.trim()];
       return value !== undefined && value !== null ? String(value) : '';
@@ -915,7 +1050,7 @@ export class ConversationsService {
     fields: Record<string, any>,
     agentId: string,
     scheduleSettings: ScheduleSettings,
-    agentTimezone?: string,
+    agentTimezone?: string
   ): Promise<any> {
     if (!scheduleSettings) throw new Error('Schedule settings not configured.');
 
@@ -931,28 +1066,38 @@ export class ConversationsService {
         : undefined,
     };
 
-    const validationError = this.scheduleValidationService.validateSchedule(start, end, transformedSettings);
+    const validationError = this.scheduleValidationService.validateSchedule(
+      start,
+      end,
+      transformedSettings
+    );
 
-    console.log({validationError});
+    console.log({ validationError });
     if (validationError) {
       throw new Error(validationError);
     }
 
     try {
       return await this.executeIntention(intention, fields, agentId, tz);
-    } catch(error) {
+    } catch (error) {
       if (error.message.includes('unavailable')) {
         // Check availability using Google Calendar FreeBusy API (replace with actual logic)
         const now = new Date();
         fields.startSearch = fields.startSearch || now.toISOString();
-        fields.endSearch = fields.endSearch || new Date(now.getTime() + 7 * 86400000).toISOString();
+        fields.endSearch =
+          fields.endSearch ||
+          new Date(now.getTime() + 7 * 86400000).toISOString();
 
-        const suggestAvailableSlotsIntention = intentions.find(i => i.toolName === 'suggest_available_google_meeting_slots');
+        const suggestAvailableSlotsIntention = intentions.find(
+          (i) => i.toolName === 'suggest_available_google_meeting_slots'
+        );
         const response = await this.executeIntention(
-          suggestAvailableSlotsIntention, fields, agentId, tz
+          suggestAvailableSlotsIntention,
+          fields,
+          agentId,
+          tz
         );
         throw new Error(JSON.stringify(response, null, 3));
-
       } else {
         throw new Error(error);
       }

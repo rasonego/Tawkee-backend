@@ -49,7 +49,7 @@ export class InteractionsService {
 
   async findInteractionsByChatWithMessages(
     chatId: string,
-    paginationDto: PaginationDto,
+    paginationDto: PaginationDto
   ): Promise<PaginatedInteractionsWithMessagesResponseDto> {
     const { page, pageSize } = paginationDto;
     const skip = (page - 1) * pageSize;
@@ -66,15 +66,15 @@ export class InteractionsService {
       // Optional: Handle case where chat has no interactions
       // You could throw NotFoundException or return empty paginated result
       // throw new NotFoundException(`No interactions found for chat ID: ${chatId}`);
-       return {
-         data: [],
-         meta: {
-           total: 0,
-           page,
-           pageSize,
-           totalPages: 0,
-         },
-       };
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page,
+          pageSize,
+          totalPages: 0,
+        },
+      };
     }
 
     // Get interactions with pagination and include agent and messages
@@ -90,7 +90,8 @@ export class InteractionsService {
             avatar: true,
           },
         },
-        messages: { // Include messages related to the interaction
+        messages: {
+          // Include messages related to the interaction
           select: {
             id: true,
             text: true,
@@ -107,27 +108,29 @@ export class InteractionsService {
     });
 
     // Map Prisma Interaction objects to InteractionWithMessagesDto
-    const data: InteractionWithMessagesDto[] = interactions.map((interaction) => ({
-      id: interaction.id,
-      agentId: interaction.agentId,
-      agentName: interaction.agent.name,
-      agentAvatar: interaction.agent.avatar || null,
-      chatId: interaction.chatId,
-      chatName: null, // Chat name is not directly available here unless included
-      status: interaction.status as InteractionStatus,
-      startAt: interaction.startAt,
-      transferAt: interaction.transferAt || null,
-      resolvedAt: interaction.resolvedAt || null,
-      userId: interaction.userId || null,
-      // Map Prisma Message objects to MessageDto
-      messages: interaction.messages.map((message) => ({
-        id: message.id,
-        text: message.text ?? null, // Handle potential null text
-        role: message.role,
-        userName: message.userName ?? null, // Handle potential null userName
-        createdAt: message.createdAt,
-      })),
-    }));
+    const data: InteractionWithMessagesDto[] = interactions.map(
+      (interaction) => ({
+        id: interaction.id,
+        agentId: interaction.agentId,
+        agentName: interaction.agent.name,
+        agentAvatar: interaction.agent.avatar || null,
+        chatId: interaction.chatId,
+        chatName: null, // Chat name is not directly available here unless included
+        status: interaction.status as InteractionStatus,
+        startAt: interaction.startAt,
+        transferAt: interaction.transferAt || null,
+        resolvedAt: interaction.resolvedAt || null,
+        userId: interaction.userId || null,
+        // Map Prisma Message objects to MessageDto
+        messages: interaction.messages.map((message) => ({
+          id: message.id,
+          text: message.text ?? null, // Handle potential null text
+          role: message.role,
+          userName: message.userName ?? null, // Handle potential null userName
+          createdAt: message.createdAt,
+        })),
+      })
+    );
 
     // Return the paginated result using the new DTO
     return {
@@ -142,9 +145,8 @@ export class InteractionsService {
   }
 
   async findLatestInteractionByChatWithMessages(
-    chatId: string,
+    chatId: string
   ): Promise<PaginatedInteractionsWithMessagesResponseDto> {
-    
     // Conta total de interações para esse chat
     const total = await this.prisma.interaction.count({
       where: { chatId },
@@ -187,26 +189,28 @@ export class InteractionsService {
     });
 
     const data: InteractionWithMessagesDto[] = latestInteraction
-      ? [{
-          id: latestInteraction.id,
-          agentId: latestInteraction.agentId,
-          agentName: latestInteraction.agent.name,
-          agentAvatar: latestInteraction.agent.avatar || null,
-          chatId: latestInteraction.chatId,
-          chatName: null,
-          status: latestInteraction.status as InteractionStatus,
-          startAt: latestInteraction.startAt,
-          transferAt: latestInteraction.transferAt || null,
-          resolvedAt: latestInteraction.resolvedAt || null,
-          userId: latestInteraction.userId || null,
-          messages: latestInteraction.messages.map((message) => ({
-            id: message.id,
-            text: message.text ?? null,
-            role: message.role,
-            userName: message.userName ?? null,
-            createdAt: message.createdAt,
-          })),
-        }]
+      ? [
+          {
+            id: latestInteraction.id,
+            agentId: latestInteraction.agentId,
+            agentName: latestInteraction.agent.name,
+            agentAvatar: latestInteraction.agent.avatar || null,
+            chatId: latestInteraction.chatId,
+            chatName: null,
+            status: latestInteraction.status as InteractionStatus,
+            startAt: latestInteraction.startAt,
+            transferAt: latestInteraction.transferAt || null,
+            resolvedAt: latestInteraction.resolvedAt || null,
+            userId: latestInteraction.userId || null,
+            messages: latestInteraction.messages.map((message) => ({
+              id: message.id,
+              text: message.text ?? null,
+              role: message.role,
+              userName: message.userName ?? null,
+              createdAt: message.createdAt,
+            })),
+          },
+        ]
       : [];
 
     return {
@@ -267,7 +271,7 @@ export class InteractionsService {
     });
 
     // Prepare notification messages
-    let internalResolutionMessage = 'Conversation closed';
+    const internalResolutionMessage = 'Conversation closed';
 
     // Add a system message indicating resolution for internal use
     const systemMessage = await this.prisma.message.create({
@@ -280,7 +284,7 @@ export class InteractionsService {
         time: Date.now(),
       },
     });
-    
+
     // Mark chat as unread
     this.logger.log(`Updating chat ${chat.id} as unread`);
     await this.prisma.chat.update({
@@ -288,35 +292,32 @@ export class InteractionsService {
       data: {
         read: false,
         unReadCount: { increment: 1 },
-      }
+      },
     });
-    
+
     // Fetch latest data to send to socket clients
     const updatedChat = await this.prisma.chat.findUnique({
-      where: { id: chat.id }
+      where: { id: chat.id },
     });
-    
-    const paginatedInteractions = await this.findLatestInteractionByChatWithMessages(chat.id);
-    
+
+    const paginatedInteractions =
+      await this.findLatestInteractionByChatWithMessages(chat.id);
+
     const agent = await this.prisma.agent.findFirst({
       where: { id: chat.id },
-      select: { workspaceId: true }
-    })
+      select: { workspaceId: true },
+    });
 
     // Send system message to frontend clients via websocket
-    this.websocketService.sendToClient(
-      agent.workspaceId,
-      'messageChatUpdate',
-      {
-        ...updatedChat,
-        paginatedInteractions: paginatedInteractions,
-        latestMessage: {
-          ...systemMessage,
-          whatsappTimestamp: systemMessage?.whatsappTimestamp.toString(),
-          time: systemMessage?.time.toString()
-        }
-      }
-    );
+    this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
+      ...updatedChat,
+      paginatedInteractions: paginatedInteractions,
+      latestMessage: {
+        ...systemMessage,
+        whatsappTimestamp: systemMessage?.whatsappTimestamp.toString(),
+        time: systemMessage?.time.toString(),
+      },
+    });
 
     return { success: true };
   }
@@ -426,35 +427,32 @@ export class InteractionsService {
       data: {
         read: false,
         unReadCount: { increment: 1 },
-      }
+      },
     });
-    
+
     // Fetch latest data to send to socket clients
     const updatedChat = await this.prisma.chat.findUnique({
-      where: { id: chat.id }
+      where: { id: chat.id },
     });
-    
-    const paginatedInteractions = await this.findLatestInteractionByChatWithMessages(chat.id);
-    
+
+    const paginatedInteractions =
+      await this.findLatestInteractionByChatWithMessages(chat.id);
+
     const agent = await this.prisma.agent.findFirst({
       where: { id: chat.id },
-      select: { workspaceId: true }
-    })
+      select: { workspaceId: true },
+    });
 
     // Send system message to frontend clients via websocket
-    this.websocketService.sendToClient(
-      agent.workspaceId,
-      'messageChatUpdate',
-      {
-        ...updatedChat,
-        paginatedInteractions: paginatedInteractions,
-        latestMessage: {
-          ...newMessage,
-          whatsappTimestamp: newMessage?.whatsappTimestamp.toString(),
-          time: newMessage?.time.toString()
-        }
-      }
-    );
+    this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
+      ...updatedChat,
+      paginatedInteractions: paginatedInteractions,
+      latestMessage: {
+        ...newMessage,
+        whatsappTimestamp: newMessage?.whatsappTimestamp.toString(),
+        time: newMessage?.time.toString(),
+      },
+    });
 
     return { success: true };
   }
@@ -501,12 +499,13 @@ export class InteractionsService {
       });
 
       // Find interactions that need to be closed
-      // Use a separate query to find WAITING interactions that were "warned" 
+      // Use a separate query to find WAITING interactions that were "warned"
       // (by checking if transferAt is older than grace period + idle time)
       const totalWaitTime = new Date(
-        now.getTime() - (waitingIdleMinutes * 60 + warningGracePeriodSeconds) * 1000
+        now.getTime() -
+          (waitingIdleMinutes * 60 + warningGracePeriodSeconds) * 1000
       );
-      
+
       const waitingForClosure = await tx.interaction.findMany({
         where: {
           status: 'WAITING',
@@ -552,7 +551,8 @@ export class InteractionsService {
           // Close if no messages or most recent message is older than cutoff
           return (
             messages.length === 0 ||
-            (messages[0]?.createdAt && messages[0].createdAt < runningIdleCutoff)
+            (messages[0]?.createdAt &&
+              messages[0].createdAt < runningIdleCutoff)
           );
         })
         .map((interaction) => ({
@@ -562,19 +562,17 @@ export class InteractionsService {
 
       // Separate warning needed vs closure needed
       const warningNeeded = waitingForWarning
-        .filter(interaction => 
-          // Only warn interactions that haven't exceeded the total wait time yet
-          interaction.transferAt >= totalWaitTime
+        .filter(
+          (interaction) =>
+            // Only warn interactions that haven't exceeded the total wait time yet
+            interaction.transferAt >= totalWaitTime
         )
-        .map(interaction => ({
+        .map((interaction) => ({
           id: interaction.id,
           chatId: interaction.chatId,
         }));
 
-      const closureNeeded = [
-        ...waitingForClosure,
-        ...runningForClosure,
-      ];
+      const closureNeeded = [...waitingForClosure, ...runningForClosure];
 
       return {
         warningNeeded,
@@ -656,12 +654,11 @@ export class InteractionsService {
                 `Sending auto-closure message to WhatsApp number ${chat.whatsappPhone}`
               );
 
-              const response =
-                await this.wahaApiService.sendWhatsAppMessage(
-                  chat.agentId,
-                  chat.whatsappPhone,
-                  closureMessage
-                );
+              const response = await this.wahaApiService.sendWhatsAppMessage(
+                chat.agentId,
+                chat.whatsappPhone,
+                closureMessage
+              );
 
               // Update the message with the response data
               await this.prisma.message.update({

@@ -100,11 +100,10 @@ export class TrainingsService {
           const mimetype = await this.mediaService.getMimeTypeFromHeaders(
             createTrainingDto.image
           );
-          imageDescription =
-            await this.mediaService.extractTextFromMedia(
-              createTrainingDto.image,
-              mimetype
-            );
+          imageDescription = await this.mediaService.extractTextFromMedia(
+            createTrainingDto.image,
+            mimetype
+          );
         }
 
         const textWithImageDescription =
@@ -154,13 +153,14 @@ export class TrainingsService {
       } else if (
         createTrainingDto.type === TrainingType.VIDEO &&
         createTrainingDto.video
-      ) {       
+      ) {
         const text = await this.mediaService.extractTextFromMedia(
-          createTrainingDto.video, createTrainingDto.documentMimetype
+          createTrainingDto.video,
+          createTrainingDto.documentMimetype
         );
         this.logger.log(`Storing training ${training.id} in vector database`);
         await this.qdrantService.storeTraining(training.id, agentId, text, {
-          documentName: 'video'
+          documentName: 'video',
         });
       }
     } catch (error) {

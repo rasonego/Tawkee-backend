@@ -1,17 +1,13 @@
 import {
   WebSocketGateway,
-  SubscribeMessage,
-  MessageBody,
-  ConnectedSocket,
   WebSocketServer,
   OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  WsResponse,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
-import { WebsocketService, MessagePayload } from './websocket.service'; // Assuming interfaces are exported from service or a types file
+import { WebsocketService } from './websocket.service'; // Assuming interfaces are exported from service or a types file
 
 @WebSocketGateway({
   cors: {
@@ -19,7 +15,9 @@ import { WebsocketService, MessagePayload } from './websocket.service'; // Assum
   },
   // path: '/socket.io', // Opcional: defina um caminho específico se necessário
 })
-export class WebsocketGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class WebsocketGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   private server: Server;
   private readonly logger = new Logger(WebsocketGateway.name);
@@ -31,14 +29,18 @@ export class WebsocketGateway implements OnGatewayInit, OnGatewayConnection, OnG
     this.websocketService.initialize(server); // Passa a instância do servidor para o serviço
   }
 
-  handleConnection(client: Socket, ...args: any[]) {
+  handleConnection(client: Socket) {
     const workspaceId: string = client.handshake.auth.workspaceId;
 
-    this.logger.log(`Connected client: ${workspaceId}, IP: ${client.handshake.address}`);
+    this.logger.log(
+      `Connected client: ${workspaceId}, IP: ${client.handshake.address}`
+    );
 
     if (workspaceId) {
       client.join(workspaceId);
-      this.logger.log(`Client ${client.id} joined workspace room: ${workspaceId}`);
+      this.logger.log(
+        `Client ${client.id} joined workspace room: ${workspaceId}`
+      );
     }
 
     client.emit('connectionStatus', {

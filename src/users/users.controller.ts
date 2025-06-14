@@ -118,7 +118,7 @@ export class UsersController {
     description: 'Redirects to Google OAuth consent screen',
   })
   async googleAuth(@Res() res) {
-    const { authUrl, state } = this.googleCalendarOAuthService.getSocialLoginAuthUrl();
+    const { authUrl } = this.googleCalendarOAuthService.getSocialLoginAuthUrl();
     return res.redirect(authUrl);
   }
 

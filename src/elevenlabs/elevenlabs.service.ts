@@ -12,7 +12,9 @@ interface TextToAudioOptions {
   similarityBoost?: number;
 }
 
-const ENCRYPTION_KEY = process.env.ELEVENLABS_ENCRYPTION_SECRET!.padEnd(32, '0').slice(0, 32); // Must be 32 bytes
+const ENCRYPTION_KEY = process.env
+  .ELEVENLABS_ENCRYPTION_SECRET!.padEnd(32, '0')
+  .slice(0, 32); // Must be 32 bytes
 const IV_LENGTH = 16;
 
 function encrypt(text: string): string {
@@ -27,7 +29,11 @@ function decrypt(encryptedText: string): string {
   const [ivHex, encryptedHex] = encryptedText.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const encrypted = Buffer.from(encryptedHex, 'hex');
-  const decipher = createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+  const decipher = createDecipheriv(
+    'aes-256-cbc',
+    Buffer.from(ENCRYPTION_KEY),
+    iv
+  );
   let decrypted = decipher.update(encrypted);
   decrypted = Buffer.concat([decrypted, decipher.final()]);
   return decrypted.toString();
@@ -37,12 +43,12 @@ function decrypt(encryptedText: string): string {
 export class ElevenLabsService {
   private readonly logger = new Logger(ElevenLabsService.name);
   private readonly API_BASE_URL = 'https://api.elevenlabs.io/v1';
-  
-  constructor(
-    private readonly prisma: PrismaService
-  ) {}
 
-  private async validateElevenLabsApiKey(apiKey: string): Promise<{success: boolean, data: any}> {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private async validateElevenLabsApiKey(
+    apiKey: string
+  ): Promise<{ success: boolean; data: any }> {
     try {
       await axios.get(`${this.API_BASE_URL}/voices`, {
         headers: { 'xi-api-key': apiKey },
@@ -54,12 +60,12 @@ export class ElevenLabsService {
 
       return {
         success: userResponse.status == 200,
-        data: userResponse.data
+        data: userResponse.data,
       };
     } catch {
       return {
         success: false,
-        data: null
+        data: null,
       };
     }
   }
@@ -77,7 +83,13 @@ export class ElevenLabsService {
     return decrypt(settings.elevenLabsApiKey);
   }
 
-  async activateIntegration({ apiKey, agentId }: { apiKey: string; agentId: string }): Promise<void> {
+  async activateIntegration({
+    apiKey,
+    agentId,
+  }: {
+    apiKey: string;
+    agentId: string;
+  }): Promise<void> {
     const { success, data } = await this.validateElevenLabsApiKey(apiKey);
     if (!success) {
       throw new BadRequestException('Invalid ElevenLabs API key');
@@ -86,7 +98,7 @@ export class ElevenLabsService {
     const encryptedKey = encrypt(apiKey);
 
     const agent = await this.prisma.agent.findUnique({
-      where: { id: agentId }
+      where: { id: agentId },
     });
 
     if (!agent) {
@@ -95,7 +107,7 @@ export class ElevenLabsService {
 
     await this.prisma.elevenLabsSettings.update({
       where: { agentId },
-      data: { 
+      data: {
         elevenLabsApiKey: encryptedKey,
         connected: true,
         respondAudioWithAudio: true,
@@ -103,7 +115,7 @@ export class ElevenLabsService {
         userName: data.first_name,
         characterCount: data.subscription.character_count,
         characterLimit: data.subscription.character_limit,
-        subscriptionTier: data.subscription.tier
+        subscriptionTier: data.subscription.tier,
       },
     });
 
@@ -113,12 +125,12 @@ export class ElevenLabsService {
   async deactivateIntegration(agentId: string): Promise<void> {
     await this.prisma.elevenLabsSettings.update({
       where: { agentId },
-      data: { 
+      data: {
         connected: false,
         elevenLabsApiKey: '',
         selectedElevenLabsVoiceId: '',
         respondAudioWithAudio: false,
-        alwaysRespondWithAudio: false
+        alwaysRespondWithAudio: false,
       },
     });
 
@@ -140,7 +152,7 @@ export class ElevenLabsService {
         'Content-Type': 'application/json',
         'xi-api-key': apiKey,
       },
-    })
+    });
 
     return {
       voices: voicesResponse.data,
@@ -148,22 +160,29 @@ export class ElevenLabsService {
         userName: userResponse.data.first_name,
         characterCount: userResponse.data.character_count,
         characterLimit: userResponse.data.character_limit,
-        subscriptionTier: userResponse.data.subscription.tier      }
+        subscriptionTier: userResponse.data.subscription.tier,
+      },
     };
   }
 
-  async updateData(agentId: string, body: Partial<ElevenLabsSettingsDto>): Promise<void> {
+  async updateData(
+    agentId: string,
+    body: Partial<ElevenLabsSettingsDto>
+  ): Promise<void> {
     await this.prisma.elevenLabsSettings.update({
       where: { agentId },
       data: {
-        ...body
+        ...body,
       },
     });
 
     this.logger.log(`Updated selected ElevenLabs data for agent ${agentId}`);
   }
 
-  async textToAudio(agentId: string, options: TextToAudioOptions): Promise<any> {
+  async textToAudio(
+    agentId: string,
+    options: TextToAudioOptions
+  ): Promise<any> {
     try {
       const { text } = options;
       const apiKey = await this.getApiKey(agentId);
@@ -171,15 +190,17 @@ export class ElevenLabsService {
       // Get agent's selected voice ID
       const settings = await this.prisma.elevenLabsSettings.findUnique({
         where: { agentId },
-        select: { 
+        select: {
           selectedElevenLabsVoiceId: true,
           stability: true,
-          similarityBoost: true         
+          similarityBoost: true,
         },
       });
 
       if (!settings?.selectedElevenLabsVoiceId) {
-        throw new BadRequestException('No ElevenLabs voice selected for this agent.');
+        throw new BadRequestException(
+          'No ElevenLabs voice selected for this agent.'
+        );
       }
 
       const voiceId = settings.selectedElevenLabsVoiceId;
@@ -193,14 +214,14 @@ export class ElevenLabsService {
           model_id: 'eleven_monolingual_v1',
           voice_settings: {
             stability: settings.stability,
-            similarity_boost: settings.similarityBoost
+            similarity_boost: settings.similarityBoost,
           },
         },
         {
           headers: {
             'Content-Type': 'application/json',
             'xi-api-key': apiKey,
-            'Accept': 'audio/mpeg',
+            Accept: 'audio/mpeg',
           },
           responseType: 'arraybuffer',
         }
@@ -210,7 +231,9 @@ export class ElevenLabsService {
         this.logger.log('Text successfully converted to audio.');
         return response.data;
       } else {
-        this.logger.warn(`Unexpected response from ElevenLabs API: ${JSON.stringify(response.data)}`);
+        this.logger.warn(
+          `Unexpected response from ElevenLabs API: ${JSON.stringify(response.data)}`
+        );
         return null;
       }
     } catch (error) {
@@ -299,9 +322,14 @@ export class ElevenLabsService {
         `ElevenLabs API error in ${methodName}: Status ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`
       );
     } else if (error.request) {
-      this.logger.error(`ElevenLabs API no response in ${methodName}: ${error.message}`);
+      this.logger.error(
+        `ElevenLabs API no response in ${methodName}: ${error.message}`
+      );
     } else {
-      this.logger.error(`Error in ${methodName}: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error in ${methodName}: ${error.message}`,
+        error.stack
+      );
     }
   }
 }
