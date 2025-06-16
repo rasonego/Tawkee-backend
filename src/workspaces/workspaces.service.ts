@@ -2,6 +2,25 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkspaceDto } from './dto/workspace.dto';
 
+const modelCreditMap: Record<string, number> = {
+  GPT_4_1: 20,
+  GPT_4_1_MINI: 10,
+  GPT_4_O_MINI: 10,
+  GPT_4_O: 10,
+  OPEN_AI_O3_MINI: 1,
+  OPEN_AI_O4_MINI: 10,
+  OPEN_AI_O3: 1,
+  OPEN_AI_O1: 1,
+  GPT_4: 20,
+  CLAUDE_3_5_SONNET: 10,
+  CLAUDE_3_7_SONNET: 10,
+  CLAUDE_3_5_HAIKU: 1,
+  DEEPINFRA_LLAMA3_3: 1,
+  QWEN_2_5_MAX: 1,
+  DEEPSEEK_CHAT: 1,
+  SABIA_3: 1
+}
+
 @Injectable()
 export class WorkspacesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -15,6 +34,18 @@ export class WorkspacesService {
     });
 
     return workspaces;
+  }
+
+  async findOne(id: string) {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException(`Workspace with ID ${id} not found`);
+    }
+
+    return workspace;
   }
 
   // When user finishes a chat using our platform, it does not mean it is resolved by human. 
@@ -159,19 +190,44 @@ export class WorkspacesService {
       },
     });
 
-    const creditByDate: Record<string, { totalCredits: number; creditsByAgent: Record<string, number> }> = {};
+    const creditByDate: Record<
+      string,
+      {
+        totalCredits: number;
+        creditsByAgent: Record<string, { credits: number; agentName: string | null }>;
+      }
+    > = {};
+
     for (const c of credits) {
       const dateKey = c.createdAt.toISOString().slice(0, 10);
-      if (!creditByDate[dateKey]) creditByDate[dateKey] = { totalCredits: 0, creditsByAgent: {} };
+      if (!creditByDate[dateKey]) {
+        creditByDate[dateKey] = { totalCredits: 0, creditsByAgent: {} };
+      }
+
       creditByDate[dateKey].totalCredits += c.credits;
-      creditByDate[dateKey].creditsByAgent[c.agentId] = (creditByDate[dateKey].creditsByAgent[c.agentId] || 0) + c.credits;
+
+      if (!creditByDate[dateKey].creditsByAgent[c.agentId]) {
+        creditByDate[dateKey].creditsByAgent[c.agentId] = {
+          credits: 0,
+          agentName: c.agent?.name ?? 'Unknown',
+        };
+      }
+
+      creditByDate[dateKey].creditsByAgent[c.agentId].credits += c.credits;
     }
+
     const creditsPerDay = Object.entries(creditByDate)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, data]) => ({
         date,
         totalCredits: data.totalCredits,
-        creditsByAgent: Object.entries(data.creditsByAgent).map(([agentId, credits]) => ({ agentId, credits })),
+        creditsByAgent: Object.entries(data.creditsByAgent).map(
+          ([agentId, { credits, agentName }]) => ({
+            agentId,
+            agentName,
+            credits,
+          })
+        ),
       }));
 
     const agentTotals: Record<string, { agentId: string; name: string | null; jobName: string | null; avatar: string | null; totalCredits: number }> = {};
@@ -219,15 +275,50 @@ export class WorkspacesService {
     };
   }
 
-  async findOne(id: string) {
-    const workspace = await this.prisma.workspace.findUnique({
-      where: { id },
-    });
+  async logAndAggregateCredit(agentId: string, metadata?: Record<string, any>) {
+    const agent = await this.prisma.agent.findUnique({
+      where: { id: agentId },
+      include: { settings: true },
+    })
 
-    if (!workspace) {
-      throw new NotFoundException(`Workspace with ID ${id} not found`);
-    }
+    if (!agent?.settings) throw new Error('Agent or settings not found.')
 
-    return workspace;
+    const model = agent.settings.preferredModel
+    const creditCost = modelCreditMap[model]
+    if (!creditCost) throw new Error(`Unknown model: ${model}`)
+
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth() + 1
+    const day = now.getDate()
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Append credit transaction
+      await tx.creditTransaction.create({
+        data: {
+          agentId,
+          model,
+          credits: creditCost,
+          timestamp: now,
+          metadata,
+        },
+      })
+
+      // 2. Update or create aggregate summary
+      const existing = await tx.creditSpent.findFirst({
+        where: { agentId, model, year, month, day },
+      })
+
+      if (existing) {
+        await tx.creditSpent.update({
+          where: { id: existing.id },
+          data: { credits: { increment: creditCost } },
+        })
+      } else {
+        await tx.creditSpent.create({
+          data: { agentId, model, credits: creditCost, year, month, day },
+        })
+      }
+    })
   }
 }

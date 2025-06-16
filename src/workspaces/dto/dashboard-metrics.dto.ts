@@ -30,6 +30,9 @@ class CreditByAgentDto {
   agentId: string;
 
   @ApiProperty()
+  agentName: string;
+
+  @ApiProperty()
   credits: number;
 }
 

@@ -7,6 +7,7 @@ import { MediaService } from '../media/media.service';
 import { WebsocketService } from '../websocket/websocket.service';
 import { Chat, Message } from '@prisma/client';
 import { ConversationDto } from 'src/conversations/dto/conversation.dto';
+import { WorkspacesService } from 'src/workspaces/workspaces.service';
 
 @Injectable()
 export class WebhooksService {
@@ -14,6 +15,7 @@ export class WebhooksService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly workspacesService: WorkspacesService,
     private readonly conversationsService: ConversationsService,
     private readonly interactionsService: InteractionsService,
     private readonly wahaApiService: WahaApiService,
@@ -624,12 +626,9 @@ export class WebhooksService {
             await this.interactionsService.findLatestInteractionByChatWithMessages(
               chat.id
             );
-          const agent = await this.prisma.agent.findFirst({
-            where: { id: chat.agentId },
-            select: { workspaceId: true },
-          });
+
           this.websocketService.sendToClient(
-            agent.workspaceId,
+             webhookEvent.channel.agent.workspaceId,
             'messageChatUpdate',
             {
               ...updatedChat,
@@ -785,6 +784,9 @@ export class WebhooksService {
                       whatsappMessageId: messageId,
                     },
                   });
+
+                  this.workspacesService.logAndAggregateCredit(webhookEvent.channel.agent.id);
+
                 }
               } catch (error) {
                 this.logger.error(
@@ -845,6 +847,9 @@ export class WebhooksService {
                         fileName: 'audio.ogg',
                       },
                     });
+
+                    this.workspacesService.logAndAggregateCredit( webhookEvent.channel.agent.id);
+
                   }
                 } catch (error) {
                   this.logger.error(

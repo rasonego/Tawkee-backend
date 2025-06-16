@@ -78,6 +78,7 @@ model Agent {
   googleToken        AgentGoogleToken?
   scheduleSettings   ScheduleSettings?
   elevenLabsSettings ElevenLabsSettings?
+  CreditTransaction  CreditTransaction[]
 }
 
 model AgentSettings {
@@ -251,6 +252,19 @@ model IntentionPreconditionQueryParam {
 
   preconditionId String
   precondition   IntentionPrecondition @relation(fields: [preconditionId], references: [id], onDelete: Cascade)
+}
+
+model CreditTransaction {
+  id        String   @id @default(uuid())
+  agentId   String
+  model     String
+  credits   Int
+  timestamp DateTime @default(now())
+  metadata  Json? // optional: store messageId, sessionId, user info, etc.
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, timestamp])
 }
 
 model CreditSpent {
