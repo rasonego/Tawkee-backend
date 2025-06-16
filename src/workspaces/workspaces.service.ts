@@ -30,7 +30,7 @@ export class WorkspacesService {
 
   async getDashboardMetrics(workspaceId: string, startDate: string, endDate: string, comparisonStartDate: string, comparisonEndDate: string) {
     const start = new Date(startDate);
-    const end = new Date(endDate);
+    const end = new Date(new Date(endDate).setUTCHours(23, 59, 59, 999));
     const prevStart = new Date(comparisonStartDate);
     const prevEnd = new Date(comparisonEndDate);
 
