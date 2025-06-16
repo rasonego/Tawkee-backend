@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { WorkspaceDto, WorkspaceCreditsDto } from './dto/workspace.dto';
+import { WorkspaceDto } from './dto/workspace.dto';
 
 @Injectable()
 export class WorkspacesService {
@@ -17,22 +17,205 @@ export class WorkspacesService {
     return workspaces;
   }
 
-  async getCredits(workspaceId: string): Promise<WorkspaceCreditsDto> {
-    const workspace = await this.prisma.workspace.findUnique({
-      where: { id: workspaceId },
+  // When user finishes a chat using our platform, it does not mean it is resolved by human. 
+  // Interaction must be assigned a userId ONLY if the agent itself transfers attendance to human!
+  // The agent must transfer it to the first user of the given workspace it can
+  // If there are multiple users, we must define rules to determine who must be assigned to.
+  // Notification regarding this action should be fired - specific to the user being assigned to.
+
+  private getTrend(current: number, previous: number): number {
+    if (previous === 0) return current === 0 ? 0 : 100;
+    return ((current - previous) / previous) * 100;
+  }
+
+  async getDashboardMetrics(workspaceId: string, startDate: string, endDate: string, comparisonStartDate: string, comparisonEndDate: string) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const prevStart = new Date(comparisonStartDate);
+    const prevEnd = new Date(comparisonEndDate);
+
+    // RESOLVED INTERACTIONS (Current)
+    const resolved = await this.prisma.interaction.findMany({
+      where: {
+        workspaceId,
+        status: 'RESOLVED',
+        resolvedAt: { gte: start, lte: end },
+      },
       select: {
-        credits: true,
-        subscriptionStatus: true,
+        id: true,
+        userId: true,
+        resolvedAt: true,
+        startAt: true,
       },
     });
 
-    if (!workspace) {
-      throw new NotFoundException(`Workspace with ID ${workspaceId} not found`);
+    const resolvedByAI = resolved.filter(i => i.userId === null);
+    const resolvedByHuman = resolved.filter(i => i.userId !== null);
+
+    const resolvedTimeSeriesMap: Record<string, { total: number; byAI: number; byHuman: number }> = {};
+    for (const i of resolved) {
+      const date = i.resolvedAt!.toISOString().slice(0, 10);
+      if (!resolvedTimeSeriesMap[date]) {
+        resolvedTimeSeriesMap[date] = { total: 0, byAI: 0, byHuman: 0 };
+      }
+      resolvedTimeSeriesMap[date].total++;
+      if (i.userId === null) resolvedTimeSeriesMap[date].byAI++;
+      else resolvedTimeSeriesMap[date].byHuman++;
     }
+    const timeSeries = Object.entries(resolvedTimeSeriesMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, counts]) => ({ date, ...counts }));
+
+    // RESOLVED INTERACTIONS (Comparison)
+    const prevResolved = await this.prisma.interaction.findMany({
+      where: {
+        workspaceId,
+        status: 'RESOLVED',
+        resolvedAt: { gte: prevStart, lte: prevEnd },
+      },
+      select: {
+        userId: true,
+        resolvedAt: true,
+        startAt: true,
+      },
+    });
+
+    const prevTotal = prevResolved.length;
+    const prevByAI = prevResolved.filter(i => i.userId === null).length;
+    const prevByHuman = prevResolved.filter(i => i.userId !== null).length;
+
+    // RUNNING INTERACTIONS (Current)
+    const running = await this.prisma.interaction.findMany({
+      where: {
+        workspaceId,
+        status: { in: ['RUNNING', 'WAITING'] },
+        startAt: { gte: start, lte: end },
+      },
+      select: {
+        id: true,
+        status: true,
+        chat: {
+          select: {
+            userName: true,
+            whatsappPhone: true,
+          },
+        },
+      },
+    });
+
+    const waiting = running.filter(i => i.status === 'WAITING');
+    const runningInteractions = running.map(i => ({
+      id: i.id,
+      userName: i.chat?.userName ?? null,
+      whatsappPhone: i.chat?.whatsappPhone ?? null,
+      isWaiting: i.status === 'WAITING',
+    }));
+
+    // RUNNING INTERACTIONS (Comparison)
+    const prevRunning = await this.prisma.interaction.findMany({
+      where: {
+        workspaceId,
+        status: { in: ['RUNNING', 'WAITING'] },
+        startAt: { gte: prevStart, lte: prevEnd },
+      },
+      select: {
+        status: true,
+        startAt: true,
+      },
+    });
+    const prevWaiting = prevRunning.filter(i => i.status === 'WAITING');
+
+    // AVERAGE TIME (Current)
+    const durations = resolved
+      .filter(i => i.resolvedAt && i.startAt)
+      .map(i => new Date(i.resolvedAt!).getTime() - new Date(i.startAt).getTime());
+    const avgInteractionTimeMs = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+
+    // AVERAGE TIME (Comparison)
+    const prevDurations = prevResolved
+      .filter(i => i.resolvedAt && i.startAt)
+      .map(i => new Date(i.resolvedAt!).getTime() - new Date(i.startAt).getTime());
+    const prevAvgTime = prevDurations.length > 0 ? prevDurations.reduce((a, b) => a + b, 0) / prevDurations.length : 0;
+
+    // CREDIT CONSUMPTION (Current)
+    const credits = await this.prisma.creditSpent.findMany({
+      where: {
+        agent: { workspaceId },
+        createdAt: { gte: start, lte: end },
+      },
+      select: {
+        credits: true,
+        model: true,
+        agentId: true,
+        createdAt: true,
+        agent: {
+          select: {
+            id: true,
+            name: true,
+            jobName: true,
+            avatar: true,
+          },
+        },
+      },
+    });
+
+    const creditByDate: Record<string, { totalCredits: number; creditsByAgent: Record<string, number> }> = {};
+    for (const c of credits) {
+      const dateKey = c.createdAt.toISOString().slice(0, 10);
+      if (!creditByDate[dateKey]) creditByDate[dateKey] = { totalCredits: 0, creditsByAgent: {} };
+      creditByDate[dateKey].totalCredits += c.credits;
+      creditByDate[dateKey].creditsByAgent[c.agentId] = (creditByDate[dateKey].creditsByAgent[c.agentId] || 0) + c.credits;
+    }
+    const creditsPerDay = Object.entries(creditByDate)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, data]) => ({
+        date,
+        totalCredits: data.totalCredits,
+        creditsByAgent: Object.entries(data.creditsByAgent).map(([agentId, credits]) => ({ agentId, credits })),
+      }));
+
+    const agentTotals: Record<string, { agentId: string; name: string | null; jobName: string | null; avatar: string | null; totalCredits: number }> = {};
+    for (const c of credits) {
+      const id = c.agentId;
+      if (!agentTotals[id]) {
+        agentTotals[id] = {
+          agentId: id,
+          name: c.agent.name,
+          jobName: c.agent.jobName,
+          avatar: c.agent.avatar,
+          totalCredits: 0,
+        };
+      }
+      agentTotals[id].totalCredits += c.credits;
+    }
+    const topAgents = Object.values(agentTotals).sort((a, b) => b.totalCredits - a.totalCredits).slice(0, 5);
+
+    const modelTotals: Record<string, number> = {};
+    for (const c of credits) modelTotals[c.model] = (modelTotals[c.model] || 0) + c.credits;
+    const topModels = Object.entries(modelTotals).map(([model, credits]) => ({ model, credits })).sort((a, b) => b.credits - a.credits).slice(0, 5);
 
     return {
-      credits: workspace.credits,
-      status: workspace.subscriptionStatus,
+      resolved: {
+        total: resolved.length,
+        byAI: resolvedByAI.length,
+        byHuman: resolvedByHuman.length,
+        timeSeries,
+        trend: {
+          total: this.getTrend(resolved.length, prevTotal),
+          byAI: this.getTrend(resolvedByAI.length, prevByAI),
+          byHuman: this.getTrend(resolvedByHuman.length, prevByHuman),
+        },
+      },
+      running: {
+        total: running.length,
+        waiting: waiting.length,
+        interactions: runningInteractions,
+      },
+      avgInteractionTimeMs,
+      avgTimeTrend: this.getTrend(avgInteractionTimeMs, prevAvgTime), // ✅ Kept as per DTO
+      creditsPerDay,
+      topAgents,
+      topModels,
     };
   }
 

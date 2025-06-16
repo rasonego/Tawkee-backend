@@ -19,20 +19,3 @@ export class WorkspaceDto {
   @IsNotEmpty()
   name: string;
 }
-
-export class WorkspaceCreditsDto {
-  @ApiProperty({
-    description: 'Number of credits available',
-    example: 1000,
-  })
-  @IsInt()
-  credits: number;
-
-  @ApiProperty({
-    description: 'Subscription status',
-    enum: SubscriptionStatus,
-    example: 'ACTIVE',
-  })
-  @IsEnum(SubscriptionStatus)
-  status: SubscriptionStatus;
-}
