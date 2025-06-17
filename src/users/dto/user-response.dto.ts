@@ -26,6 +26,12 @@ export class UserResponseDto {
   workspaceId: string;
 
   @ApiProperty({
+    description: 'Workspace credits',
+    example: '1250'
+  })
+  workspaceCredits: number;
+
+  @ApiProperty({
     description: 'User first name',
     example: 'John',
     required: false,

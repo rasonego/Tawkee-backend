@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { WebsocketService } from 'src/websocket/websocket.service';
 import { WorkspaceDto } from './dto/workspace.dto';
 
 const modelCreditMap: Record<string, number> = {
@@ -23,7 +24,10 @@ const modelCreditMap: Record<string, number> = {
 
 @Injectable()
 export class WorkspacesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly websocketService: WebsocketService
+  ) {}
 
   async findAll(): Promise<WorkspaceDto[]> {
     const workspaces = await this.prisma.workspace.findMany({
@@ -278,7 +282,14 @@ export class WorkspacesService {
   async logAndAggregateCredit(agentId: string, metadata?: Record<string, any>) {
     const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },
-      include: { settings: true },
+      include: { 
+        settings: true,
+        workspace: {
+          select: {
+            id: true
+          }
+        }
+      },
     })
 
     if (!agent?.settings) throw new Error('Agent or settings not found.')
@@ -320,5 +331,15 @@ export class WorkspacesService {
         })
       }
     })
+
+    // TODO inform workspace about credit consumption
+    this.websocketService.sendToClient(
+      agent.workspace.id,
+      'workspaceCreditsUpdate',
+      {
+        credits: creditCost,
+      }
+    );
+
   }
 }

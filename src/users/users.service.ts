@@ -91,6 +91,7 @@ export class UsersService {
             email: user.email,
             name: user.name,
             workspaceId: user.workspaceId,
+            workspaceCredits: workspace.credits,
             provider: user.provider,
             firstName: user.firstName || undefined,
             lastName: user.lastName || undefined,
@@ -150,6 +151,13 @@ export class UsersService {
     // Find the user
     let user = await this.prisma.user.findUnique({
       where: { email: loginUserDto.email },
+      include: {
+        workspace: {
+          select: {
+            credits: true
+          }
+        }
+      }
     });
 
     if (!user) {
@@ -222,6 +230,13 @@ export class UsersService {
     user = await this.prisma.user.update({
       where: { id: user.id },
       data: { provider: 'password' },
+      include: {
+        workspace: {
+          select: {
+            credits: true
+          }
+        }
+      }
     });
 
     // Generate JWT token
@@ -238,6 +253,7 @@ export class UsersService {
         email: user.email,
         name: user.name,
         workspaceId: user.workspaceId,
+        workspaceCredits: user.workspace.credits,
         provider: user.provider,
         firstName: user.firstName || undefined,
         lastName: user.lastName || undefined,
@@ -287,8 +303,15 @@ export class UsersService {
     }
 
     try {
-      const user: User = await this.prisma.user.findUnique({
+      const user = await this.prisma.user.findUnique({
         where: { id },
+        include: {
+          workspace: {
+            select: {
+              credits: true
+            }
+          }
+        }
       });
 
       if (!user) {
@@ -300,6 +323,7 @@ export class UsersService {
         email: user.email,
         name: user.name,
         workspaceId: user.workspaceId,
+        workspaceCredits: user.workspace.credits,
         firstName: user.firstName || undefined,
         lastName: user.lastName || undefined,
         avatar: user.avatar || undefined,

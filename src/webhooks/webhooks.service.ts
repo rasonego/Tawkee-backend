@@ -848,7 +848,7 @@ export class WebhooksService {
                       },
                     });
 
-                    this.workspacesService.logAndAggregateCredit( webhookEvent.channel.agent.id);
+                    this.workspacesService.logAndAggregateCredit(webhookEvent.channel.agent.id);
 
                   }
                 } catch (error) {
