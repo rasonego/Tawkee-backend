@@ -235,14 +235,12 @@ export class ChatsService {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Update the most recent interaction's status based on the latest message role
+    // Update the most recent interaction's to RUNNING
     if (mostRecentInteraction) {
-      const newStatus = latestMessage?.role === 'user' ? 'RUNNING' : 'WAITING';
-
       await this.prisma.interaction.update({
         where: { id: mostRecentInteraction.id },
         data: {
-          status: newStatus,
+          status: 'RUNNING',
           resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
         },
       });
@@ -428,6 +426,16 @@ export class ChatsService {
       },
     });
 
+    // Mark latest interaction as RUNNING
+    await this.prisma.interaction.update({
+      where: { id: latestInteraction.id },
+      data: {
+        status: 'RUNNING',
+        userId,
+        resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
+      }
+    });
+
     // Find user who joined the conversation
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -506,6 +514,15 @@ export class ChatsService {
       select: {
         id: true,
       },
+    });
+
+    // Mark latest interaction as RUNNING
+    await this.prisma.interaction.update({
+      where: { id: latestInteraction.id },
+      data: {
+        status: 'RUNNING',
+        resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
+      }
     });
 
     // Find user who left the conversation

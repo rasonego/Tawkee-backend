@@ -82,7 +82,7 @@ export class InteractionsService {
       where: whereCondition,
       skip,
       take: pageSize,
-      orderBy: { startAt: 'asc' }, // Or any other order you prefer
+      orderBy: { startAt: 'desc' }, // Or any other order you prefer
       include: {
         agent: {
           select: {

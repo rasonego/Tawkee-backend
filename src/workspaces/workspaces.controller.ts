@@ -30,6 +30,23 @@ export class WorkspacesController {
     return this.workspacesService.findAll();
   }
 
+  @Get(':workspaceId/credits')
+  @ApiOperation({ summary: 'Get current workspace credits' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns current credit balance of the workspace',
+    schema: {
+      example: {
+        credits: 250,
+      },
+    },
+  })
+  async getWorkspaceCredits(
+    @Param('workspaceId') workspaceId: string
+  ): Promise<{ credits: number }> {
+    return this.workspacesService.getWorkspaceCredits(workspaceId);
+  }
+
   @Get(':workspaceId/dashboard-metrics')
   async getDashboardMetrics(
     @Param('workspaceId') workspaceId: string,

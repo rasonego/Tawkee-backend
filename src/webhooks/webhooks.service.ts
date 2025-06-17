@@ -840,7 +840,10 @@ export class WebhooksService {
                     },
                   });
 
-                  this.workspacesService.logAndAggregateCredit(webhookEvent.channel.agent.id);
+                  this.workspacesService.logAndAggregateCredit(webhookEvent.channel.agent.id, {
+                    messageId,
+                    content: agentResponse.message
+                  });
 
                 }
               } catch (error) {
@@ -903,8 +906,10 @@ export class WebhooksService {
                       },
                     });
 
-                    this.workspacesService.logAndAggregateCredit(webhookEvent.channel.agent.id);
-
+                    this.workspacesService.logAndAggregateCredit(webhookEvent.channel.agent.id, {
+                      messageId,
+                      content: agentResponse.message
+                    });                   
                   }
                 } catch (error) {
                   this.logger.error(

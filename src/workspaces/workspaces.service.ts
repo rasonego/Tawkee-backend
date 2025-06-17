@@ -52,8 +52,25 @@ export class WorkspacesService {
     return workspace;
   }
 
-  // When user finishes a chat using our platform, it does not mean it is resolved by human. 
-  // Interaction must be assigned a userId ONLY if the agent itself transfers attendance to human!
+  async getWorkspaceCredits(workspaceId: string): Promise<{ credits: number }> {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { id: true, credits: true },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException(`Workspace with ID ${workspaceId} not found`);
+    }
+
+    return { credits: workspace.credits };
+  }
+
+
+  // When user finishes a chat using our platform, it does not necessarily mean it is resolved by human. 
+  // Conditions to assign a userId to a given interaction:
+  // 1. The agent itself transfers attendance to human
+  // 2. A user of our platform interferes and triggers start human attendance
+
   // The agent must transfer it to the first user of the given workspace it can
   // If there are multiple users, we must define rules to determine who must be assigned to.
   // Notification regarding this action should be fired - specific to the user being assigned to.
@@ -127,10 +144,10 @@ export class WorkspacesService {
         startAt: { gte: start, lte: end },
       },
       select: {
-        id: true,
         status: true,
         chat: {
           select: {
+            id: true,
             userName: true,
             whatsappPhone: true,
           },
@@ -140,7 +157,7 @@ export class WorkspacesService {
 
     const waiting = running.filter(i => i.status === 'WAITING');
     const runningInteractions = running.map(i => ({
-      id: i.id,
+      id: i.chat.id,
       userName: i.chat?.userName ?? null,
       whatsappPhone: i.chat?.whatsappPhone ?? null,
       isWaiting: i.status === 'WAITING',
@@ -306,13 +323,22 @@ export class WorkspacesService {
 
     const currentCredits = agent.workspace.credits;
 
+    console.log("credits situation: ", {
+      agentId,
+      workspaceId: agent.workspace.id,
+      model,
+      requiredCredits: creditCost,
+      availableCredits: currentCredits,
+      allowed: currentCredits >= creditCost,
+    })
+
     return {
       agentId,
       workspaceId: agent.workspace.id,
       model,
       requiredCredits: creditCost,
       availableCredits: currentCredits,
-      allowed: currentCredits < creditCost,
+      allowed: currentCredits >= creditCost,
     };
   }
 
@@ -367,16 +393,27 @@ export class WorkspacesService {
           data: { agentId, model, credits: creditCost, year, month, day },
         })
       }
+
+      // 3. Update credits on workspace
+     const workspace = await this.prisma.workspace.update({
+        where: { id: agent.workspace.id },
+        data: {
+          credits: { decrement: creditCost }
+        },
+        select: {
+          id: true,
+          credits: true
+        }
+      });
+
+      // Inform frontend clients about credit consumption
+      this.websocketService.sendToClient(
+        workspace.id,
+        'workspaceCreditsUpdate',
+        {
+          credits: workspace.credits,
+        }
+      );
     })
-
-    // TODO inform workspace about credit consumption
-    this.websocketService.sendToClient(
-      agent.workspace.id,
-      'workspaceCreditsUpdate',
-      {
-        credits: creditCost,
-      }
-    );
-
   }
 }
