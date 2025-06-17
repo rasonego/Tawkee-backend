@@ -429,8 +429,7 @@ export class WebhooksService {
       return;
     }
 
-    let agentIsInactive: boolean = false;
-
+    let agentIsInactive: boolean = false;  
     if (webhookEvent.channel.agent.isActive === false) {
       this.logger.log(
         `Skipping message processing for inactive agent: ${webhookEvent.channel.agent.id}`
@@ -445,7 +444,7 @@ export class WebhooksService {
       });
       agentIsInactive = true;
     }
-
+   
     if (!webhookEvent.remoteJid) {
       this.logger.error(`Webhook event ${webhookEventId} has no remoteJid`);
       await this.prisma.webhookEvent.update({
@@ -458,6 +457,28 @@ export class WebhooksService {
       });
       return;
     }
+
+    let insufficientCredits: boolean = false;
+    const creditCheck = await this.workspacesService.checkAgentWorkspaceHasSufficientCredits(
+      webhookEvent.channel.agent.id
+    );
+    if (creditCheck.allowed === false) {
+      const creditsCost = creditCheck.requiredCredits;
+      const creditsAvailable = creditCheck.availableCredits;
+      const model = creditCheck.model;
+      this.logger.log(
+        `Skipping message due to lack of credits: ${webhookEvent.channel.agent.id}'s model ${model} required ${creditsCost}, but only ${creditsAvailable} is available.`
+      );
+      await this.prisma.webhookEvent.update({
+        where: { id: webhookEventId },
+        data: {
+          processed: true,
+          processedAt: new Date(),
+          error: 'Skipped processing because agent is inactive',
+        },
+      });
+      insufficientCredits = true;
+    }    
 
     try {
       if (webhookEvent.event === 'message' && !webhookEvent.fromMe) {
@@ -660,6 +681,40 @@ export class WebhooksService {
           const systemMessage = await this.prisma.message.create({
             data: {
               text: `${webhookEvent.channel.agent.name} is inactive and will not respond to messages.`,
+              role: 'system',
+              type: 'notification',
+              chatId: chat.id,
+              interactionId: latestInteraction.id,
+              time: Date.now(),
+            },
+          });
+          const updatedChat = await this.prisma.chat.findUnique({
+            where: { id: chat.id },
+          });
+          const paginatedInteractions =
+            await this.interactionsService.findLatestInteractionByChatWithMessages(
+              chat.id
+            );
+          this.websocketService.sendToClient(
+            webhookEvent.channel.agent.workspaceId,
+            'messageChatUpdate',
+            {
+              ...updatedChat,
+              paginatedInteractions: paginatedInteractions,
+              latestMessage: {
+                ...systemMessage,
+                whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
+                time: systemMessage?.time?.toString(),
+              },
+            }
+          );
+          return;
+        }
+
+        if (insufficientCredits) {
+          const systemMessage = await this.prisma.message.create({
+            data: {
+              text: `Workspace lacks credits to process ${webhookEvent.channel.agent.name}'s message using the ${creditCheck.model} model. It required ${creditCheck.requiredCredits} but only ${creditCheck.availableCredits} was available at the time.`,
               role: 'system',
               type: 'notification',
               chatId: chat.id,

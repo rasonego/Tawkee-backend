@@ -279,6 +279,43 @@ export class WorkspacesService {
     };
   }
 
+  async checkAgentWorkspaceHasSufficientCredits(agentId: string) {
+    const agent = await this.prisma.agent.findUnique({
+      where: { id: agentId },
+      include: {
+        settings: true,
+        workspace: {
+          select: {
+            id: true,
+            credits: true,
+          },
+        },
+      },
+    });
+
+    if (!agent?.settings || !agent.workspace) {
+      throw new Error('Agent or workspace or settings not found.');
+    }
+
+    const model = agent.settings.preferredModel;
+    const creditCost = modelCreditMap[model];
+
+    if (!creditCost) {
+      throw new Error(`Unknown model: ${model}`);
+    }
+
+    const currentCredits = agent.workspace.credits;
+
+    return {
+      agentId,
+      workspaceId: agent.workspace.id,
+      model,
+      requiredCredits: creditCost,
+      availableCredits: currentCredits,
+      allowed: currentCredits < creditCost,
+    };
+  }
+
   async logAndAggregateCredit(agentId: string, metadata?: Record<string, any>) {
     const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },
