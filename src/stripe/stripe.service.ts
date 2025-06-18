@@ -3,17 +3,29 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateSubscriptionDto, CreatePlanDto } from './dto/stripe.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class StripeService {
   private readonly logger = new Logger(StripeService.name);
   private readonly stripe: Stripe;
+  private readonly webhookSecret: string;
 
-  constructor(private readonly prisma: PrismaService) {
-    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {
+    const apiKey = this.configService.get<string>('STRIPE_SECRET_KEY');
+    if (!apiKey) {
+      throw new Error('STRIPE_SECRET_KEY is not defined in environment variables');
+    }
+
+    this.webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET')!;
+    this.stripe = new Stripe(apiKey, {
       apiVersion: '2025-05-28.basil',
     });
   }
+
 
   async createCustomer(
     workspaceId: string,
