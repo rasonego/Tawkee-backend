@@ -10,7 +10,9 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import * as fs from 'fs';
 import * as https from 'https';
+
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 // Polyfill para versões antigas do Node.js
 if (!global.crypto) {
@@ -23,16 +25,12 @@ async function bootstrap() {
   const isProduction = process.env.NODE_ENV === 'production';
   const port = Number(process.env.PORT) || 5003;
 
-  const app = await NestFactory.create(AppModule);
-
-  // Enable WebSocket support
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.useWebSocketAdapter(new IoAdapter(app));
 
-  // Body parsers
   app.use(json({ limit: '150mb' }));
   app.use(urlencoded({ extended: true, limit: '150mb' }));
 
-  // Global middleware
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -41,14 +39,16 @@ async function bootstrap() {
       skipMissingProperties: false,
     }),
   );
+
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
 
-  // Root redirection
   const server = app.getHttpAdapter().getInstance();
-  server.get('/', (req, res) => res.redirect('/health'));
+  server.get('/', (req, res) => {
+    res.redirect('/health');
+  });
 
-  // Swagger setup
+  // Swagger
   const config = new DocumentBuilder()
     .setTitle('Tawkee API')
     .setDescription('The Tawkee API for WhatsApp automation with AI')
@@ -58,8 +58,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  // CORS setup
+  // CORS
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
   console.log(`=== CORS CONFIGURATION ===`);
   console.log(`Frontend URL from env: ${frontendUrl}`);
 
@@ -75,7 +76,6 @@ async function bootstrap() {
   console.log(`CORS enabled for all origins (for testing purposes)`);
   console.log(`===========================`);
 
-  // Socket.IO and HTTPS setup
   await app.init();
 
   if (isProduction) {
@@ -94,7 +94,7 @@ async function bootstrap() {
     console.log(`🚀 HTTP backend running on http://localhost:${port}`);
   }
 
-  // Optional API notices
+  // Optional: Evolution API credentials check
   const evolutionApiUrl = process.env.EVOLUTION_API_URL;
   const evolutionApiKey = process.env.EVOLUTION_API_KEY;
 
