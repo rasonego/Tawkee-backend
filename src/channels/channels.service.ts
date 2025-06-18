@@ -178,7 +178,7 @@ export class ChannelsService {
     }
 
     // Update the channel with config
-    await this.prisma.channel.update({
+    let updatedChannel = await this.prisma.channel.update({
       where: {
         id: channel.id,
       },
@@ -186,6 +186,8 @@ export class ChannelsService {
         config,
       },
     });
+
+    console.log({updatedChannel});
 
     // Create a sanitized version of config that doesn't expose sensitive data
     const sanitizedConfig = this.sanitizeChannelConfig(
@@ -208,6 +210,8 @@ export class ChannelsService {
     const channel = await this.prisma.channel.findUnique({
       where: { id: channelId },
     });
+
+    console.log(channel);
 
     if (!channel) {
       throw new NotFoundException(`Channel with ID ${channelId} not found`);
