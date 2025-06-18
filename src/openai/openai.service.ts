@@ -1111,7 +1111,7 @@ export class OpenAiService {
 
   The task executed by the agent occurred on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
 
-  Generate a response confirming successful completion of: ${intention.description}. If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}
+  Generate a response confirming successful completion of: ${intention.description}. If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}, which is relative to this timezone: ${agent.settings.timezone}
 
   Agent Name: ${agent.name}
   Agent Type: ${agent.type}
@@ -1138,6 +1138,7 @@ export class OpenAiService {
   - If user is the same as the contact, reflect that
   - Keep tone human and aligned with communication guide
   - Avoid repeating "the user" and prefer the name if known: "${userName}"
+  - Always speak in the same language that ${userName} is speaking, please!
 
   Communication Guide:
   ${communicationGuide}
@@ -1189,7 +1190,7 @@ export class OpenAiService {
   The assistant encountered an issue while trying to execute the task whose description is ${intention.description}, requested by ${userName}, who is a real person".
 
   The task executed by the agent occurred on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
-  If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}
+  If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}, which is relative to this timezone: ${agent.settings.timezone}
 
   Agent Name: ${agent.name}
   Agent Type: ${agent.type}
@@ -1202,6 +1203,8 @@ export class OpenAiService {
   - Uses the user's name if available
   - Suggests alternatives or retrying, especially if the issue is time-related
   - Reflects the agent’s communication style
+  - Avoid repeating "the user" and prefer the name if known: "${userName}"
+  - Always speak in the same language that ${userName} is speaking, please!
 
   Communication Guide:
   ${communicationGuide}
@@ -1264,7 +1267,7 @@ export class OpenAiService {
   You are an assistant helping ${userName} on behalf of ${agent.jobName}. You are trying to complete this action: "${intention.description}" but need more info.
 
   The task your are trying to carry out is always executed on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
-  If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}
+  If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}, which is relative to this timezone: ${agent.settings.timezone}
 
   Known Info:
   ${collectedInfo}
@@ -1280,6 +1283,8 @@ export class OpenAiService {
   - Address the user naturally (use name if available)
   - Clarify what’s needed
   - Reflect the communication guide
+  - Avoid repeating "the user" and prefer the name if known: "${userName}"
+  - Always speak in the same language that ${userName} is speaking, please!
 
   Communication Guide:
   ${communicationGuide}
