@@ -60,7 +60,7 @@ export class UsersService {
         const workspace = await prisma.workspace.create({
           data: {
             name: createUserDto.workspaceName,
-            credits: 50, // Default starting credits
+            credits: 10000, // Default starting credits
           },
         });
 
