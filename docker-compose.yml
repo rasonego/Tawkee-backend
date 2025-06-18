@@ -8,35 +8,41 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-    
+      # Monta os certificados SSL no container
+      - /etc/letsencrypt/live/tawkee.ai/fullchain.pem:/etc/certs/fullchain.pem:ro
+      - /etc/letsencrypt/live/tawkee.ai/privkey.pem:/etc/certs/privkey.pem:ro
     ports:
       - "${PORT:-5003}:${PORT:-5003}"
     env_file:
       - .env.development
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5434/nestjs}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/nestjs}
       - PORT=${PORT:-5003}
     depends_on:
       - db
     command: npm run start:dev
-    
+
   app-prod:
     build:
       context: .
       target: production
+    volumes:
+      # Monta os certificados SSL também no ambiente de produção
+      - /etc/letsencrypt/live/tawkee.ai/fullchain.pem:/etc/certs/fullchain.pem:ro
+      - /etc/letsencrypt/live/tawkee.ai/privkey.pem:/etc/certs/privkey.pem:ro
     ports:
       - "${PORT:-5003}:${PORT:-5003}"
     env_file:
       - .env.production
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5434/nestjs}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/nestjs}
       - PORT=${PORT:-5003}
     depends_on:
       - db
     restart: always
-    
+
   db:
     image: postgres:15
     restart: always
