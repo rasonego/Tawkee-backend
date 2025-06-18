@@ -187,6 +187,7 @@ export class ChannelsService {
       },
     });
 
+    console.log(config);
     console.log(updatedChannel);
 
     // Create a sanitized version of config that doesn't expose sensitive data
