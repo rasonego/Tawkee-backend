@@ -86,7 +86,6 @@ export class WorkspacesService {
     const prevStart = new Date(comparisonStartDate);
     const prevEnd = new Date(comparisonEndDate);
 
-    // RESOLVED INTERACTIONS (Current)
     const resolved = await this.prisma.interaction.findMany({
       where: {
         workspaceId,
@@ -114,11 +113,11 @@ export class WorkspacesService {
       if (i.userId === null) resolvedTimeSeriesMap[date].byAI++;
       else resolvedTimeSeriesMap[date].byHuman++;
     }
+
     const timeSeries = Object.entries(resolvedTimeSeriesMap)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, counts]) => ({ date, ...counts }));
 
-    // RESOLVED INTERACTIONS (Comparison)
     const prevResolved = await this.prisma.interaction.findMany({
       where: {
         workspaceId,
@@ -136,7 +135,6 @@ export class WorkspacesService {
     const prevByAI = prevResolved.filter(i => i.userId === null).length;
     const prevByHuman = prevResolved.filter(i => i.userId !== null).length;
 
-    // RUNNING INTERACTIONS (Current)
     const running = await this.prisma.interaction.findMany({
       where: {
         workspaceId,
@@ -163,7 +161,6 @@ export class WorkspacesService {
       isWaiting: i.status === 'WAITING',
     }));
 
-    // RUNNING INTERACTIONS (Comparison)
     const prevRunning = await this.prisma.interaction.findMany({
       where: {
         workspaceId,
@@ -175,21 +172,19 @@ export class WorkspacesService {
         startAt: true,
       },
     });
-    const prevWaiting = prevRunning.filter(i => i.status === 'WAITING');
 
-    // AVERAGE TIME (Current)
     const durations = resolved
       .filter(i => i.resolvedAt && i.startAt)
       .map(i => new Date(i.resolvedAt!).getTime() - new Date(i.startAt).getTime());
+
     const avgInteractionTimeMs = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
 
-    // AVERAGE TIME (Comparison)
     const prevDurations = prevResolved
       .filter(i => i.resolvedAt && i.startAt)
       .map(i => new Date(i.resolvedAt!).getTime() - new Date(i.startAt).getTime());
+
     const prevAvgTime = prevDurations.length > 0 ? prevDurations.reduce((a, b) => a + b, 0) / prevDurations.length : 0;
 
-    // CREDIT CONSUMPTION (Current)
     const credits = await this.prisma.creditSpent.findMany({
       where: {
         agent: { workspaceId },
@@ -211,13 +206,7 @@ export class WorkspacesService {
       },
     });
 
-    const creditByDate: Record<
-      string,
-      {
-        totalCredits: number;
-        creditsByAgent: Record<string, { credits: number; agentName: string | null }>;
-      }
-    > = {};
+    const creditByDate: Record<string, { totalCredits: number; creditsByAgent: Record<string, { credits: number; agentName: string | null }> }> = {};
 
     for (const c of credits) {
       const dateKey = c.createdAt.toISOString().slice(0, 10);
@@ -242,13 +231,11 @@ export class WorkspacesService {
       .map(([date, data]) => ({
         date,
         totalCredits: data.totalCredits,
-        creditsByAgent: Object.entries(data.creditsByAgent).map(
-          ([agentId, { credits, agentName }]) => ({
-            agentId,
-            agentName,
-            credits,
-          })
-        ),
+        creditsByAgent: Object.entries(data.creditsByAgent).map(([agentId, { credits, agentName }]) => ({
+          agentId,
+          agentName,
+          credits,
+        })),
       }));
 
     const agentTotals: Record<string, { agentId: string; name: string | null; jobName: string | null; avatar: string | null; totalCredits: number }> = {};
@@ -265,10 +252,12 @@ export class WorkspacesService {
       }
       agentTotals[id].totalCredits += c.credits;
     }
+
     const topAgents = Object.values(agentTotals).sort((a, b) => b.totalCredits - a.totalCredits).slice(0, 5);
 
     const modelTotals: Record<string, number> = {};
     for (const c of credits) modelTotals[c.model] = (modelTotals[c.model] || 0) + c.credits;
+
     const topModels = Object.entries(modelTotals).map(([model, credits]) => ({ model, credits })).sort((a, b) => b.credits - a.credits).slice(0, 5);
 
     return {
@@ -278,9 +267,9 @@ export class WorkspacesService {
         byHuman: resolvedByHuman.length,
         timeSeries,
         trend: {
-          total: this.getTrend(resolved.length, prevTotal),
-          byAI: this.getTrend(resolvedByAI.length, prevByAI),
-          byHuman: this.getTrend(resolvedByHuman.length, prevByHuman),
+          total: prevTotal > 0 ? this.getTrend(resolved.length, prevTotal) : undefined,
+          byAI: prevByAI > 0 ? this.getTrend(resolvedByAI.length, prevByAI) : undefined,
+          byHuman: prevByHuman > 0 ? this.getTrend(resolvedByHuman.length, prevByHuman) : undefined,
         },
       },
       running: {
@@ -289,7 +278,7 @@ export class WorkspacesService {
         interactions: runningInteractions,
       },
       avgInteractionTimeMs,
-      avgTimeTrend: this.getTrend(avgInteractionTimeMs, prevAvgTime), // ✅ Kept as per DTO
+      avgTimeTrend: prevDurations.length > 0 ? this.getTrend(avgInteractionTimeMs, prevAvgTime) : undefined,
       creditsPerDay,
       topAgents,
       topModels,
