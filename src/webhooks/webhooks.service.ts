@@ -429,7 +429,7 @@ export class WebhooksService {
       return;
     }
 
-    let agentIsInactive: boolean = false;  
+    let agentIsInactive: boolean = false;
     if (webhookEvent.channel.agent.isActive === false) {
       this.logger.log(
         `Skipping message processing for inactive agent: ${webhookEvent.channel.agent.id}`
@@ -444,7 +444,7 @@ export class WebhooksService {
       });
       agentIsInactive = true;
     }
-   
+
     if (!webhookEvent.remoteJid) {
       this.logger.error(`Webhook event ${webhookEventId} has no remoteJid`);
       await this.prisma.webhookEvent.update({
@@ -459,9 +459,10 @@ export class WebhooksService {
     }
 
     let insufficientCredits: boolean = false;
-    const creditCheck = await this.workspacesService.checkAgentWorkspaceHasSufficientCredits(
-      webhookEvent.channel.agent.id
-    );
+    const creditCheck =
+      await this.workspacesService.checkAgentWorkspaceHasSufficientCredits(
+        webhookEvent.channel.agent.id
+      );
     if (creditCheck.allowed === false) {
       const creditsCost = creditCheck.requiredCredits;
       const creditsAvailable = creditCheck.availableCredits;
@@ -478,7 +479,7 @@ export class WebhooksService {
         },
       });
       insufficientCredits = true;
-    }    
+    }
 
     try {
       if (webhookEvent.event === 'message' && !webhookEvent.fromMe) {
@@ -527,7 +528,7 @@ export class WebhooksService {
                 workspaceId: webhookEvent.channel.agent.workspaceId,
                 agentId: webhookEvent.channel.agentId,
                 chatId: chat.id,
-                status: 'RUNNING',
+                status: 'WAITING',
               },
             });
             this.logger.log(
@@ -569,7 +570,7 @@ export class WebhooksService {
               workspaceId: webhookEvent.channel.agent.workspaceId,
               agentId: webhookEvent.channel.agentId,
               chatId: chat.id,
-              status: 'RUNNING',
+              status: 'WAITING',
             },
           });
         }
@@ -641,7 +642,7 @@ export class WebhooksService {
           });
           await this.prisma.interaction.update({
             where: { id: latestInteraction.id },
-            data: { status: 'RUNNING' },
+            data: { status: 'WAITING' },
           });
           const paginatedInteractions =
             await this.interactionsService.findLatestInteractionByChatWithMessages(
@@ -649,7 +650,7 @@ export class WebhooksService {
             );
 
           this.websocketService.sendToClient(
-             webhookEvent.channel.agent.workspaceId,
+            webhookEvent.channel.agent.workspaceId,
             'messageChatUpdate',
             {
               ...updatedChat,
@@ -840,11 +841,13 @@ export class WebhooksService {
                     },
                   });
 
-                  this.workspacesService.logAndAggregateCredit(webhookEvent.channel.agent.id, {
-                    messageId,
-                    content: agentResponse.message
-                  });
-
+                  this.workspacesService.logAndAggregateCredit(
+                    webhookEvent.channel.agent.id,
+                    {
+                      messageId,
+                      content: agentResponse.message,
+                    }
+                  );
                 }
               } catch (error) {
                 this.logger.error(
@@ -906,10 +909,13 @@ export class WebhooksService {
                       },
                     });
 
-                    this.workspacesService.logAndAggregateCredit(webhookEvent.channel.agent.id, {
-                      messageId,
-                      content: agentResponse.message
-                    });                   
+                    this.workspacesService.logAndAggregateCredit(
+                      webhookEvent.channel.agent.id,
+                      {
+                        messageId,
+                        content: agentResponse.message,
+                      }
+                    );
                   }
                 } catch (error) {
                   this.logger.error(
@@ -920,9 +926,16 @@ export class WebhooksService {
               }
             }
 
+            await this.prisma.interaction.update({
+              where: { id: latestInteraction.id },
+              data: { status: 'RUNNING' },
+            });
+
             // Update chat status and send websocket updates after all messages (text and audio) are processed
             // This part remains largely the same, but ensures all messages are sent before updating UI
-            this.logger.log(`Updating chat ${chat.id} as read and finished`);
+            this.logger.log(
+              `Updating chat ${chat.id} as unread and unfinished`
+            );
             await this.prisma.chat.update({
               where: { id: chat.id },
               data: {

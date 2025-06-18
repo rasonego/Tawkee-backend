@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class MediaDto {
   @ApiProperty({
@@ -57,5 +57,6 @@ export class SendMessageDto {
       url: 'https://raw.githubusercontent.com/devlikeapro/waha/core/examples/video.mp4',
     }),
   })
-  media: MediaDto;
+  @IsOptional()
+  media?: MediaDto;
 }

@@ -8,12 +8,12 @@ export class StripeWebhookMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
     if (req.originalUrl === '/stripe/webhooks') {
       let body = '';
-      
+
       req.setEncoding('utf8');
       req.on('data', (chunk) => {
         body += chunk;
       });
-      
+
       req.on('end', () => {
         (req as any).rawBody = Buffer.from(body, 'utf8');
         next();

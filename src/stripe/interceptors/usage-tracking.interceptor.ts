@@ -1,4 +1,9 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
+import {
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
@@ -9,13 +14,13 @@ import { USAGE_TRACKING_KEY } from '../decorators/usage-tracking.decorator';
 export class UsageTrackingInterceptor implements NestInterceptor {
   constructor(
     private reflector: Reflector,
-    private stripeService: StripeService,
+    private stripeService: StripeService
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const requestType = this.reflector.getAllAndOverride<string>(
       USAGE_TRACKING_KEY,
-      [context.getHandler(), context.getClass()],
+      [context.getHandler(), context.getClass()]
     );
 
     if (!requestType) {
@@ -34,7 +39,7 @@ export class UsageTrackingInterceptor implements NestInterceptor {
             console.error('Failed to record usage:', error);
           }
         }
-      }),
+      })
     );
   }
 }

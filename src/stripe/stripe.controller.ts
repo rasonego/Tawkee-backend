@@ -1,24 +1,19 @@
 // src/stripe/stripe.controller.ts
-import { 
-  Controller, 
-  Post, 
-  Get, 
-  Body, 
-  Param, 
-  Headers, 
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Headers,
   RawBodyRequest,
   Req,
-  UseGuards,
   HttpCode,
-  HttpStatus
+  HttpStatus,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { StripeService } from './stripe.service';
-import { 
-  CreateSubscriptionDto, 
-  CreatePlanDto, 
-  UpdateSubscriptionDto 
-} from './dto/stripe.dto';
+import { CreateSubscriptionDto, CreatePlanDto } from './dto/stripe.dto';
 // Assumindo que você tem um guard de autenticação
 // import { AuthGuard } from 'src/auth/auth.guard';
 
@@ -30,10 +25,10 @@ export class StripeController {
   @HttpCode(HttpStatus.OK)
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
-    @Headers('stripe-signature') signature: string,
+    @Headers('stripe-signature') signature: string
   ) {
     const payload = req.rawBody;
-    
+
     if (!payload) {
       throw new Error('Missing request body');
     }
@@ -44,8 +39,12 @@ export class StripeController {
 
   // @UseGuards(AuthGuard) // Descomente se tiver guard de auth
   @Post('checkout-session')
-  async createCheckoutSession(@Body() createSubscriptionDto: CreateSubscriptionDto) {
-    const url = await this.stripeService.createCheckoutSession(createSubscriptionDto);
+  async createCheckoutSession(
+    @Body() createSubscriptionDto: CreateSubscriptionDto
+  ) {
+    const url = await this.stripeService.createCheckoutSession(
+      createSubscriptionDto
+    );
     return { url };
   }
 
@@ -68,7 +67,7 @@ export class StripeController {
     @Body() body: { cancelAtPeriodEnd?: boolean } = {}
   ) {
     await this.stripeService.cancelSubscription(
-      workspaceId, 
+      workspaceId,
       body.cancelAtPeriodEnd ?? true
     );
     return { success: true };
@@ -82,7 +81,7 @@ export class StripeController {
   ) {
     const startDate = body.startDate ? new Date(body.startDate) : undefined;
     const endDate = body.endDate ? new Date(body.endDate) : undefined;
-    
+
     return this.stripeService.getUsage(workspaceId, startDate, endDate);
   }
 

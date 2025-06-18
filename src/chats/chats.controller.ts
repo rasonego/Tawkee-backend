@@ -281,7 +281,7 @@ export class ChatsController {
   async sendMessage(
     @Param('chatId') chatId: string,
     @Body() sendMessageDto: SendMessageDto
-  ): Promise<{ success: boolean }> {
+  ) {
     return this.chatsService.sendMessage(chatId, sendMessageDto);
   }
 }

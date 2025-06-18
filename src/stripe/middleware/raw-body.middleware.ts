@@ -5,11 +5,11 @@ import { Request, Response, NextFunction } from 'express';
 export class RawBodyMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
     let data = '';
-    
+
     req.on('data', (chunk) => {
       data += chunk;
     });
-    
+
     req.on('end', () => {
       (req as any).rawBody = Buffer.from(data);
       next();

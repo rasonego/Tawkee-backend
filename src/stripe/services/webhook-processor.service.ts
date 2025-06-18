@@ -8,7 +8,7 @@ export class WebhookProcessorService {
 
   constructor(
     private prisma: PrismaService,
-    private eventEmitter: EventEmitter2,
+    private eventEmitter: EventEmitter2
   ) {}
 
   async processQueuedWebhooks(): Promise<void> {
@@ -21,10 +21,10 @@ export class WebhookProcessorService {
     for (const webhook of pendingWebhooks) {
       try {
         await this.processWebhook(webhook);
-        
+
         await this.prisma.stripeWebhook.update({
           where: { id: webhook.id },
-          data: { 
+          data: {
             processed: true,
             processedAt: new Date(),
           },
@@ -32,8 +32,11 @@ export class WebhookProcessorService {
 
         this.logger.log(`Processed queued webhook ${webhook.stripeEventId}`);
       } catch (error) {
-        this.logger.error(`Failed to process webhook ${webhook.stripeEventId}:`, error);
-        
+        this.logger.error(
+          `Failed to process webhook ${webhook.stripeEventId}:`,
+          error
+        );
+
         await this.prisma.stripeWebhook.update({
           where: { id: webhook.id },
           data: { processingError: error.message },
@@ -45,7 +48,7 @@ export class WebhookProcessorService {
   private async processWebhook(webhook: any): Promise<void> {
     // Emitir eventos para diferentes handlers
     this.eventEmitter.emit(`stripe.${webhook.eventType}`, webhook.data);
-    
+
     // Log para monitoramento
     this.logger.log(`Processing webhook: ${webhook.eventType}`);
   }

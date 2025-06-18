@@ -8,7 +8,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
-import { User } from './types/user.types';
 import { scrypt, randomBytes, timingSafeEqual, randomUUID } from 'crypto';
 import { promisify } from 'util';
 import { JwtService } from '@nestjs/jwt';
@@ -154,10 +153,10 @@ export class UsersService {
       include: {
         workspace: {
           select: {
-            credits: true
-          }
-        }
-      }
+            credits: true,
+          },
+        },
+      },
     });
 
     if (!user) {
@@ -233,10 +232,10 @@ export class UsersService {
       include: {
         workspace: {
           select: {
-            credits: true
-          }
-        }
-      }
+            credits: true,
+          },
+        },
+      },
     });
 
     // Generate JWT token
@@ -308,10 +307,10 @@ export class UsersService {
         include: {
           workspace: {
             select: {
-              credits: true
-            }
-          }
-        }
+              credits: true,
+            },
+          },
+        },
       });
 
       if (!user) {

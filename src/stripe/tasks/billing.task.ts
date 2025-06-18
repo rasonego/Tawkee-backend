@@ -9,7 +9,7 @@ export class BillingTaskService {
 
   constructor(
     private prisma: PrismaService,
-    private stripeService: StripeService,
+    private stripeService: StripeService
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -37,7 +37,9 @@ export class BillingTaskService {
           data: { subscriptionStatus: 'PAST_DUE' },
         });
 
-        this.logger.log(`Trial expired for workspace ${subscription.workspaceId}`);
+        this.logger.log(
+          `Trial expired for workspace ${subscription.workspaceId}`
+        );
       } catch (error) {
         this.logger.error(`Failed to update expired trial: ${error.message}`);
       }
@@ -54,12 +56,12 @@ export class BillingTaskService {
 
     for (const subscription of activeSubscriptions) {
       try {
-        const stripeSubscription = await this.stripeService['stripe'].subscriptions.retrieve(
-          subscription.stripeSubscriptionId
-        );
+        const stripeSubscription = await this.stripeService[
+          'stripe'
+        ].subscriptions.retrieve(subscription.stripeSubscriptionId);
 
         const newStatus = this.mapStripeStatus(stripeSubscription.status);
-        
+
         if (newStatus !== subscription.status) {
           await this.prisma.subscription.update({
             where: { id: subscription.id },
@@ -71,23 +73,27 @@ export class BillingTaskService {
             data: { subscriptionStatus: newStatus },
           });
 
-          this.logger.log(`Updated subscription ${subscription.id} status to ${newStatus}`);
+          this.logger.log(
+            `Updated subscription ${subscription.id} status to ${newStatus}`
+          );
         }
       } catch (error) {
-        this.logger.error(`Failed to sync subscription ${subscription.id}: ${error.message}`);
+        this.logger.error(
+          `Failed to sync subscription ${subscription.id}: ${error.message}`
+        );
       }
     }
   }
 
   private mapStripeStatus(stripeStatus: string): any {
     const statusMap: Record<string, any> = {
-      'active': 'ACTIVE',
-      'trialing': 'TRIAL',
-      'past_due': 'PAST_DUE',
-      'canceled': 'CANCELED',
-      'incomplete': 'INCOMPLETE',
-      'incomplete_expired': 'INCOMPLETE_EXPIRED',
-      'unpaid': 'UNPAID',
+      active: 'ACTIVE',
+      trialing: 'TRIAL',
+      past_due: 'PAST_DUE',
+      canceled: 'CANCELED',
+      incomplete: 'INCOMPLETE',
+      incomplete_expired: 'INCOMPLETE_EXPIRED',
+      unpaid: 'UNPAID',
     };
 
     return statusMap[stripeStatus] || 'CANCELED';
@@ -130,6 +136,8 @@ export class BillingTaskService {
     });
 
     // Aqui você pode salvar em uma tabela de histórico se necessário
-    this.logger.log(`Archived usage for workspace ${workspaceId}: ${JSON.stringify(monthlyUsage)}`);
+    this.logger.log(
+      `Archived usage for workspace ${workspaceId}: ${JSON.stringify(monthlyUsage)}`
+    );
   }
 }

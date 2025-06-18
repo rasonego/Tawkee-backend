@@ -29,7 +29,7 @@ export class SubscriptionListener {
   @OnEvent('stripe.invoice.payment_failed')
   async handlePaymentFailed(data: any) {
     this.logger.log(`Payment failed for invoice: ${data.object.id}`);
-    
+
     const subscription = await this.prisma.subscription.findUnique({
       where: { stripeSubscriptionId: data.object.subscription },
       include: { workspace: { include: { user: true } } },

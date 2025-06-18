@@ -116,7 +116,9 @@ export class WahaApiService {
         this.logger.warn(
           `Unexpected response from Waha API: ${JSON.stringify(response.data)}`
         );
-        return response.data; // Return the data anyway so the caller can decide what to do
+        throw new Error(
+          `Failed to send text message: ${response.status}: ${response.statusText}`
+        );
       }
     } catch (error) {
       // Specific error handling for common API errors
@@ -129,43 +131,31 @@ export class WahaApiService {
 
         // Check for specific error codes and provide more helpful messages
         if (error.response.status === 401) {
-          return {
-            success: false,
-            error: 'Authentication failed. Check your API key.',
-          };
+          throw new Error('Authentication failed. Check your API key.');
         } else if (error.response.status === 404) {
-          return {
-            success: false,
-            error:
-              'Instance not found. It may have been deleted or not created correctly.',
-          };
+          throw new Error(
+            'Instance not found. It may have been deleted or not created correctly.'
+          );
         } else if (error.response.status === 410) {
-          return {
-            success: false,
-            error:
-              'WhatsApp session is not active. The QR code may need to be rescanned.',
-          };
+          throw new Error(
+            'WhatsApp session is not active. The QR code may need to be rescanned.'
+          );
         } else if (error.response.status === 500) {
-          return {
-            success: false,
-            error:
-              'Server error from Waha API. The instance may not be connected properly.',
-            details: error.response.data,
-          };
+          throw new Error(
+            'Server error from Waha API. The instance may not be connected properly.'
+          );
         }
       } else if (error.request) {
         // The request was made but no response was received
         this.logger.error(`Waha API no response: ${error.message}`);
-        return {
-          success: false,
-          error:
-            'No response from Waha API server. Check your server URL and network connection.',
-        };
+        throw new Error(
+          'No response from Waha API server. Check your server URL and network connection.'
+        );
       }
 
       // Generic error logging
       this.logger.error(`Error sending message: ${error.message}`, error.stack);
-      return { success: false, error: error.message };
+      throw new Error(error.message);
     }
   }
 
@@ -461,7 +451,9 @@ export class WahaApiService {
         this.logger.warn(
           `Unexpected response from Waha API for media: ${JSON.stringify(response.data)}`
         );
-        return response.data; // Return the data anyway so the caller can decide what to do
+        throw new Error(
+          `Failed to send media message: ${response.status}: ${response.statusText}`
+        );
       }
     } catch (error) {
       // Specific error handling for common API errors

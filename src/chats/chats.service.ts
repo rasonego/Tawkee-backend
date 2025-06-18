@@ -8,6 +8,7 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { WahaApiService } from '../waha-api/waha-api.service';
 import { WebsocketService } from 'src/websocket/websocket.service';
 import { InteractionsService } from 'src/interactions/interactions.service';
+import { Message } from '@prisma/client';
 
 @Injectable()
 export class ChatsService {
@@ -235,12 +236,14 @@ export class ChatsService {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Update the most recent interaction's to RUNNING
+    const newStatus = latestMessage.role == 'user' ? 'WAITING' : 'RUNNING';
+
+    // Update the most recent interaction's to WAITING
     if (mostRecentInteraction) {
       await this.prisma.interaction.update({
         where: { id: mostRecentInteraction.id },
         data: {
-          status: 'RUNNING',
+          status: newStatus,
           resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
         },
       });
@@ -433,7 +436,7 @@ export class ChatsService {
         status: 'RUNNING',
         userId,
         resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
-      }
+      },
     });
 
     // Find user who joined the conversation
@@ -516,13 +519,23 @@ export class ChatsService {
       },
     });
 
-    // Mark latest interaction as RUNNING
+    // Fetch latest message of the interaction
+    const latestMessage = await this.prisma.message.findFirst({
+      where: { interactionId: latestInteraction.id },
+      orderBy: { createdAt: 'desc' },
+      select: { role: true },
+    });
+
+    // Determine new status based on latest message role
+    const newStatus = latestMessage?.role === 'user' ? 'WAITING' : 'RUNNING';
+
+    // Update the interaction accordingly
     await this.prisma.interaction.update({
       where: { id: latestInteraction.id },
       data: {
-        status: 'RUNNING',
+        status: newStatus,
         resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
-      }
+      },
     });
 
     // Find user who left the conversation
@@ -573,10 +586,7 @@ export class ChatsService {
     return { success: true };
   }
 
-  async sendMessage(
-    chatId: string,
-    { message, media }: SendMessageDto
-  ): Promise<{ success: boolean }> {
+  async sendMessage(chatId: string, { message, media }: SendMessageDto) {
     // Ensure chat exists
     const chat = await this.prisma.chat.findUnique({
       where: { id: chatId },
@@ -589,8 +599,17 @@ export class ChatsService {
       throw new NotFoundException(`Chat with ID ${chatId} not found`);
     }
 
+    // Find latest interaction
+    const latestInteraction = await this.prisma.interaction.findFirst({
+      where: { chatId },
+      orderBy: { startAt: 'desc' },
+      select: {
+        id: true,
+      },
+    });
+
     // Create new message in the database first
-    const newMessage = await this.prisma.message.create({
+    let newMessage: Message = await this.prisma.message.create({
       data: {
         text: message,
         role: 'human', // From human operator
@@ -598,6 +617,7 @@ export class ChatsService {
         type: 'text',
         time: Date.now(),
         sentToEvolution: false, // Will be updated after sending
+        interactionId: latestInteraction.id,
       },
     });
 
@@ -617,7 +637,7 @@ export class ChatsService {
         );
 
         // Update the message with the response data
-        await this.prisma.message.update({
+        newMessage = await this.prisma.message.update({
           where: { id: newMessage.id },
           data: {
             sentToEvolution: true,
@@ -625,21 +645,21 @@ export class ChatsService {
             whatsappMessageId: response?.key?.id, // Store the WhatsApp message ID if available
           },
         });
-
-        this.logger.log(`Message sent successfully to ${chat.whatsappPhone}`);
       } catch (error) {
         this.logger.error(
           `Failed to send message to WhatsApp: ${error.message}`
         );
 
         // Mark the message as failed
-        await this.prisma.message.update({
+        newMessage = await this.prisma.message.update({
           where: { id: newMessage.id },
           data: {
             failedAt: new Date(),
             failReason: error.message,
           },
         });
+
+        throw error;
       }
     } else {
       this.logger.warn(
@@ -648,14 +668,27 @@ export class ChatsService {
     }
 
     // Update the chat's last message time
-    await this.prisma.chat.update({
+    const updatedChat = await this.prisma.chat.update({
       where: { id: chatId },
       data: {
         updatedAt: new Date(),
       },
     });
 
-    return { success: true };
+    const paginatedInteractions =
+      await this.interactionsService.findLatestInteractionByChatWithMessages(
+        chat.id
+      );
+
+    return {
+      ...updatedChat,
+      paginatedInteractions: paginatedInteractions,
+      latestMessage: {
+        ...newMessage,
+        whatsappTimestamp: newMessage?.whatsappTimestamp?.toString(),
+        time: newMessage?.time?.toString(),
+      },
+    };
   }
 
   // Helper methods to format responses

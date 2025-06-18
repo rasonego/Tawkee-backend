@@ -27,7 +27,7 @@ export class UserResponseDto {
 
   @ApiProperty({
     description: 'Workspace credits',
-    example: '1250'
+    example: '1250',
   })
   workspaceCredits: number;
 

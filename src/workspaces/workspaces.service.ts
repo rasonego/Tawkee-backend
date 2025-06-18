@@ -19,8 +19,8 @@ const modelCreditMap: Record<string, number> = {
   DEEPINFRA_LLAMA3_3: 1,
   QWEN_2_5_MAX: 1,
   DEEPSEEK_CHAT: 1,
-  SABIA_3: 1
-}
+  SABIA_3: 1,
+};
 
 @Injectable()
 export class WorkspacesService {
@@ -65,8 +65,7 @@ export class WorkspacesService {
     return { credits: workspace.credits };
   }
 
-
-  // When user finishes a chat using our platform, it does not necessarily mean it is resolved by human. 
+  // When user finishes a chat using our platform, it does not necessarily mean it is resolved by human.
   // Conditions to assign a userId to a given interaction:
   // 1. The agent itself transfers attendance to human
   // 2. A user of our platform interferes and triggers start human attendance
@@ -80,12 +79,19 @@ export class WorkspacesService {
     return ((current - previous) / previous) * 100;
   }
 
-  async getDashboardMetrics(workspaceId: string, startDate: string, endDate: string, comparisonStartDate: string, comparisonEndDate: string) {
+  async getDashboardMetrics(
+    workspaceId: string,
+    startDate: string,
+    endDate: string,
+    comparisonStartDate: string,
+    comparisonEndDate: string
+  ) {
     const start = new Date(startDate);
     const end = new Date(new Date(endDate).setUTCHours(23, 59, 59, 999));
     const prevStart = new Date(comparisonStartDate);
     const prevEnd = new Date(comparisonEndDate);
 
+    // Resolved interactions (current period)
     const resolved = await this.prisma.interaction.findMany({
       where: {
         workspaceId,
@@ -100,10 +106,13 @@ export class WorkspacesService {
       },
     });
 
-    const resolvedByAI = resolved.filter(i => i.userId === null);
-    const resolvedByHuman = resolved.filter(i => i.userId !== null);
+    const resolvedByAI = resolved.filter((i) => i.userId === null);
+    const resolvedByHuman = resolved.filter((i) => i.userId !== null);
 
-    const resolvedTimeSeriesMap: Record<string, { total: number; byAI: number; byHuman: number }> = {};
+    const resolvedTimeSeriesMap: Record<
+      string,
+      { total: number; byAI: number; byHuman: number }
+    > = {};
     for (const i of resolved) {
       const date = i.resolvedAt!.toISOString().slice(0, 10);
       if (!resolvedTimeSeriesMap[date]) {
@@ -118,6 +127,7 @@ export class WorkspacesService {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, counts]) => ({ date, ...counts }));
 
+    // Resolved interactions (comparison period)
     const prevResolved = await this.prisma.interaction.findMany({
       where: {
         workspaceId,
@@ -132,16 +142,18 @@ export class WorkspacesService {
     });
 
     const prevTotal = prevResolved.length;
-    const prevByAI = prevResolved.filter(i => i.userId === null).length;
-    const prevByHuman = prevResolved.filter(i => i.userId !== null).length;
+    const prevByAI = prevResolved.filter((i) => i.userId === null).length;
+    const prevByHuman = prevResolved.filter((i) => i.userId !== null).length;
 
-    const running = await this.prisma.interaction.findMany({
+    // Optimized: fetch one active (non-RESOLVED) interaction per chat
+    const activeChats = await this.prisma.interaction.findMany({
       where: {
         workspaceId,
-        status: { in: ['RUNNING', 'WAITING'] },
+        status: { not: 'RESOLVED' },
         startAt: { gte: start, lte: end },
       },
       select: {
+        chatId: true,
         status: true,
         chat: {
           select: {
@@ -151,40 +163,42 @@ export class WorkspacesService {
           },
         },
       },
+      distinct: ['chatId'],
     });
 
-    const waiting = running.filter(i => i.status === 'WAITING');
-    const runningInteractions = running.map(i => ({
+    const runningInteractions = activeChats.map((i) => ({
       id: i.chat.id,
-      userName: i.chat?.userName ?? null,
-      whatsappPhone: i.chat?.whatsappPhone ?? null,
+      userName: i.chat.userName,
+      whatsappPhone: i.chat.whatsappPhone,
       isWaiting: i.status === 'WAITING',
     }));
 
-    const prevRunning = await this.prisma.interaction.findMany({
-      where: {
-        workspaceId,
-        status: { in: ['RUNNING', 'WAITING'] },
-        startAt: { gte: prevStart, lte: prevEnd },
-      },
-      select: {
-        status: true,
-        startAt: true,
-      },
-    });
+    const waiting = runningInteractions.filter((i) => i.isWaiting);
 
+    // Average interaction time (current vs previous)
     const durations = resolved
-      .filter(i => i.resolvedAt && i.startAt)
-      .map(i => new Date(i.resolvedAt!).getTime() - new Date(i.startAt).getTime());
+      .filter((i) => i.resolvedAt && i.startAt)
+      .map(
+        (i) => new Date(i.resolvedAt!).getTime() - new Date(i.startAt).getTime()
+      );
 
-    const avgInteractionTimeMs = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+    const avgInteractionTimeMs =
+      durations.length > 0
+        ? durations.reduce((a, b) => a + b, 0) / durations.length
+        : 0;
 
     const prevDurations = prevResolved
-      .filter(i => i.resolvedAt && i.startAt)
-      .map(i => new Date(i.resolvedAt!).getTime() - new Date(i.startAt).getTime());
+      .filter((i) => i.resolvedAt && i.startAt)
+      .map(
+        (i) => new Date(i.resolvedAt!).getTime() - new Date(i.startAt).getTime()
+      );
 
-    const prevAvgTime = prevDurations.length > 0 ? prevDurations.reduce((a, b) => a + b, 0) / prevDurations.length : 0;
+    const prevAvgTime =
+      prevDurations.length > 0
+        ? prevDurations.reduce((a, b) => a + b, 0) / prevDurations.length
+        : 0;
 
+    // Credits used in time range
     const credits = await this.prisma.creditSpent.findMany({
       where: {
         agent: { workspaceId },
@@ -206,7 +220,16 @@ export class WorkspacesService {
       },
     });
 
-    const creditByDate: Record<string, { totalCredits: number; creditsByAgent: Record<string, { credits: number; agentName: string | null }> }> = {};
+    const creditByDate: Record<
+      string,
+      {
+        totalCredits: number;
+        creditsByAgent: Record<
+          string,
+          { credits: number; agentName: string | null }
+        >;
+      }
+    > = {};
 
     for (const c of credits) {
       const dateKey = c.createdAt.toISOString().slice(0, 10);
@@ -231,14 +254,26 @@ export class WorkspacesService {
       .map(([date, data]) => ({
         date,
         totalCredits: data.totalCredits,
-        creditsByAgent: Object.entries(data.creditsByAgent).map(([agentId, { credits, agentName }]) => ({
-          agentId,
-          agentName,
-          credits,
-        })),
+        creditsByAgent: Object.entries(data.creditsByAgent).map(
+          ([agentId, { credits, agentName }]) => ({
+            agentId,
+            agentName,
+            credits,
+          })
+        ),
       }));
 
-    const agentTotals: Record<string, { agentId: string; name: string | null; jobName: string | null; avatar: string | null; totalCredits: number }> = {};
+    const agentTotals: Record<
+      string,
+      {
+        agentId: string;
+        name: string | null;
+        jobName: string | null;
+        avatar: string | null;
+        totalCredits: number;
+      }
+    > = {};
+
     for (const c of credits) {
       const id = c.agentId;
       if (!agentTotals[id]) {
@@ -253,12 +288,18 @@ export class WorkspacesService {
       agentTotals[id].totalCredits += c.credits;
     }
 
-    const topAgents = Object.values(agentTotals).sort((a, b) => b.totalCredits - a.totalCredits).slice(0, 5);
+    const topAgents = Object.values(agentTotals)
+      .sort((a, b) => b.totalCredits - a.totalCredits)
+      .slice(0, 5);
 
     const modelTotals: Record<string, number> = {};
-    for (const c of credits) modelTotals[c.model] = (modelTotals[c.model] || 0) + c.credits;
+    for (const c of credits)
+      modelTotals[c.model] = (modelTotals[c.model] || 0) + c.credits;
 
-    const topModels = Object.entries(modelTotals).map(([model, credits]) => ({ model, credits })).sort((a, b) => b.credits - a.credits).slice(0, 5);
+    const topModels = Object.entries(modelTotals)
+      .map(([model, credits]) => ({ model, credits }))
+      .sort((a, b) => b.credits - a.credits)
+      .slice(0, 5);
 
     return {
       resolved: {
@@ -267,18 +308,30 @@ export class WorkspacesService {
         byHuman: resolvedByHuman.length,
         timeSeries,
         trend: {
-          total: prevTotal > 0 ? this.getTrend(resolved.length, prevTotal) : undefined,
-          byAI: prevByAI > 0 ? this.getTrend(resolvedByAI.length, prevByAI) : undefined,
-          byHuman: prevByHuman > 0 ? this.getTrend(resolvedByHuman.length, prevByHuman) : undefined,
+          total:
+            prevTotal > 0
+              ? this.getTrend(resolved.length, prevTotal)
+              : undefined,
+          byAI:
+            prevByAI > 0
+              ? this.getTrend(resolvedByAI.length, prevByAI)
+              : undefined,
+          byHuman:
+            prevByHuman > 0
+              ? this.getTrend(resolvedByHuman.length, prevByHuman)
+              : undefined,
         },
       },
       running: {
-        total: running.length,
+        total: runningInteractions.length,
         waiting: waiting.length,
         interactions: runningInteractions,
       },
       avgInteractionTimeMs,
-      avgTimeTrend: prevDurations.length > 0 ? this.getTrend(avgInteractionTimeMs, prevAvgTime) : undefined,
+      avgTimeTrend:
+        prevDurations.length > 0
+          ? this.getTrend(avgInteractionTimeMs, prevAvgTime)
+          : undefined,
       creditsPerDay,
       topAgents,
       topModels,
@@ -312,14 +365,14 @@ export class WorkspacesService {
 
     const currentCredits = agent.workspace.credits;
 
-    console.log("credits situation: ", {
+    console.log('credits situation: ', {
       agentId,
       workspaceId: agent.workspace.id,
       model,
       requiredCredits: creditCost,
       availableCredits: currentCredits,
       allowed: currentCredits >= creditCost,
-    })
+    });
 
     return {
       agentId,
@@ -334,26 +387,26 @@ export class WorkspacesService {
   async logAndAggregateCredit(agentId: string, metadata?: Record<string, any>) {
     const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },
-      include: { 
+      include: {
         settings: true,
         workspace: {
           select: {
-            id: true
-          }
-        }
+            id: true,
+          },
+        },
       },
-    })
+    });
 
-    if (!agent?.settings) throw new Error('Agent or settings not found.')
+    if (!agent?.settings) throw new Error('Agent or settings not found.');
 
-    const model = agent.settings.preferredModel
-    const creditCost = modelCreditMap[model]
-    if (!creditCost) throw new Error(`Unknown model: ${model}`)
+    const model = agent.settings.preferredModel;
+    const creditCost = modelCreditMap[model];
+    if (!creditCost) throw new Error(`Unknown model: ${model}`);
 
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth() + 1
-    const day = now.getDate()
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const day = now.getDate();
 
     await this.prisma.$transaction(async (tx) => {
       // 1. Append credit transaction
@@ -365,34 +418,34 @@ export class WorkspacesService {
           timestamp: now,
           metadata,
         },
-      })
+      });
 
       // 2. Update or create aggregate summary
       const existing = await tx.creditSpent.findFirst({
         where: { agentId, model, year, month, day },
-      })
+      });
 
       if (existing) {
         await tx.creditSpent.update({
           where: { id: existing.id },
           data: { credits: { increment: creditCost } },
-        })
+        });
       } else {
         await tx.creditSpent.create({
           data: { agentId, model, credits: creditCost, year, month, day },
-        })
+        });
       }
 
       // 3. Update credits on workspace
-     const workspace = await this.prisma.workspace.update({
+      const workspace = await this.prisma.workspace.update({
         where: { id: agent.workspace.id },
         data: {
-          credits: { decrement: creditCost }
+          credits: { decrement: creditCost },
         },
         select: {
           id: true,
-          credits: true
-        }
+          credits: true,
+        },
       });
 
       // Inform frontend clients about credit consumption
@@ -403,6 +456,6 @@ export class WorkspacesService {
           credits: workspace.credits,
         }
       );
-    })
+    });
   }
 }

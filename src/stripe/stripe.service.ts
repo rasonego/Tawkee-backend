@@ -2,13 +2,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { 
-  CreateSubscriptionDto, 
-  CreatePlanDto, 
-  UpdateSubscriptionDto,
-  WebhookEventDto,
-  PlanInterval 
-} from './dto/stripe.dto';
+import { CreateSubscriptionDto, CreatePlanDto } from './dto/stripe.dto';
 
 @Injectable()
 export class StripeService {
@@ -21,7 +15,11 @@ export class StripeService {
     });
   }
 
-  async createCustomer(workspaceId: string, email?: string, name?: string): Promise<string> {
+  async createCustomer(
+    workspaceId: string,
+    email?: string,
+    name?: string
+  ): Promise<string> {
     try {
       const workspace = await this.prisma.workspace.findUnique({
         where: { id: workspaceId },
@@ -45,7 +43,9 @@ export class StripeService {
         data: { stripeCustomerId: customer.id },
       });
 
-      this.logger.log(`Created Stripe customer ${customer.id} for workspace ${workspaceId}`);
+      this.logger.log(
+        `Created Stripe customer ${customer.id} for workspace ${workspaceId}`
+      );
       return customer.id;
     } catch (error) {
       this.handleError(error, 'createCustomer');
@@ -95,7 +95,9 @@ export class StripeService {
         },
       });
 
-      this.logger.log(`Created plan ${plan.name} with Stripe price ${price.id}`);
+      this.logger.log(
+        `Created plan ${plan.name} with Stripe price ${price.id}`
+      );
       return plan;
     } catch (error) {
       this.handleError(error, 'createPlan');
@@ -103,7 +105,9 @@ export class StripeService {
     }
   }
 
-  async createCheckoutSession(subscriptionData: CreateSubscriptionDto): Promise<string> {
+  async createCheckoutSession(
+    subscriptionData: CreateSubscriptionDto
+  ): Promise<string> {
     try {
       const workspace = await this.prisma.workspace.findUnique({
         where: { id: subscriptionData.workspaceId },
@@ -132,15 +136,21 @@ export class StripeService {
           },
         ],
         mode: 'subscription',
-        success_url: subscriptionData.successUrl || `${process.env.FRONTEND_URL}/dashboard?success=true`,
-        cancel_url: subscriptionData.cancelUrl || `${process.env.FRONTEND_URL}/plans?canceled=true`,
+        success_url:
+          subscriptionData.successUrl ||
+          `${process.env.FRONTEND_URL}/dashboard?success=true`,
+        cancel_url:
+          subscriptionData.cancelUrl ||
+          `${process.env.FRONTEND_URL}/plans?canceled=true`,
         metadata: {
           workspaceId: subscriptionData.workspaceId,
           planId: subscriptionData.planId,
         },
       });
 
-      this.logger.log(`Created checkout session ${session.id} for workspace ${subscriptionData.workspaceId}`);
+      this.logger.log(
+        `Created checkout session ${session.id} for workspace ${subscriptionData.workspaceId}`
+      );
       return session.url!;
     } catch (error) {
       this.handleError(error, 'createCheckoutSession');
@@ -181,16 +191,18 @@ export class StripeService {
       // Marcar como processado
       await this.prisma.stripeWebhook.update({
         where: { stripeEventId: event.id },
-        data: { 
+        data: {
           processed: true,
           processedAt: new Date(),
         },
       });
 
-      this.logger.log(`Successfully processed webhook ${event.id} of type ${event.type}`);
+      this.logger.log(
+        `Successfully processed webhook ${event.id} of type ${event.type}`
+      );
     } catch (error) {
       this.handleError(error, 'handleWebhook');
-      
+
       // Registrar erro se possível
       try {
         const event = this.stripe.webhooks.constructEvent(
@@ -198,7 +210,7 @@ export class StripeService {
           signature,
           process.env.STRIPE_WEBHOOK_SECRET!
         );
-        
+
         await this.prisma.stripeWebhook.upsert({
           where: { stripeEventId: event.id },
           update: {
@@ -222,32 +234,40 @@ export class StripeService {
   private async processWebhookEvent(event: Stripe.Event): Promise<void> {
     switch (event.type) {
       case 'checkout.session.completed':
-        await this.handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+        await this.handleCheckoutCompleted(
+          event.data.object as Stripe.Checkout.Session
+        );
         break;
-      
+
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-        await this.handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+        await this.handleSubscriptionUpdated(
+          event.data.object as Stripe.Subscription
+        );
         break;
-      
+
       case 'customer.subscription.deleted':
-        await this.handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        await this.handleSubscriptionDeleted(
+          event.data.object as Stripe.Subscription
+        );
         break;
-      
+
       case 'invoice.payment_succeeded':
         await this.handlePaymentSucceeded(event.data.object as Stripe.Invoice);
         break;
-      
+
       case 'invoice.payment_failed':
         await this.handlePaymentFailed(event.data.object as Stripe.Invoice);
         break;
-      
+
       default:
         this.logger.log(`Unhandled webhook event type: ${event.type}`);
     }
   }
 
-  private async handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  private async handleCheckoutCompleted(
+    session: Stripe.Checkout.Session
+  ): Promise<void> {
     const workspaceId = session.metadata?.workspaceId;
     const planId = session.metadata?.planId;
 
@@ -255,11 +275,15 @@ export class StripeService {
       throw new Error('Missing metadata in checkout session');
     }
 
-    const subscription = await this.stripe.subscriptions.retrieve(session.subscription as string);
+    const subscription = await this.stripe.subscriptions.retrieve(
+      session.subscription as string
+    );
     await this.createOrUpdateSubscription(subscription, workspaceId, planId);
   }
 
-  private async handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
+  private async handleSubscriptionUpdated(
+    subscription: Stripe.Subscription
+  ): Promise<void> {
     const existingSubscription = await this.prisma.subscription.findUnique({
       where: { stripeSubscriptionId: subscription.id },
       include: { workspace: true },
@@ -273,10 +297,12 @@ export class StripeService {
     await this.updateSubscriptionStatus(subscription);
   }
 
-  private async handleSubscriptionDeleted(subscription: Stripe.Subscription): Promise<void> {
+  private async handleSubscriptionDeleted(
+    subscription: Stripe.Subscription
+  ): Promise<void> {
     await this.prisma.subscription.update({
       where: { stripeSubscriptionId: subscription.id },
-      data: { 
+      data: {
         status: 'CANCELED',
         canceledAt: new Date(),
       },
@@ -340,8 +366,9 @@ export class StripeService {
     });
   }
 
-
-  private async updateSubscriptionStatus(stripeSubscription: Stripe.Subscription): Promise<void> {
+  private async updateSubscriptionStatus(
+    stripeSubscription: Stripe.Subscription
+  ): Promise<void> {
     const status = this.mapStripeStatus(stripeSubscription.status);
 
     const s = stripeSubscription as Stripe.Subscription & {
@@ -374,13 +401,13 @@ export class StripeService {
 
   private mapStripeStatus(stripeStatus: string): any {
     const statusMap: Record<string, any> = {
-      'active': 'ACTIVE',
-      'trialing': 'TRIAL',
-      'past_due': 'PAST_DUE',
-      'canceled': 'CANCELED',
-      'incomplete': 'INCOMPLETE',
-      'incomplete_expired': 'INCOMPLETE_EXPIRED',
-      'unpaid': 'UNPAID',
+      active: 'ACTIVE',
+      trialing: 'TRIAL',
+      past_due: 'PAST_DUE',
+      canceled: 'CANCELED',
+      incomplete: 'INCOMPLETE',
+      incomplete_expired: 'INCOMPLETE_EXPIRED',
+      unpaid: 'UNPAID',
     };
 
     return statusMap[stripeStatus] || 'CANCELED';
@@ -388,9 +415,9 @@ export class StripeService {
 
   async getSubscription(workspaceId: string): Promise<any> {
     const subscription = await this.prisma.subscription.findFirst({
-      where: { 
+      where: {
         workspaceId,
-        status: { in: ['ACTIVE', 'TRIAL', 'PAST_DUE'] }
+        status: { in: ['ACTIVE', 'TRIAL', 'PAST_DUE'] },
       },
       include: { plan: true },
       orderBy: { createdAt: 'desc' },
@@ -399,9 +426,12 @@ export class StripeService {
     return subscription;
   }
 
-  async cancelSubscription(workspaceId: string, cancelAtPeriodEnd = true): Promise<void> {
+  async cancelSubscription(
+    workspaceId: string,
+    cancelAtPeriodEnd = true
+  ): Promise<void> {
     const subscription = await this.getSubscription(workspaceId);
-    
+
     if (!subscription) {
       throw new BadRequestException('No active subscription found');
     }
@@ -415,7 +445,9 @@ export class StripeService {
       data: { cancelAtPeriodEnd },
     });
 
-    this.logger.log(`Subscription ${subscription.stripeSubscriptionId} marked for cancellation`);
+    this.logger.log(
+      `Subscription ${subscription.stripeSubscriptionId} marked for cancellation`
+    );
   }
 
   async getPlans(): Promise<any[]> {
@@ -425,7 +457,11 @@ export class StripeService {
     });
   }
 
-  async recordUsage(workspaceId: string, requestType: string, quantity = 1): Promise<void> {
+  async recordUsage(
+    workspaceId: string,
+    requestType: string,
+    quantity = 1
+  ): Promise<void> {
     const subscription = await this.getSubscription(workspaceId);
 
     await this.prisma.usageRecord.create({
@@ -438,9 +474,13 @@ export class StripeService {
     });
   }
 
-  async getUsage(workspaceId: string, startDate?: Date, endDate?: Date): Promise<any> {
+  async getUsage(
+    workspaceId: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<any> {
     const where: any = { workspaceId };
-    
+
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = startDate;
@@ -453,10 +493,13 @@ export class StripeService {
       _sum: { quantity: true },
     });
 
-    return usage.reduce((acc, record) => {
-      acc[record.requestType] = record._sum.quantity || 0;
-      return acc;
-    }, {} as Record<string, number>);
+    return usage.reduce(
+      (acc, record) => {
+        acc[record.requestType] = record._sum.quantity || 0;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
   }
 
   private handleError(error: any, methodName: string): void {

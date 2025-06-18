@@ -113,7 +113,7 @@
 
 // @Controller('example')
 // export class ExampleController {
-  
+
 //   @Post('generate-text')
 //   @TrackUsage('api_call') // Vai registrar como 'api_call' na tabela de usage
 //   @UseGuards(UsageLimitGuard) // Verifica limites antes de executar
@@ -149,7 +149,7 @@
 //     percentage: number;
 //   }> {
 //     const subscription = await this.stripeService.getSubscription(workspaceId);
-    
+
 //     if (!subscription) {
 //       return { allowed: false, currentUsage: 0, limit: null, percentage: 0 };
 //     }
@@ -157,7 +157,7 @@
 //     const currentMonth = new Date();
 //     currentMonth.setDate(1);
 //     currentMonth.setHours(0, 0, 0, 0);
-    
+
 //     const usage = await this.stripeService.getUsage(workspaceId, currentMonth);
 //     const currentUsage = usage[requestType] || 0;
 //     const limit = subscription.plan.apiRequestLimit;
@@ -175,7 +175,7 @@
 
 //   async getUsageReport(workspaceId: string): Promise<any> {
 //     const subscription = await this.stripeService.getSubscription(workspaceId);
-    
+
 //     if (!subscription) {
 //       throw new Error('No subscription found');
 //     }
@@ -183,7 +183,7 @@
 //     const currentMonth = new Date();
 //     currentMonth.setDate(1);
 //     currentMonth.setHours(0, 0, 0, 0);
-    
+
 //     const nextMonth = new Date(currentMonth);
 //     nextMonth.setMonth(nextMonth.getMonth() + 1);
 

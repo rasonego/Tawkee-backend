@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsInt, IsEnum } from 'class-validator';
-import { SubscriptionStatus } from '@prisma/client';
+import { IsString, IsNotEmpty } from 'class-validator';
 
 export class WorkspaceDto {
   @ApiProperty({
