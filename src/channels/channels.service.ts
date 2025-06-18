@@ -178,7 +178,7 @@ export class ChannelsService {
     }
 
     // Update the channel with config
-    let updatedChannel = await this.prisma.channel.update({
+    const updatedChannel = await this.prisma.channel.update({
       where: {
         id: channel.id,
       },

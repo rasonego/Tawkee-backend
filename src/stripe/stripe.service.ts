@@ -13,19 +13,22 @@ export class StripeService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {
     const apiKey = this.configService.get<string>('STRIPE_SECRET_KEY');
     if (!apiKey) {
-      throw new Error('STRIPE_SECRET_KEY is not defined in environment variables');
+      throw new Error(
+        'STRIPE_SECRET_KEY is not defined in environment variables'
+      );
     }
 
-    this.webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET')!;
+    this.webhookSecret = this.configService.get<string>(
+      'STRIPE_WEBHOOK_SECRET'
+    )!;
     this.stripe = new Stripe(apiKey, {
       apiVersion: '2025-05-28.basil',
     });
   }
-
 
   async createCustomer(
     workspaceId: string,
