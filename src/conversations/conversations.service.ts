@@ -811,7 +811,10 @@ export class ConversationsService {
           fields[key] = appendOffsetToTimeString(fields[key], timezone);
       });
 
-      fields.timeZone = timezone;
+      fields.timeZone = timezone
+
+      this.logger.debug( `[executeIntention] Fields: ${fields}`);
+
       const preconditionResults: Record<string, any>[] = [];
 
       if (Array.isArray(intention.preconditions)) {
