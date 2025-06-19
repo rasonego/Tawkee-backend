@@ -1041,8 +1041,10 @@ export class ConversationsService {
     if (!scheduleSettings) throw new Error('Schedule settings not configured.');
 
     const tz = agentTimezone || 'UTC';
-    const start = new Date(fields.startDateTime);
-    const end = new Date(fields.endDateTime);
+    const start = DateTime.fromISO(fields.startDateTime, { zone: tz });
+    const end = DateTime.fromISO(fields.endDateTime, { zone: tz });
+
+    this.logger.debug( `[executeScheduleMeetingIntention] Fields: ${{start, end}} `);
 
     // Transform the JSON field to the proper DTO class
     const transformedSettings = {
@@ -1053,8 +1055,8 @@ export class ConversationsService {
     };
 
     const validationError = this.scheduleValidationService.validateSchedule(
-      start,
-      end,
+      start.toJSDate(),
+      end.toJSDate(),
       transformedSettings
     );
 
@@ -1067,11 +1069,11 @@ export class ConversationsService {
     } catch (error) {
       if (error.message.includes('unavailable')) {
         // Check availability using Google Calendar FreeBusy API (replace with actual logic)
-        const now = new Date();
-        fields.startSearch = fields.startSearch || now.toISOString();
+        const now = DateTime.now().setZone(tz);
+        fields.startSearch = fields.startSearch || now.toUTC().toISO();
         fields.endSearch =
           fields.endSearch ||
-          new Date(now.getTime() + 7 * 86400000).toISOString();
+          now.plus({ days: 7 }).toUTC().toISO();
 
         const suggestAvailableSlotsIntention = intentions.find(
           (i) => i.toolName === 'suggest_available_google_meeting_slots'
