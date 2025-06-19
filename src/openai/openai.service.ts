@@ -9,7 +9,6 @@ import * as os from 'os';
 import ffmpegStatic from 'ffmpeg-static';
 import ffmpeg from 'fluent-ffmpeg';
 import axios from 'axios';
-import { ChatDto } from 'src/chats/dto/chat.dto';
 import { ScheduleSettings } from '@prisma/client';
 
 // Set the ffmpeg path
@@ -1106,7 +1105,6 @@ export class OpenAiService {
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
     try {
-
       const prompt = `
   The assistant just completed a task for ${userName}, who is a real person and potentially the same as the contactName: "${result?.data?.contactName}".
 
@@ -1254,7 +1252,6 @@ export class OpenAiService {
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
     try {
-
       const collectedInfo =
         Object.keys(collectedFields).length > 0
           ? `I’ve already gathered some info: ${JSON.stringify(collectedFields, null, 2)}`

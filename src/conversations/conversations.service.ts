@@ -296,7 +296,8 @@ export class ConversationsService {
                 enhancedAgent,
                 communicationGuide,
                 goalGuide,
-                chat,
+                chat.userName,
+                conversationDto.prompt,
                 scheduleSettings
               );
             return {
@@ -344,7 +345,8 @@ export class ConversationsService {
                 enhancedAgent,
                 communicationGuide,
                 goalGuide,
-                chat,
+                chat.userName,
+                conversationDto.prompt,
                 scheduleSettings
               );
 
@@ -387,7 +389,8 @@ export class ConversationsService {
                 enhancedAgent,
                 communicationGuide,
                 goalGuide,
-                chat,
+                chat.userName,
+                conversationDto.prompt,
                 scheduleSettings
               );
 

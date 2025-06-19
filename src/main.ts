@@ -63,7 +63,7 @@ async function bootstrap() {
   server.get('/', (req, res) => res.redirect('/health'));
 
   // CORS
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  // const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   app.enableCors({
     origin: true,
     credentials: true,
