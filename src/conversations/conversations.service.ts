@@ -316,7 +316,7 @@ export class ConversationsService {
 
           try {
             this.logger.debug(
-              `Executing intention: ${matchedIntention.description} with timezone ${enhancedAgent.settings}`
+              `Executing intention: ${matchedIntention.description} with timezone ${enhancedAgent.settings.timezone}`
             );
 
             let intentionResult;
