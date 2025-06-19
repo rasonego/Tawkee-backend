@@ -1101,11 +1101,11 @@ export class OpenAiService {
     agent: any,
     communicationGuide: string,
     goalGuide: string,
-    chat: ChatDto,
+    userName: string,
+    latestMessage: string,
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
     try {
-      const userName = chat?.userName || 'the user';
 
       const prompt = `
   The assistant just completed a task for ${userName}, who is a real person and potentially the same as the contactName: "${result?.data?.contactName}".
@@ -1142,7 +1142,7 @@ export class OpenAiService {
   - If user is the same as the contact, reflect that
   - Keep tone human and aligned with communication guide
   - Avoid repeating "the user" and prefer the name if known: "${userName}"
-  - Always speak in the same language that ${userName} is speaking, please!
+  - Latest user message: "${latestMessage}". Respond in the same language, in a natural and human-sounding way.
 
   Final response (directly to the user):
       `.trim();
@@ -1182,12 +1182,11 @@ export class OpenAiService {
     agent: any,
     communicationGuide: string,
     goalGuide: string,
-    chat: ChatDto,
+    userName: string,
+    latestMessage: string,
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
     try {
-      const userName = chat?.userName || 'the user';
-
       const prompt = `
   The assistant encountered an issue while trying to execute the task whose description is ${intention.description}, requested by ${userName}, who is a real person".
 
@@ -1209,7 +1208,7 @@ export class OpenAiService {
   - Suggests alternatives or retrying, especially if the issue is time-related
   - Reflects the agent’s communication style
   - Avoid repeating "the user" and prefer the name if known: "${userName}"
-  - Always speak in the same language that ${userName} is speaking, please!
+  - Latest user message: "${latestMessage}". Respond in the same language, in a natural and human-sounding way.
 
   Reply:
       `.trim();
@@ -1250,11 +1249,11 @@ export class OpenAiService {
     agent: any,
     communicationGuide: string,
     goalGuide: string,
-    chat: ChatDto,
+    userName: string,
+    latestMessage: string,
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
     try {
-      const userName = chat?.userName || 'the user';
 
       const collectedInfo =
         Object.keys(collectedFields).length > 0
@@ -1290,7 +1289,7 @@ export class OpenAiService {
   - Clarify what’s needed
   - Reflect the communication guide
   - Avoid repeating "the user" and prefer the name if known: "${userName}"
-  - Always speak in the same language that ${userName} is speaking, please!
+  - Latest user message: "${latestMessage}". Respond in the same language, in a natural and human-sounding way.
 
   Response:
       `.trim();

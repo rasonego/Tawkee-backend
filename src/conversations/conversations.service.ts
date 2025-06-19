@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 
 import * as Handlebars from 'handlebars';
 import * as vm from 'vm';
+import { DateTime } from 'luxon';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentsService } from '../agents/agents.service';
@@ -788,42 +789,18 @@ export class ConversationsService {
         timezone = timezoneMap[agentTimezone];
       }
 
-      const toISOStringWithTZ = (dt: string): string => {
-        const date = new Date(dt);
-        const tzDate = new Date(
-          date.toLocaleString('en-US', { timeZone: timezone })
-        );
-        return tzDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const toISOStringWithTZ = (dt: string, tz: string): string => {
+        return DateTime.fromISO(dt, { zone: tz }).toUTC().toISO({ suppressMilliseconds: true });
       };
 
-      const appendOffsetToTimeString = (
-        input: string,
-        timezone: string
-      ): string => {
-        const date = input.endsWith('Z')
-          ? new Date(input)
-          : new Date(input + 'Z');
-        const tzDate = new Date(
-          date.toLocaleString('en-US', { timeZone: timezone })
-        );
-        const utcDate = new Date(
-          date.toLocaleString('en-US', { timeZone: 'UTC' })
-        );
-
-        const offsetMinutes = (tzDate.getTime() - utcDate.getTime()) / 60000;
-        const offsetSign = offsetMinutes >= 0 ? '+' : '-';
-        const absOffset = Math.abs(offsetMinutes);
-        const offsetHours = String(Math.floor(absOffset / 60)).padStart(2, '0');
-        const offsetMins = String(absOffset % 60).padStart(2, '0');
-        const offset = `${offsetSign}${offsetHours}:${offsetMins}`;
-
-        const base = input.replace(/Z$/, '');
-        return `${base}${offset}`;
+      const appendOffsetToTimeString = (input: string, timezone: string): string => {
+        const dt = DateTime.fromISO(input, { zone: timezone });
+        return dt.toISO({ includeOffset: true, suppressMilliseconds: true });
       };
 
       ['startDateTime', 'endDateTime', 'startSearch', 'endSearch'].forEach(
         (key) => {
-          if (fields[key]) fields[key] = toISOStringWithTZ(fields[key]);
+          if (fields[key]) fields[key] = toISOStringWithTZ(fields[key], timezone);
         }
       );
       ['timeMin', 'timeMax'].forEach((key) => {
@@ -1075,7 +1052,6 @@ export class ConversationsService {
       transformedSettings
     );
 
-    console.log({ validationError });
     if (validationError) {
       throw new Error(validationError);
     }
