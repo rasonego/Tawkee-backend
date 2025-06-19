@@ -1,52 +1,51 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ScheduleSettingsDto } from './dto/schedule-validation.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { DateTime } from 'luxon';
 
 @Injectable()
 export class ScheduleValidationService {
   constructor(private readonly prisma: PrismaService) {}
 
-  isWithinAvailableHours(date: Date, schedule: ScheduleSettingsDto): boolean {
+  isWithinAvailableHours(
+    date: DateTime,
+    schedule: ScheduleSettingsDto
+  ): boolean {
     if (schedule.alwaysOpen) return true;
 
-    const weekday = date
-      .toLocaleString('en-US', { weekday: 'long' })
-      .toLowerCase();
+    const weekday = date.weekdayLong.toLowerCase(); // ex: 'monday'
     const available = schedule.availableTimes?.[weekday];
     if (!available) return false;
 
-    const timeStr = date.toTimeString().slice(0, 5);
+    const timeStr = date.toFormat('HH:mm');
     return available.some(([start, end]) => timeStr >= start && timeStr <= end);
   }
 
-  isBeforeMaxAdvance(date: Date, schedule: ScheduleSettingsDto): boolean {
+  isBeforeMaxAdvance(date: DateTime, schedule: ScheduleSettingsDto): boolean {
     if (!schedule.maxAdvanceDays) return true;
-    const now = new Date();
-    return (
-      date.getTime() - now.getTime() <=
-      schedule.maxAdvanceDays * 24 * 60 * 60 * 1000
-    );
+    const now = DateTime.now().setZone(date.zone);
+    return date.diff(now, 'days').days <= schedule.maxAdvanceDays;
   }
 
-  isAfterMinAdvance(date: Date, schedule: ScheduleSettingsDto): boolean {
+  isAfterMinAdvance(date: DateTime, schedule: ScheduleSettingsDto): boolean {
     if (!schedule.minAdvanceMinutes) return true;
-    const now = new Date();
-    return date.getTime() - now.getTime() >= schedule.minAdvanceMinutes * 60000;
+    const now = DateTime.now().setZone(date.zone);
+    return date.diff(now, 'minutes').minutes >= schedule.minAdvanceMinutes;
   }
 
   isDurationAllowed(
-    start: Date,
-    end: Date,
+    start: DateTime,
+    end: DateTime,
     schedule: ScheduleSettingsDto
   ): boolean {
     if (!schedule.maxEventDuration) return true;
-    const diffMinutes = (end.getTime() - start.getTime()) / 60000;
-    return diffMinutes <= schedule.maxEventDuration;
+    const duration = end.diff(start, 'minutes').minutes;
+    return duration <= schedule.maxEventDuration;
   }
 
   validateSchedule(
-    start: Date,
-    end: Date,
+    start: DateTime,
+    end: DateTime,
     schedule: ScheduleSettingsDto
   ): string | null {
     if (

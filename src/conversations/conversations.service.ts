@@ -793,17 +793,23 @@ export class ConversationsService {
       }
 
       const toISOStringWithTZ = (dt: string, tz: string): string => {
-        return DateTime.fromISO(dt, { zone: tz }).toUTC().toISO({ suppressMilliseconds: true });
+        return DateTime.fromISO(dt, { zone: tz })
+          .toUTC()
+          .toISO({ suppressMilliseconds: true });
       };
 
-      const appendOffsetToTimeString = (input: string, timezone: string): string => {
+      const appendOffsetToTimeString = (
+        input: string,
+        timezone: string
+      ): string => {
         const dt = DateTime.fromISO(input, { zone: timezone });
         return dt.toISO({ includeOffset: true, suppressMilliseconds: true });
       };
 
       ['startDateTime', 'endDateTime', 'startSearch', 'endSearch'].forEach(
         (key) => {
-          if (fields[key]) fields[key] = toISOStringWithTZ(fields[key], timezone);
+          if (fields[key])
+            fields[key] = toISOStringWithTZ(fields[key], timezone);
         }
       );
       ['timeMin', 'timeMax'].forEach((key) => {
@@ -811,9 +817,9 @@ export class ConversationsService {
           fields[key] = appendOffsetToTimeString(fields[key], timezone);
       });
 
-      fields.timeZone = timezone
+      fields.timeZone = timezone;
 
-      this.logger.debug( `[executeIntention] Fields: ${fields}`);
+      this.logger.debug(`[executeIntention] Fields: ${fields}`);
 
       const preconditionResults: Record<string, any>[] = [];
 
@@ -1044,7 +1050,9 @@ export class ConversationsService {
     const start = DateTime.fromISO(fields.startDateTime, { zone: tz });
     const end = DateTime.fromISO(fields.endDateTime, { zone: tz });
 
-    this.logger.debug( `[executeScheduleMeetingIntention] Fields: ${{start, end}} `);
+    this.logger.debug(
+      `[executeScheduleMeetingIntention] Start: ${start} End: ${end}`
+    );
 
     // Transform the JSON field to the proper DTO class
     const transformedSettings = {
@@ -1055,8 +1063,8 @@ export class ConversationsService {
     };
 
     const validationError = this.scheduleValidationService.validateSchedule(
-      start.toJSDate(),
-      end.toJSDate(),
+      start,
+      end,
       transformedSettings
     );
 
@@ -1072,8 +1080,7 @@ export class ConversationsService {
         const now = DateTime.now().setZone(tz);
         fields.startSearch = fields.startSearch || now.toUTC().toISO();
         fields.endSearch =
-          fields.endSearch ||
-          now.plus({ days: 7 }).toUTC().toISO();
+          fields.endSearch || now.plus({ days: 7 }).toUTC().toISO();
 
         const suggestAvailableSlotsIntention = intentions.find(
           (i) => i.toolName === 'suggest_available_google_meeting_slots'
