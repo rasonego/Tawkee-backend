@@ -1110,12 +1110,14 @@ export class OpenAiService {
 
   The task executed by the agent occurred on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
 
-  Generate a response confirming successful completion of: ${intention.description}. If applicable, take into account current schedule settings when delivering response: ${JSON.stringify(scheduleSettings, null, 3)}, which is relative to this timezone: ${agent.settings.timezone}
+  Generate a response confirming successful completion of: ${intention.description}. If applicable, take into account current schedule settings when delivering the response: ${JSON.stringify(scheduleSettings, null, 3)}, which is relative to this timezone: ${agent.settings.timezone}
 
   Agent Name: ${agent.name}
   Agent Type: ${agent.type}
+
   Communication Guide:
   ${communicationGuide}
+
   Goal Guide:
   ${goalGuide}
 
@@ -1123,30 +1125,36 @@ export class OpenAiService {
   ${JSON.stringify(result?.data || {}, null, 2)}
 
   Guidelines:
-  - Confirm the task was successful
+  - Confirm the task was successful.
   - Mention relevant details, especially date/time if it's a scheduled event.
   - If the task involved scheduling an event, **it is CRUCIAL to generate a Google Calendar "add to calendar" link for the user to add the event to their *own* calendar.**
     - **IMPORTANT: The 'Result' object will primarily contain 'description', 'creator', 'start' datetime, and 'end' datetime. You must infer other details as needed.**
     - **DO NOT use the old Google Calendar event view link format (e.g., \`https://www.google.com/calendar/event?eid=...\`). This link is NOT useful for the user to add the event to their own calendar.**
-    - The base URL for the "add to calendar" link MUST be: 
+    - The base URL for the "add to calendar" link MUST be:
       \`https://calendar.google.com/calendar/u/0/r/eventedit\`
     - The link MUST include the following URL-encoded parameters, using data from the 'Result' object:
-      - \`text\`: **Infer a concise event title.** This can be the first few words of the \`description\` or a generic title like "Meeting" or "Event" if \`description\` is not suitable. (e.g., from \`result.data.description\`).
-      - \`dates\`: The event start and end times in \`YYYYMMDDTHHMMSSZ/YYYYMMSSZ\` format. **Crucially, these times MUST be in UTC (Coordinated Universal Time).** You will need to convert the provided \`start\` and \`end\` datetimes (which may include timezone information) to UTC before formatting. For example, if \`result.data.start\` is '2025-06-12T09:00:00-03:00' (Sao Paulo time), convert it to UTC before formatting (e.g., '20250612T120000Z').
-      - \`details\`: The full \`description\` of the event (e.g., from \`result.data.description\`).
-      - \`location\`: **Omit this parameter if a specific location is not explicitly available in the 'Result' object.** If a location can be clearly inferred from the \`description\`, you may include it.
-    - If any of these data points are missing or cannot be inferred, omit the corresponding parameter from the URL.
-    - The link should be presented with clear anchor text like "Add to Google Calendar" or similar.
-  - If user is the same as the contact, reflect that
-  - Keep tone human and aligned with communication guide
-  - Avoid repeating "the user" and prefer the name if known: "${userName}"
-  - Latest user message: "${latestMessage}". Respond in the same language, in a natural and human-sounding way.
+      - \`text\`: **Infer a concise event title.**
+      - \`dates\`: Start and end time in UTC, formatted as \`YYYYMMDDTHHMMSSZ/YYYYMMDDTHHMMSSZ\`.
+      - \`details\`: The full \`description\` from the Result.
+      - \`location\`: Include only if clearly specified or easily inferred.
+    - If any values are missing, omit that parameter.
+    - Present the link using clear anchor text like "Add to Google Calendar".
+
+  - If the user and the contact are the same, reflect that.
+  - Keep tone natural, friendly and aligned with the communication guide.
+  - Avoid repeating “the user” — always prefer their name: "${userName}"
+
+  - **Language Requirements**:
+    - The user’s last message was: "${latestMessage}"
+    - **You must detect and respond in the same language as the user's message.**
+    - Do not default to English unless the user message was in English.
+    - Maintain natural and fluent tone in the detected language.
 
   Final response (directly to the user):
-      `.trim();
+  `.trim();
 
       console.log({ prompt });
-      
+
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4',
         messages: [
@@ -1208,8 +1216,12 @@ export class OpenAiService {
   - Suggests alternatives or retrying, especially if the issue is time-related
   - Reflects the agent’s communication style
   - Avoid repeating "the user" and prefer the name if known: "${userName}"
-  - Latest user message: "${latestMessage}". Respond in the same language, in a natural and human-sounding way.
 
+  - **Language Requirements**:
+    - The user’s last message was: "${latestMessage}"
+    - **You must detect and respond in the same language as the user's message.**
+    - Do not default to English unless the user message was in English.
+    - Maintain natural and fluent tone in the detected language.
   Reply:
       `.trim();
 
@@ -1288,8 +1300,13 @@ export class OpenAiService {
   - Clarify what’s needed
   - Reflect the communication guide
   - Avoid repeating "the user" and prefer the name if known: "${userName}"
-  - Latest user message: "${latestMessage}". Respond in the same language, in a natural and human-sounding way.
-
+  
+  - **Language Requirements**:
+    - The user’s last message was: "${latestMessage}"
+    - **You must detect and respond in the same language as the user's message.**
+    - Do not default to English unless the user message was in English.
+    - Maintain natural and fluent tone in the detected language.
+    
   Response:
       `.trim();
 
