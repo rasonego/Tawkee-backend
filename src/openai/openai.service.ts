@@ -1145,6 +1145,8 @@ export class OpenAiService {
   Final response (directly to the user):
       `.trim();
 
+      console.log({ prompt });
+      
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4',
         messages: [
