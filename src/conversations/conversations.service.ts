@@ -294,6 +294,7 @@ export class ConversationsService {
                 collectedFields,
                 enhancedAgent,
                 communicationGuide,
+                goalGuide,
                 chat,
                 scheduleSettings
               );
@@ -341,6 +342,7 @@ export class ConversationsService {
                 intentionResult,
                 enhancedAgent,
                 communicationGuide,
+                goalGuide,
                 chat,
                 scheduleSettings
               );
@@ -383,6 +385,7 @@ export class ConversationsService {
                 error,
                 enhancedAgent,
                 communicationGuide,
+                goalGuide,
                 chat,
                 scheduleSettings
               );

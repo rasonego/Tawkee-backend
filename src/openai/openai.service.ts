@@ -1100,6 +1100,7 @@ export class OpenAiService {
     result: any,
     agent: any,
     communicationGuide: string,
+    goalGuide: string,
     chat: ChatDto,
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
@@ -1115,7 +1116,10 @@ export class OpenAiService {
 
   Agent Name: ${agent.name}
   Agent Type: ${agent.type}
-  Communication Style: ${agent.communicationType}
+  Communication Guide:
+  ${communicationGuide}
+  Goal Guide:
+  ${goalGuide}
 
   Result:
   ${JSON.stringify(result?.data || {}, null, 2)}
@@ -1139,9 +1143,6 @@ export class OpenAiService {
   - Keep tone human and aligned with communication guide
   - Avoid repeating "the user" and prefer the name if known: "${userName}"
   - Always speak in the same language that ${userName} is speaking, please!
-
-  Communication Guide:
-  ${communicationGuide}
 
   Final response (directly to the user):
       `.trim();
@@ -1180,6 +1181,7 @@ export class OpenAiService {
     error: any,
     agent: any,
     communicationGuide: string,
+    goalGuide: string,
     chat: ChatDto,
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
@@ -1194,7 +1196,10 @@ export class OpenAiService {
 
   Agent Name: ${agent.name}
   Agent Type: ${agent.type}
-  Communication Style: ${agent.communicationType}
+  Communication Guide:
+  ${communicationGuide}
+  Goal Guide:
+  ${goalGuide}
 
   Error Message: "${error.message}"
 
@@ -1205,9 +1210,6 @@ export class OpenAiService {
   - Reflects the agent’s communication style
   - Avoid repeating "the user" and prefer the name if known: "${userName}"
   - Always speak in the same language that ${userName} is speaking, please!
-
-  Communication Guide:
-  ${communicationGuide}
 
   Reply:
       `.trim();
@@ -1247,6 +1249,7 @@ export class OpenAiService {
     collectedFields: Record<string, any>,
     agent: any,
     communicationGuide: string,
+    goalGuide: string,
     chat: ChatDto,
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
@@ -1277,7 +1280,10 @@ export class OpenAiService {
 
   Agent Name: ${agent.name}
   Agent Type: ${agent.type}
-  Communication Style: ${agent.communicationType}
+  Communication Guide:
+  ${communicationGuide}
+  Goal Guide:
+  ${goalGuide}
 
   Write a helpful message:
   - Address the user naturally (use name if available)
@@ -1285,9 +1291,6 @@ export class OpenAiService {
   - Reflect the communication guide
   - Avoid repeating "the user" and prefer the name if known: "${userName}"
   - Always speak in the same language that ${userName} is speaking, please!
-
-  Communication Guide:
-  ${communicationGuide}
 
   Response:
       `.trim();
