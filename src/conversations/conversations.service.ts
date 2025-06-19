@@ -314,9 +314,11 @@ export class ConversationsService {
             };
           }
 
+          const timezone = timezoneMap[enhancedAgent.settings.timezone]
+
           try {
             this.logger.debug(
-              `Executing intention: ${matchedIntention.description} with timezone ${enhancedAgent.settings.timezone}`
+              `Executing intention: ${matchedIntention.description} with timezone ${timezone}`
             );
 
             let intentionResult;
@@ -327,14 +329,14 @@ export class ConversationsService {
                 collectedFields,
                 agent.id,
                 scheduleSettings,
-                enhancedAgent.settings.timezone
+                timezone
               );
             } else {
               intentionResult = await this.executeIntention(
                 matchedIntention,
                 collectedFields,
                 agent.id,
-                enhancedAgent.settings.timezone
+                timezone
               );
             }
 
@@ -787,10 +789,7 @@ export class ConversationsService {
         await this.googleCalendarOAuthService.getValidAccessToken(agentId);
       this.logger.debug(`[executeIntention] Access token retrieved`);
 
-      let timezone = 'UTC';
-      if (agentTimezone && timezoneMap[agentTimezone]) {
-        timezone = timezoneMap[agentTimezone];
-      }
+      let timezone = agentTimezone || 'UTC';
 
       const toISOStringWithTZ = (dt: string, tz: string): string => {
         return DateTime.fromISO(dt, { zone: tz })
