@@ -7,6 +7,7 @@ import { HttpExceptionFilter } from './common/exceptions/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
+import { rawBodyMiddleware } from './common/middleware/raw-body.middleware';
 
 // Polyfill for older Node.js versions
 if (!global.crypto) {
@@ -20,12 +21,8 @@ async function bootstrap() {
 
   const httpsOptions = isProduction
     ? {
-        key: readFileSync(
-          process.env.SSL_KEY_PATH || '/etc/ssl/private/privkey.pem'
-        ),
-        cert: readFileSync(
-          process.env.SSL_CERT_PATH || '/etc/ssl/certs/fullchain.pem'
-        ),
+        key: readFileSync(process.env.SSL_KEY_PATH || '/etc/ssl/private/privkey.pem'),
+        cert: readFileSync(process.env.SSL_CERT_PATH || '/etc/ssl/certs/fullchain.pem'),
       }
     : undefined;
 
@@ -33,22 +30,26 @@ async function bootstrap() {
     httpsOptions,
   });
 
+  // 🧠 Stripe raw body support must be registered before body parsers
+  app.use(rawBodyMiddleware);
+
+  // Standard JSON + form body parsers
   app.use(json({ limit: '150mb' }));
   app.use(urlencoded({ extended: true, limit: '150mb' }));
 
-  // Global pipes, filters, interceptors
+  // Global validation, exception handling, response formatting
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: true,
       skipMissingProperties: false,
-    })
+    }),
   );
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
 
-  // Swagger setup
+  // Swagger API docs
   const config = new DocumentBuilder()
     .setTitle('Tawkee API')
     .setDescription('The Tawkee API for WhatsApp automation with AI')
@@ -62,8 +63,7 @@ async function bootstrap() {
   const server = app.getHttpAdapter().getInstance();
   server.get('/', (req, res) => res.redirect('/health'));
 
-  // CORS
-  // const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  // CORS config
   app.enableCors({
     origin: true,
     credentials: true,
@@ -80,4 +80,5 @@ async function bootstrap() {
   console.log(`🚀 App is running on: ${url}`);
   console.log(`🔐 HTTPS Mode: ${isProduction}`);
 }
+
 bootstrap();

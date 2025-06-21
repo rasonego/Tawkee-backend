@@ -2,25 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebsocketService } from 'src/websocket/websocket.service';
 import { WorkspaceDto } from './dto/workspace.dto';
-
-const modelCreditMap: Record<string, number> = {
-  GPT_4_1: 20,
-  GPT_4_1_MINI: 10,
-  GPT_4_O_MINI: 10,
-  GPT_4_O: 10,
-  OPEN_AI_O3_MINI: 1,
-  OPEN_AI_O4_MINI: 10,
-  OPEN_AI_O3: 1,
-  OPEN_AI_O1: 1,
-  GPT_4: 20,
-  CLAUDE_3_5_SONNET: 10,
-  CLAUDE_3_7_SONNET: 10,
-  CLAUDE_3_5_HAIKU: 1,
-  DEEPINFRA_LLAMA3_3: 1,
-  QWEN_2_5_MAX: 1,
-  DEEPSEEK_CHAT: 1,
-  SABIA_3: 1,
-};
+import { AIModel } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class WorkspacesService {
@@ -50,19 +33,6 @@ export class WorkspacesService {
     }
 
     return workspace;
-  }
-
-  async getWorkspaceCredits(workspaceId: string): Promise<{ credits: number }> {
-    const workspace = await this.prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { id: true, credits: true },
-    });
-
-    if (!workspace) {
-      throw new NotFoundException(`Workspace with ID ${workspaceId} not found`);
-    }
-
-    return { credits: workspace.credits };
   }
 
   // When user finishes a chat using our platform, it does not necessarily mean it is resolved by human.
@@ -109,10 +79,7 @@ export class WorkspacesService {
     const resolvedByAI = resolved.filter((i) => i.userId === null);
     const resolvedByHuman = resolved.filter((i) => i.userId !== null);
 
-    const resolvedTimeSeriesMap: Record<
-      string,
-      { total: number; byAI: number; byHuman: number }
-    > = {};
+    const resolvedTimeSeriesMap: Record<string, { total: number; byAI: number; byHuman: number }> = {};
     for (const i of resolved) {
       const date = i.resolvedAt!.toISOString().slice(0, 10);
       if (!resolvedTimeSeriesMap[date]) {
@@ -145,7 +112,7 @@ export class WorkspacesService {
     const prevByAI = prevResolved.filter((i) => i.userId === null).length;
     const prevByHuman = prevResolved.filter((i) => i.userId !== null).length;
 
-    // Optimized: fetch one active (non-RESOLVED) interaction per chat
+    // Active chats
     const activeChats = await this.prisma.interaction.findMany({
       where: {
         workspaceId,
@@ -175,7 +142,6 @@ export class WorkspacesService {
 
     const waiting = runningInteractions.filter((i) => i.isWaiting);
 
-    // Average interaction time (current vs previous)
     const durations = resolved
       .filter((i) => i.resolvedAt && i.startAt)
       .map(
@@ -183,9 +149,7 @@ export class WorkspacesService {
       );
 
     const avgInteractionTimeMs =
-      durations.length > 0
-        ? durations.reduce((a, b) => a + b, 0) / durations.length
-        : 0;
+      durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
 
     const prevDurations = prevResolved
       .filter((i) => i.resolvedAt && i.startAt)
@@ -194,21 +158,20 @@ export class WorkspacesService {
       );
 
     const prevAvgTime =
-      prevDurations.length > 0
-        ? prevDurations.reduce((a, b) => a + b, 0) / prevDurations.length
-        : 0;
+      prevDurations.length > 0 ? prevDurations.reduce((a, b) => a + b, 0) / prevDurations.length : 0;
 
-    // Credits used in time range
-    const credits = await this.prisma.creditSpent.findMany({
+    // Usage tracking (replaces creditSpent)
+    const usageRecords = await this.prisma.usageRecord.findMany({
       where: {
-        agent: { workspaceId },
+        workspaceId,
         createdAt: { gte: start, lte: end },
       },
       select: {
-        credits: true,
+        quantity: true,
         model: true,
-        agentId: true,
+        metadata: true,
         createdAt: true,
+        agentId: true,
         agent: {
           select: {
             id: true,
@@ -224,29 +187,32 @@ export class WorkspacesService {
       string,
       {
         totalCredits: number;
-        creditsByAgent: Record<
-          string,
-          { credits: number; agentName: string | null }
-        >;
+        creditsByAgent: Record<string, { credits: number; agentName: string | null }>;
       }
     > = {};
 
-    for (const c of credits) {
-      const dateKey = c.createdAt.toISOString().slice(0, 10);
+    const modelTotals: Partial<Record<AIModel, number>> = {};
+
+    for (const record of usageRecords) {
+      const dateKey = record.createdAt.toISOString().slice(0, 10);
       if (!creditByDate[dateKey]) {
         creditByDate[dateKey] = { totalCredits: 0, creditsByAgent: {} };
       }
+      creditByDate[dateKey].totalCredits += record.quantity;
 
-      creditByDate[dateKey].totalCredits += c.credits;
-
-      if (!creditByDate[dateKey].creditsByAgent[c.agentId]) {
-        creditByDate[dateKey].creditsByAgent[c.agentId] = {
-          credits: 0,
-          agentName: c.agent?.name ?? 'Unknown',
-        };
+      if (record.agentId) {
+        if (!creditByDate[dateKey].creditsByAgent[record.agentId]) {
+          creditByDate[dateKey].creditsByAgent[record.agentId] = {
+            credits: 0,
+            agentName: record.agent?.name ?? 'Unknown',
+          };
+        }
+        creditByDate[dateKey].creditsByAgent[record.agentId].credits += record.quantity;
       }
 
-      creditByDate[dateKey].creditsByAgent[c.agentId].credits += c.credits;
+      if (record.model) {
+        modelTotals[record.model] = (modelTotals[record.model] || 0) + record.quantity;
+      }
     }
 
     const creditsPerDay = Object.entries(creditByDate)
@@ -255,46 +221,36 @@ export class WorkspacesService {
         date,
         totalCredits: data.totalCredits,
         creditsByAgent: Object.entries(data.creditsByAgent).map(
-          ([agentId, { credits, agentName }]) => ({
-            agentId,
-            agentName,
-            credits,
-          })
+          ([agentId, { credits, agentName }]) => ({ agentId, agentName, credits })
         ),
       }));
 
-    const agentTotals: Record<
-      string,
-      {
-        agentId: string;
-        name: string | null;
-        jobName: string | null;
-        avatar: string | null;
-        totalCredits: number;
-      }
-    > = {};
+    const agentTotals: Record<string, {
+      agentId: string;
+      name: string | null;
+      jobName: string | null;
+      avatar: string | null;
+      totalCredits: number;
+    }> = {};
 
-    for (const c of credits) {
-      const id = c.agentId;
+    for (const record of usageRecords) {
+      const id = record.agentId;
+      if (!id) continue;
       if (!agentTotals[id]) {
         agentTotals[id] = {
           agentId: id,
-          name: c.agent.name,
-          jobName: c.agent.jobName,
-          avatar: c.agent.avatar,
+          name: record.agent?.name ?? null,
+          jobName: record.agent?.jobName ?? null,
+          avatar: record.agent?.avatar ?? null,
           totalCredits: 0,
         };
       }
-      agentTotals[id].totalCredits += c.credits;
+      agentTotals[id].totalCredits += record.quantity;
     }
 
     const topAgents = Object.values(agentTotals)
       .sort((a, b) => b.totalCredits - a.totalCredits)
       .slice(0, 5);
-
-    const modelTotals: Record<string, number> = {};
-    for (const c of credits)
-      modelTotals[c.model] = (modelTotals[c.model] || 0) + c.credits;
 
     const topModels = Object.entries(modelTotals)
       .map(([model, credits]) => ({ model, credits }))
@@ -308,18 +264,9 @@ export class WorkspacesService {
         byHuman: resolvedByHuman.length,
         timeSeries,
         trend: {
-          total:
-            prevTotal > 0
-              ? this.getTrend(resolved.length, prevTotal)
-              : undefined,
-          byAI:
-            prevByAI > 0
-              ? this.getTrend(resolvedByAI.length, prevByAI)
-              : undefined,
-          byHuman:
-            prevByHuman > 0
-              ? this.getTrend(resolvedByHuman.length, prevByHuman)
-              : undefined,
+          total: prevTotal > 0 ? this.getTrend(resolved.length, prevTotal) : undefined,
+          byAI: prevByAI > 0 ? this.getTrend(resolvedByAI.length, prevByAI) : undefined,
+          byHuman: prevByHuman > 0 ? this.getTrend(resolvedByHuman.length, prevByHuman) : undefined,
         },
       },
       running: {
@@ -328,134 +275,10 @@ export class WorkspacesService {
         interactions: runningInteractions,
       },
       avgInteractionTimeMs,
-      avgTimeTrend:
-        prevDurations.length > 0
-          ? this.getTrend(avgInteractionTimeMs, prevAvgTime)
-          : undefined,
+      avgTimeTrend: prevDurations.length > 0 ? this.getTrend(avgInteractionTimeMs, prevAvgTime) : undefined,
       creditsPerDay,
       topAgents,
       topModels,
     };
-  }
-
-  async checkAgentWorkspaceHasSufficientCredits(agentId: string) {
-    const agent = await this.prisma.agent.findUnique({
-      where: { id: agentId },
-      include: {
-        settings: true,
-        workspace: {
-          select: {
-            id: true,
-            credits: true,
-          },
-        },
-      },
-    });
-
-    if (!agent?.settings || !agent.workspace) {
-      throw new Error('Agent or workspace or settings not found.');
-    }
-
-    const model = agent.settings.preferredModel;
-    const creditCost = modelCreditMap[model];
-
-    if (!creditCost) {
-      throw new Error(`Unknown model: ${model}`);
-    }
-
-    const currentCredits = agent.workspace.credits;
-
-    console.log('credits situation: ', {
-      agentId,
-      workspaceId: agent.workspace.id,
-      model,
-      requiredCredits: creditCost,
-      availableCredits: currentCredits,
-      allowed: currentCredits >= creditCost,
-    });
-
-    return {
-      agentId,
-      workspaceId: agent.workspace.id,
-      model,
-      requiredCredits: creditCost,
-      availableCredits: currentCredits,
-      allowed: currentCredits >= creditCost,
-    };
-  }
-
-  async logAndAggregateCredit(agentId: string, metadata?: Record<string, any>) {
-    const agent = await this.prisma.agent.findUnique({
-      where: { id: agentId },
-      include: {
-        settings: true,
-        workspace: {
-          select: {
-            id: true,
-          },
-        },
-      },
-    });
-
-    if (!agent?.settings) throw new Error('Agent or settings not found.');
-
-    const model = agent.settings.preferredModel;
-    const creditCost = modelCreditMap[model];
-    if (!creditCost) throw new Error(`Unknown model: ${model}`);
-
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const day = now.getDate();
-
-    await this.prisma.$transaction(async (tx) => {
-      // 1. Append credit transaction
-      await tx.creditTransaction.create({
-        data: {
-          agentId,
-          model,
-          credits: creditCost,
-          timestamp: now,
-          metadata,
-        },
-      });
-
-      // 2. Update or create aggregate summary
-      const existing = await tx.creditSpent.findFirst({
-        where: { agentId, model, year, month, day },
-      });
-
-      if (existing) {
-        await tx.creditSpent.update({
-          where: { id: existing.id },
-          data: { credits: { increment: creditCost } },
-        });
-      } else {
-        await tx.creditSpent.create({
-          data: { agentId, model, credits: creditCost, year, month, day },
-        });
-      }
-
-      // 3. Update credits on workspace
-      const workspace = await this.prisma.workspace.update({
-        where: { id: agent.workspace.id },
-        data: {
-          credits: { decrement: creditCost },
-        },
-        select: {
-          id: true,
-          credits: true,
-        },
-      });
-
-      // Inform frontend clients about credit consumption
-      this.websocketService.sendToClient(
-        workspace.id,
-        'workspaceCreditsUpdate',
-        {
-          credits: workspace.credits,
-        }
-      );
-    });
   }
 }

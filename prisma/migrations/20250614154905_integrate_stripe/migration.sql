@@ -34,7 +34,7 @@ CREATE TABLE "plans" (
     "interval" "PlanInterval" NOT NULL,
     "intervalCount" INTEGER NOT NULL DEFAULT 1,
     "features" JSONB,
-    "apiRequestLimit" INTEGER,
+    "creditsLimit" INTEGER,
     "agentLimit" INTEGER,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "isEnterprise" BOOLEAN NOT NULL DEFAULT false,

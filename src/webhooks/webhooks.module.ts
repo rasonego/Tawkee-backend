@@ -10,12 +10,12 @@ import { ConfigModule } from '@nestjs/config';
 import { DeepseekModule } from '../deepseek/deepseek.module';
 import { MediaModule } from '../media/media.module';
 import { WebsocketModule } from '../websocket/websocket.module';
-import { WorkspacesModule } from 'src/workspaces/workspaces.module';
+import { CreditModule } from 'src/credits/credit.module';
 
 @Module({
   imports: [
     PrismaModule,
-    WorkspacesModule,
+    CreditModule,
     ConversationsModule,
     InteractionsModule,
     WahaApiModule,

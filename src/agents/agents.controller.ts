@@ -173,19 +173,4 @@ export class AgentsController {
   ): Promise<{ success: boolean }> {
     return this.agentsService.activate(agentId);
   }
-
-  @Get('agent/:agentId/credits-spent')
-  @ApiOperation({ summary: 'Get agent credits spent' })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Returns the total spent credits and a list of spent credits per date per model',
-    type: CreditSpentResponseDto,
-  })
-  @ApiParam({ name: 'agentId', description: 'Agent ID' })
-  async getCreditsSpent(
-    @Param('agentId') agentId: string
-  ): Promise<CreditSpentResponseDto> {
-    return this.agentsService.getCreditsSpent(agentId);
-  }
 }

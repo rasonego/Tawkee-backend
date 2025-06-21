@@ -7,7 +7,7 @@ import { MediaService } from '../media/media.service';
 import { WebsocketService } from '../websocket/websocket.service';
 import { Chat, Message } from '@prisma/client';
 import { ConversationDto } from 'src/conversations/dto/conversation.dto';
-import { WorkspacesService } from 'src/workspaces/workspaces.service';
+import { CreditService } from 'src/credits/credit.service';
 
 @Injectable()
 export class WebhooksService {
@@ -15,7 +15,7 @@ export class WebhooksService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly workspacesService: WorkspacesService,
+    private readonly creditService: CreditService,
     private readonly conversationsService: ConversationsService,
     private readonly interactionsService: InteractionsService,
     private readonly wahaApiService: WahaApiService,
@@ -460,15 +460,15 @@ export class WebhooksService {
 
     let insufficientCredits: boolean = false;
     const creditCheck =
-      await this.workspacesService.checkAgentWorkspaceHasSufficientCredits(
+      await this.creditService.checkAgentWorkspaceHasSufficientCredits(
         webhookEvent.channel.agent.id
       );
     if (creditCheck.allowed === false) {
       const creditsCost = creditCheck.requiredCredits;
-      const creditsAvailable = creditCheck.availableCredits;
+      const creditsAvailable = creditCheck.planCreditsAvailable + creditCheck.extraCreditsAvailable;
       const model = creditCheck.model;
       this.logger.log(
-        `Skipping message due to lack of credits: ${webhookEvent.channel.agent.id}'s model ${model} required ${creditsCost}, but only ${creditsAvailable} is available.`
+        `Skipping message due to lack of credits: ${webhookEvent.channel.agent.id}'s model ${model} required ${creditsCost}, but only ${creditsAvailable} are available.`
       );
       await this.prisma.webhookEvent.update({
         where: { id: webhookEventId },
@@ -713,9 +713,10 @@ export class WebhooksService {
         }
 
         if (insufficientCredits) {
+          const creditsAvailable = (creditCheck?.planCreditsAvailable || 0) + (creditCheck?.extraCreditsAvailable || 0);
           const systemMessage = await this.prisma.message.create({
             data: {
-              text: `Workspace lacks credits to process ${webhookEvent.channel.agent.name}'s message using the ${creditCheck.model} model. It required ${creditCheck.requiredCredits} but only ${creditCheck.availableCredits} was available at the time.`,
+              text: `Workspace lacks credits to process ${webhookEvent.channel.agent.name}'s message using the ${creditCheck.model} model. It required ${creditCheck.requiredCredits} but only ${creditsAvailable} was available at the time.`,
               role: 'system',
               type: 'notification',
               chatId: chat.id,
@@ -841,7 +842,7 @@ export class WebhooksService {
                     },
                   });
 
-                  this.workspacesService.logAndAggregateCredit(
+                  this.creditService.logAndAggregateCredit(
                     webhookEvent.channel.agent.id,
                     {
                       messageId,
@@ -909,7 +910,7 @@ export class WebhooksService {
                       },
                     });
 
-                    this.workspacesService.logAndAggregateCredit(
+                    this.creditService.logAndAggregateCredit(
                       webhookEvent.channel.agent.id,
                       {
                         messageId,

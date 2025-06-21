@@ -731,27 +731,4 @@ export class AgentsService {
 
     return { success: true };
   }
-
-  async getCreditsSpent(id: string): Promise<CreditSpentResponseDto> {
-    // Ensure agent exists
-    await this.findOne(id);
-
-    const creditSpent = await this.prisma.creditSpent.findMany({
-      where: { agentId: id },
-      select: {
-        credits: true,
-        year: true,
-        month: true,
-        day: true,
-        model: true,
-      },
-    });
-
-    const total = creditSpent.reduce((sum, item) => sum + item.credits, 0);
-
-    return {
-      total,
-      data: creditSpent,
-    };
-  }
 }

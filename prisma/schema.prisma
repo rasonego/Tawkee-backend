@@ -37,18 +37,18 @@ model User {
 model Workspace {
   id                 String             @id @default(uuid())
   name               String
-  credits            Int                @default(0)
-  subscriptionStatus SubscriptionStatus @default(TRIAL)
   stripeCustomerId   String?            @unique
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  agents        Agent[]
-  chats         Chat[]
-  interactions  Interaction[]
-  subscriptions Subscription[]
-  usageRecords  UsageRecord[]
-  user          User?
+  agents               Agent[]
+  chats                Chat[]
+  interactions         Interaction[]
+  subscriptions        Subscription[]
+  usageRecords         UsageRecord[]
+  user                 User?
+  ExtraCreditPurchase  ExtraCreditPurchase[]
+  SmartRechargeSetting SmartRechargeSetting?
 }
 
 model Agent {
@@ -70,7 +70,6 @@ model Agent {
   webhooks          AgentWebhooks?
   channels          Channel[]
   chats             Chat[]
-  creditSpent       CreditSpent[]
   intentions        Intention[]
   interactions      Interaction[]
   trainings         Training[]
@@ -78,7 +77,8 @@ model Agent {
   googleToken        AgentGoogleToken?
   scheduleSettings   ScheduleSettings?
   elevenLabsSettings ElevenLabsSettings?
-  CreditTransaction  CreditTransaction[]
+
+  usageRecords UsageRecord[]
 }
 
 model AgentSettings {
@@ -254,31 +254,6 @@ model IntentionPreconditionQueryParam {
   precondition   IntentionPrecondition @relation(fields: [preconditionId], references: [id], onDelete: Cascade)
 }
 
-model CreditTransaction {
-  id        String   @id @default(uuid())
-  agentId   String
-  model     String
-  credits   Int
-  timestamp DateTime @default(now())
-  metadata  Json? // optional: store messageId, sessionId, user info, etc.
-
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@index([agentId, timestamp])
-}
-
-model CreditSpent {
-  id        String   @id @default(uuid())
-  credits   Int
-  year      Int
-  month     Int
-  day       Int
-  model     String
-  agentId   String
-  createdAt DateTime @default(now())
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-}
-
 model Chat {
   id            String        @id @default(uuid())
   title         String?
@@ -428,28 +403,27 @@ model AgentGoogleToken {
   @@map("agent_google_tokens")
 }
 
-// Adicione essas tabelas ao seu schema existente
-
 model Plan {
-  id              String       @id @default(uuid())
-  name            String       @unique
-  stripePriceId   String       @unique
-  stripeProductId String
-  description     String?
-  price           Decimal      @db.Decimal(10, 2)
-  currency        String       @default("USD")
-  interval        PlanInterval
-  intervalCount   Int          @default(1)
-  features        Json? // Array de features do plano
-  apiRequestLimit Int? // Limite de requests da API
-  agentLimit      Int? // Limite de agents
-  isActive        Boolean      @default(true)
-  isEnterprise    Boolean      @default(false)
-  trialDays       Int?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id                    String  @id @default(uuid())
+  name                  String  @unique
+  stripePriceId         String  @unique
+  stripeProductId       String
+  description           String?
+  features              Json? // e.g. ["Priority support", "Advanced insights"]
+  creditsLimit          Int?
+  agentLimit            Int?
+  trainingTextLimit     Int?
+  trainingWebsiteLimit  Int?
+  trainingVideoLimit    Int?
+  trainingDocumentLimit Int?
+  isActive              Boolean @default(true)
+  isEnterprise          Boolean @default(false)
+  trialDays             Int?
 
   subscriptions Subscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("plans")
 }
@@ -458,7 +432,7 @@ model Subscription {
   id                   String             @id @default(uuid())
   workspaceId          String
   planId               String
-  stripeSubscriptionId String             @unique
+  stripeSubscriptionId String
   stripeCustomerId     String
   status               SubscriptionStatus
   currentPeriodStart   DateTime
@@ -467,8 +441,19 @@ model Subscription {
   canceledAt           DateTime?
   trialStart           DateTime?
   trialEnd             DateTime?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+
+  // 🆕 Optional overrides (per-enterprise customer)
+  customStripePriceId String? 
+  featureOverrides    Json? 
+  creditsLimitOverrides Int?
+  agentLimitOverrides Int?
+  trainingTextLimitOverrides Int?
+  trainingWebsiteLimitOverrides Int?
+  trainingVideoLimitOverrides Int?
+  trainingDocumentLimitOverrides Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   plan        Plan          @relation(fields: [planId], references: [id])
@@ -491,26 +476,59 @@ model StripeWebhook {
 }
 
 model UsageRecord {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   workspaceId    String
   subscriptionId String?
-  requestType    String // 'api_call', 'text_to_speech', etc.
-  quantity       Int      @default(1)
-  cost           Decimal? @db.Decimal(10, 4)
+  agentId        String
+  requestType    RequestType
+  model          String
+  quantity       Int
+  usedFrom       CreditSource // NEW: distinguishes PLAN vs EXTRA
   metadata       Json?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id])
   subscription Subscription? @relation(fields: [subscriptionId], references: [id])
-
-  @@index([workspaceId, createdAt])
-  @@index([subscriptionId, createdAt])
-  @@map("usage_records")
+  agent        Agent         @relation(fields: [agentId], references: [id])
 }
 
-enum PlanInterval {
-  MONTH
-  YEAR
+model ExtraCreditPurchase {
+  id                  String     @id @default(uuid())
+  workspaceId         String
+  quantity            Int
+  source              CreditRechargeMethod @default(MANUAL)
+  stripeInvoiceId     String?     // For automatic or Stripe-based payments
+  stripeInvoiceItemId String?     // Links to the specific charge line
+  metadata            Json?
+  createdAt           DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+}
+
+model SmartRechargeSetting {
+  id             String   @id @default(uuid())
+  workspaceId    String   @unique
+  threshold      Int // trigger when extra credits < this
+  rechargeAmount Int // how many to recharge when triggered
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+}
+
+enum CreditRechargeMethod {
+  MANUAL
+  AUTOMATIC
+}
+
+enum CreditSource {
+  PLAN
+  EXTRA
+}
+
+enum RequestType {
+  API_CALL
 }
 
 enum SubscriptionStatus {

@@ -1,17 +1,13 @@
-import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
-import { StripeService } from './stripe.service';
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { StripeController } from './stripe.controller';
-import { RawBodyMiddleware } from './middleware/raw-body.middleware';
+import { StripeService } from './stripe.service';
+import { WebsocketModule } from 'src/websocket/websocket.module';
 
 @Module({
-  providers: [StripeService],
+  imports: [ConfigModule, WebsocketModule],
   controllers: [StripeController],
+  providers: [StripeService],
   exports: [StripeService],
 })
-export class StripeModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(RawBodyMiddleware)
-      .forRoutes({ path: 'stripe/webhooks', method: RequestMethod.POST });
-  }
-}
+export class StripeModule {}
