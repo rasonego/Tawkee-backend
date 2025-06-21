@@ -130,6 +130,58 @@ export class AuthService {
         },
       });
 
+      const plan = await this.prisma.plan.findFirst({
+        where: {
+          isActive: true,
+          isEnterprise: false,
+          trialDays: { gt: 0 },
+        },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          stripePriceId: true,
+          description: true,
+          features: true,
+          creditsLimit: true,
+          agentLimit: true,
+          trainingTextLimit: true,
+          trainingWebsiteLimit: true,
+          trainingVideoLimit: true,
+          trainingDocumentLimit: true,
+          isEnterprise: true,
+          trialDays: true
+        }
+      });
+
+      if (!plan) throw new Error('No valid public trial plan found');
+
+      const now = new Date();
+      const trialEnd = new Date(now.getTime() + (plan.trialDays ?? 14) * 86400000);
+
+      await this.prisma.subscription.create({
+        data: {
+          workspaceId: workspace.id,
+          planId: plan.id,
+          stripeSubscriptionId: 'trial-local',
+          stripeCustomerId: 'trial-local',
+          status: 'TRIAL',
+          currentPeriodStart: now,
+          currentPeriodEnd: trialEnd,
+          trialStart: now,
+          trialEnd: trialEnd,
+        }
+      });
+
+      await this.prisma.smartRechargeSetting.create({
+        data: {
+          workspaceId: workspace.id,
+          threshold: 1000,
+          rechargeAmount: 1000,
+          active: false,
+        },
+      });
+
       // Prepare user creation data
       const userData: any = {
         email,
