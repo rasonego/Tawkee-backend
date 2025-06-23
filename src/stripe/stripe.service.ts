@@ -354,12 +354,12 @@ export class StripeService {
     customer: string;
     amount: number;
     currency: string;
-    description: string; // ex: "Smart Recharge - 100 créditos"
+    description: string;
   }): Promise<Stripe.Invoice> {
     const totalCents = params.amount * PRICE_PER_CREDIT_CENTS;
 
     try {
-      // 1. Cria o item da fatura pendente
+      // 1. Cria o invoice item
       await this.stripe.invoiceItems.create({
         customer: params.customer,
         amount: totalCents,
@@ -367,38 +367,43 @@ export class StripeService {
         description: params.description || `Smart Recharge - ${params.amount} créditos`,
       });
 
-      // 2. Verifica se o customer tem payment method padrão
-      const customer = await this.stripe.customers.retrieve(params.customer) as Stripe.Customer;
+      // 2. Recupera o customer
+      let customer = await this.stripe.customers.retrieve(params.customer) as Stripe.Customer;
+      let defaultPm = customer.invoice_settings?.default_payment_method;
 
-      const defaultPm = customer.invoice_settings?.default_payment_method;
-
+      // 3. Se não houver, tenta buscar payment methods válidos
       if (!defaultPm || (typeof defaultPm === 'string' && defaultPm.trim() === '')) {
-        this.logger.warn(`Customer ${params.customer} does not have a default_payment_method set.`);
-        throw new Error('Cannot pay invoice: missing default payment method.');
-      }
+        this.logger.warn(`Customer ${params.customer} has no default payment method. Attempting to set one manually.`);
 
-      // 3. Loga o método de pagamento para debug
-      try {
-        const pm = typeof defaultPm === 'string'
-          ? await this.stripe.paymentMethods.retrieve(defaultPm)
-          : defaultPm;
+        const paymentMethods = await this.stripe.paymentMethods.list({
+          customer: params.customer,
+          type: 'card',
+        });
 
-        this.logger.debug(`Customer ${params.customer} default payment method: ${JSON.stringify(pm, null, 2)}`);
-      } catch (err) {
-        this.logger.warn(`Could not retrieve default payment method: ${err.message}`);
+        const firstValidPm = paymentMethods.data[0];
+
+        if (firstValidPm) {
+          await this.stripe.customers.update(params.customer, {
+            invoice_settings: { default_payment_method: firstValidPm.id },
+          });
+
+          defaultPm = firstValidPm.id;
+          this.logger.log(`Set default payment method ${firstValidPm.id} for customer ${params.customer}.`);
+        } else {
+          throw new Error(`Cannot pay invoice: no valid card payment methods found for customer ${params.customer}.`);
+        }
       }
 
       // 4. Cria a fatura com cobrança automática
       const invoice = await this.stripe.invoices.create({
         customer: params.customer,
-        auto_advance: true, // Stripe finaliza e tenta cobrar automaticamente
+        auto_advance: true,
         collection_method: 'charge_automatically',
         pending_invoice_items_behavior: 'include',
       });
 
       this.logger.log(`Invoice ${invoice.id} created for customer ${params.customer} with ${totalCents} cents.`);
 
-      // ⚠️ Não pague manualmente. O webhook `invoice.payment_succeeded` processará a lógica de crédito.
       return invoice;
     } catch (error: any) {
       this.logger.error(`Error creating or paying invoice: ${error.message}`);
