@@ -218,7 +218,7 @@ export class CreditService {
         quantity: creditCost,
         metadata: { ...metadata, creditEventId },
         createdAt: now,
-        creditType: 'PLAN',
+        usedFrom: 'PLAN',
       });
       remainingPlanCredits -= creditCost;
     } else {
@@ -232,7 +232,7 @@ export class CreditService {
           quantity: remainingPlanCredits,
           metadata: { ...metadata, creditEventId },
           createdAt: now,
-          creditType: 'PLAN',
+          usedFrom: 'PLAN',
         });
       }
       const extraAmount = creditCost - remainingPlanCredits;
@@ -245,7 +245,7 @@ export class CreditService {
         quantity: extraAmount,
         metadata: { ...metadata, creditEventId },
         createdAt: now,
-        creditType: 'EXTRA',
+        usedFrom: 'EXTRA',
       });
 
       remainingPlanCredits = 0;
