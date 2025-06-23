@@ -26,6 +26,7 @@ export class AgentsService {
 
     const where = {
       workspaceId,
+      isDeleted: false,
       ...(query
         ? { name: { contains: query, mode: 'insensitive' as any } }
         : {}),
@@ -312,7 +313,7 @@ export class AgentsService {
 
   async findOne(id: string): Promise<EnhancedAgentDto> {
     const agent = await this.prisma.agent.findUnique({
-      where: { id },
+      where: { id, isDeleted: false },
       select: {
         id: true,
         workspaceId: true,
@@ -691,8 +692,9 @@ export class AgentsService {
   async remove(id: string): Promise<{ success: boolean; message?: string }> {
     try {
       // If there are no related records, delete the agent
-      await this.prisma.agent.delete({
+      await this.prisma.agent.update({
         where: { id },
+        data: { isDeleted: true }
       });
 
       return { success: true, message: 'Agent deleted successfully' };

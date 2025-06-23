@@ -74,7 +74,7 @@ export class ChannelsService {
   ): Promise<ChannelDto> {
     // First verify if the agent exists
     const agent = await this.prisma.agent.findUnique({
-      where: { id: agentId },
+      where: { id: agentId, isDeleted: false },
     });
 
     if (!agent) {

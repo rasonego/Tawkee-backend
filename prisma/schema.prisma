@@ -74,6 +74,7 @@ model Agent {
   interactions      Interaction[]
   trainings         Training[]
 
+  isDeleted         Boolean @default(false)
   googleToken        AgentGoogleToken?
   scheduleSettings   ScheduleSettings?
   elevenLabsSettings ElevenLabsSettings?
