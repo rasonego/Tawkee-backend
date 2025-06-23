@@ -207,7 +207,10 @@ export class StripeService {
       metadata: { workspaceId },
 
       // 🔐 Garante que o método de pagamento será coletado e salvo
-      payment_method_collection: 'always'
+      payment_method_collection: 'always',
+
+      // 🛠 Força a criação de SetupIntent, mesmo em modo subscription
+      setup_intent_data: {},      
     });
 
     return session.url!;
@@ -378,7 +381,7 @@ export class StripeService {
         const pm = await this.stripe.paymentMethods.retrieve(defaultPm);
         this.logger.debug(`Customer ${params.customer} default payment method info: ${JSON.stringify(pm, null, 2)}`);
       }
-      
+
       // 3. Cria a fatura com cobrança automática
       const invoice = await this.stripe.invoices.create({
         customer: params.customer,
