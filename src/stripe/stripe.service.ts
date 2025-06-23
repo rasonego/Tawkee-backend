@@ -812,93 +812,48 @@ export class StripeService {
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
 
-        if (invoice.billing_reason !== 'subscription_update') break;
+        const isOneTimeRecharge = invoice.lines?.data?.some(line =>
+          line.description?.toLowerCase().includes('smart recharge')
+        );
 
-        const subscriptionId = invoice.parent?.type === 'subscription_details'
-          ? invoice.parent.subscription_details.subscription
-          : null;
+        if (isOneTimeRecharge) {
+          const customerId = invoice.customer as string;
 
-        if (!subscriptionId) {
-          this.logger.warn(`Missing subscription ID in invoice ${invoice.id}`);
-          break;
-        }
+          const workspace = await this.prisma.workspace.findFirst({
+            where: { stripeCustomerId: customerId }
+          });
 
-        const subscription = await this.stripe.subscriptions.retrieve(subscriptionId as string, {
-          expand: ['items.data.price'],
-        });
+          if (!workspace) {
+            this.logger.warn(`Workspace not found for customer ${customerId}`);
+            break;
+          }
 
-        const item = subscription.items.data[0];
-        const plan = await this.prisma.plan.findFirst({
-          where: { stripePriceId: item.price.id },
-        });
+          const totalCents = invoice.amount_paid;
+          const quantity = Math.floor(totalCents / PRICE_PER_CREDIT_CENTS);
 
-        if (!plan) {
-          this.logger.warn(`No plan found for new price ID: ${item.price.id}`);
-          break;
-        }
+          if (quantity <= 0) {
+            this.logger.warn(`Invoice ${invoice.id} paid but amount is too low for credits`);
+            break;
+          }
 
-        await this.prisma.subscription.updateMany({
-          where: { stripeSubscriptionId: subscriptionId as string},
-          data: {
-            planId: plan.id,
-            status: subscription.status.toUpperCase() as any,
-            currentPeriodStart: new Date(item.current_period_start * 1000),
-            currentPeriodEnd: new Date(item.current_period_end * 1000),
-            trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
-            trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
-            cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
-            canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
-          },
-        });
-
-        const existing = await this.prisma.subscription.findFirst({
-          where: { stripeSubscriptionId: subscriptionId as string },
-          select: {
-            workspaceId: true,
-            status: true,
-            currentPeriodEnd: true,
-            trialEnd: true,
-            featureOverrides: true,
-            creditsLimitOverrides: true,
-            agentLimitOverrides: true,
-            trainingTextLimitOverrides: true,
-            trainingWebsiteLimitOverrides: true,
-            trainingVideoLimitOverrides: true,
-            trainingDocumentLimitOverrides: true,
-            cancelAtPeriodEnd: true,
-            canceledAt: true,
-            plan: {
-              select: {
-                name: true,
-                stripePriceId: true,
-                description: true,
-                features: true,
-                creditsLimit: true,
-                agentLimit: true,
-                trainingTextLimit: true,
-                trainingWebsiteLimit: true,
-                trainingVideoLimit: true,
-                trainingDocumentLimit: true,
-                isEnterprise: true,
-                trialDays: true,
+          await this.prisma.extraCreditPurchase.create({
+            data: {
+              workspaceId: workspace.id,
+              quantity,
+              source: 'AUTOMATIC',
+              metadata: {
+                stripeInvoiceId: invoice.id,
+                paidAt: new Date().toISOString(),
               },
             },
-          },
-        });
+          });
 
-        const { workspaceId, plan: updatedPlan, ...remainingData } = existing;
+          this.websocketService.sendToClient(workspace.id, 'workspaceCreditsUpdate', {
+            extraCredits: quantity,
+          });
 
-        const stripePrice = updatedPlan?.stripePriceId
-          ? await this.getPriceDetailsById(updatedPlan.stripePriceId)
-          : undefined;
-
-        this.websocketService.sendToClient(workspaceId, 'subscriptionUpdated', {
-          subscription: remainingData,
-          plan: updatedPlan && stripePrice ? {
-            ...updatedPlan,
-            ...stripePrice,
-          } : undefined,
-        });
+          this.logger.log(`Registered ${quantity} auto-credits for workspace ${workspace.id}`);
+        }
 
         break;
       }
