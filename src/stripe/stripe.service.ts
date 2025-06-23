@@ -359,7 +359,7 @@ export class StripeService {
     const totalCents = params.amount * PRICE_PER_CREDIT_CENTS;
 
     try {
-      // 1. Cria o invoice item
+      // 1. Cria o item da fatura
       await this.stripe.invoiceItems.create({
         customer: params.customer,
         amount: totalCents,
@@ -367,11 +367,10 @@ export class StripeService {
         description: params.description || `Smart Recharge - ${params.amount} créditos`,
       });
 
-      // 2. Recupera o customer
+      // 2. Verifica se o cliente tem payment method padrão
       let customer = await this.stripe.customers.retrieve(params.customer) as Stripe.Customer;
       let defaultPm = customer.invoice_settings?.default_payment_method;
 
-      // 3. Se não houver, tenta buscar payment methods válidos
       if (!defaultPm || (typeof defaultPm === 'string' && defaultPm.trim() === '')) {
         this.logger.warn(`Customer ${params.customer} has no default payment method. Attempting to set one manually.`);
 
@@ -382,29 +381,37 @@ export class StripeService {
 
         const firstValidPm = paymentMethods.data[0];
 
-        if (firstValidPm) {
-          await this.stripe.customers.update(params.customer, {
-            invoice_settings: { default_payment_method: firstValidPm.id },
-          });
-
-          defaultPm = firstValidPm.id;
-          this.logger.log(`Set default payment method ${firstValidPm.id} for customer ${params.customer}.`);
-        } else {
+        if (!firstValidPm) {
           throw new Error(`Cannot pay invoice: no valid card payment methods found for customer ${params.customer}.`);
         }
+
+        await this.stripe.customers.update(params.customer, {
+          invoice_settings: { default_payment_method: firstValidPm.id },
+        });
+
+        defaultPm = firstValidPm.id;
+        this.logger.log(`Set default payment method ${firstValidPm.id} for customer ${params.customer}.`);
       }
 
-      // 4. Cria a fatura com cobrança automática
+      // 3. Cria a fatura (auto_advance manual)
       const invoice = await this.stripe.invoices.create({
         customer: params.customer,
-        auto_advance: true,
+        auto_advance: false,
         collection_method: 'charge_automatically',
         pending_invoice_items_behavior: 'include',
       });
 
       this.logger.log(`Invoice ${invoice.id} created for customer ${params.customer} with ${totalCents} cents.`);
 
-      return invoice;
+      // 4. Finaliza a fatura
+      const finalized = await this.stripe.invoices.finalizeInvoice(invoice.id);
+      this.logger.log(`Invoice ${finalized.id} finalized.`);
+
+      // 5. Tenta pagamento imediato
+      const paid = await this.stripe.invoices.pay(finalized.id);
+      this.logger.log(`Invoice ${paid.id} paid.`);
+
+      return paid;
     } catch (error: any) {
       this.logger.error(`Error creating or paying invoice: ${error.message}`);
       throw error;
