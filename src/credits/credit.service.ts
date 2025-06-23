@@ -254,20 +254,25 @@ export class CreditService {
 
     await this.prisma.usageRecord.createMany({ data: records });
 
-    await this.handleSmartRechargeIfNeeded(workspaceId, remainingExtraCredits);
-
     this.websocketService.sendToClient(workspaceId, 'workspaceCreditsUpdate', {
       planCredits: remainingPlanCredits,
       extraCredits: remainingExtraCredits,
     });
+
+    await this.handleSmartRechargeIfNeeded(workspaceId, remainingPlanCredits, remainingExtraCredits);
+
   }
 
-  private async handleSmartRechargeIfNeeded(workspaceId: string, remainingExtraCredits: number) {
+  private async handleSmartRechargeIfNeeded(
+    workspaceId: string, remainingPlanCredits: number, remainingExtraCredits: number
+  ) {
     const setting = await this.prisma.smartRechargeSetting.findUnique({
       where: { workspaceId },
     });
 
-    if (!setting || !setting.active || remainingExtraCredits >= setting.threshold) {
+    const remainingCredits: number = remainingPlanCredits + remainingExtraCredits;
+
+    if (!setting || !setting.active || remainingCredits >= setting.threshold) {
       return;
     }
 
@@ -304,6 +309,11 @@ export class CreditService {
             stripeInvoiceItemId: invoiceItem.id,
           },
         },
+      });
+
+      this.websocketService.sendToClient(workspaceId, 'workspaceCreditsUpdate', {
+        planCredits: remainingPlanCredits,
+        extraCredits: remainingExtraCredits + setting.rechargeAmount,
       });
     }
   }
