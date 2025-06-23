@@ -867,9 +867,7 @@ export class StripeService {
           this.logger.warn(`Payment failed for subscription: ${subscriptionId}`);
           break;
         }
-      }
-
-      
+      }     
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
@@ -898,17 +896,28 @@ export class StripeService {
             break;
           }
 
-          await this.prisma.extraCreditPurchase.create({
-            data: {
-              workspaceId: workspace.id,
-              quantity,
-              source: 'AUTOMATIC',
+          const existing = await this.prisma.extraCreditPurchase.findFirst({
+            where: {
               metadata: {
-                stripeInvoiceId: invoice.id,
-                paidAt: new Date().toISOString(),
+                path: ['stripeInvoiceId'],
+                equals: invoice.id,
               },
             },
           });
+
+          if (!existing) {
+            await this.prisma.extraCreditPurchase.create({
+              data: {
+                workspaceId: workspace.id,
+                quantity,
+                source: 'AUTOMATIC',
+                metadata: {
+                  stripeInvoiceId: invoice.id,
+                  paidAt: new Date().toISOString(),
+                },
+              },
+            });
+          }
 
           const { planCreditsRemaining, extraCreditsRemaining } = await this.creditService.getWorkspaceRemainingCredits(
             workspace.id
