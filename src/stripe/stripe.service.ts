@@ -197,25 +197,21 @@ export class StripeService {
     return subscriptions.data;
   }
 
-async createCheckoutSession(workspaceId: string, priceId: string): Promise<string> {
-  const session = await this.stripe.checkout.sessions.create({
-    mode: 'subscription',
-    payment_method_types: ['card'],
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${this.configService.get('FRONTEND_URL')}/billing-success`,
-    cancel_url: `${this.configService.get('FRONTEND_URL')}/cancel`,
-    metadata: { workspaceId },
+  async createCheckoutSession(workspaceId: string, priceId: string): Promise<string> {
+    const session = await this.stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${this.configService.get('FRONTEND_URL')}/billing-success`,
+      cancel_url: `${this.configService.get('FRONTEND_URL')}/cancel`,
+      metadata: { workspaceId },
 
-    // 🔐 Garante que o método de pagamento será coletado e salvo
-    payment_method_collection: 'always',
+      // 🔐 Garante que o método de pagamento será coletado e salvo
+      payment_method_collection: 'always'
+    });
 
-    // 🧾 Cria um novo customer caso ainda não exista
-    customer_creation: 'always',
-  });
-
-  return session.url!;
-}
-
+    return session.url!;
+  }
 
   async getBillingStatus(workspaceId: string) {
     const workspace = await this.prisma.workspace.findUnique({
