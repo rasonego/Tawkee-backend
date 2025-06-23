@@ -344,40 +344,32 @@ export class StripeService {
     return session.url!;
   }
 
-  async createInvoiceItem(params: {
+  async createAndPayInvoiceWithItem(params: {
     customer: string;
     amount: number;
     currency: string;
     description: string;
-  }): Promise<Stripe.InvoiceItem> {
-
-    const totalCents = params.amount * PRICE_PER_CREDIT_CENTS;
-
+  }): Promise<Stripe.Invoice> {
     try {
-      return await this.stripe.invoiceItems.create({
+      // Passo 1: Cria fatura sem avançar
+      const invoice = await this.stripe.invoices.create({
+        customer: params.customer,
+        auto_advance: false,
+        collection_method: 'charge_automatically',
+      });
+
+      const totalCents = params.amount * PRICE_PER_CREDIT_CENTS;
+
+      // Passo 2: Associa item diretamente à fatura
+      await this.stripe.invoiceItems.create({
         customer: params.customer,
         amount: totalCents,
         currency: params.currency,
         description: params.description,
-      });
-    } catch (error) {
-      this.logger.error(`Error creating invoice item: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async createAndPayInvoice(params: {
-    customer: string;
-  }): Promise<Stripe.Invoice> {
-    try {
-      const invoice = await this.stripe.invoices.create({
-        customer: params.customer,
-        auto_advance: false, // Important: avoid paying the invoce before finalization
-        collection_method: 'charge_automatically',
+        invoice: invoice.id, // força vinculação direta
       });
 
-      await new Promise(resolve => setTimeout(resolve, 500));
-
+      // Passo 3: Finaliza e paga
       const finalized = await this.stripe.invoices.finalizeInvoice(invoice.id);
       return await this.stripe.invoices.pay(finalized.id);
     } catch (error) {

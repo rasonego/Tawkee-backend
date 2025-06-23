@@ -284,15 +284,11 @@ export class CreditService {
       throw new Error('Cannot process recharge: missing Stripe customer ID');
     }
 
-    const invoiceItem = await this.stripeService.createInvoiceItem({
+    const invoice = await this.stripeService.createAndPayInvoiceWithItem({
       customer: workspace.stripeCustomerId,
       amount: setting.rechargeAmount,
       currency: 'usd',
       description: `Smart Recharge: ${setting.rechargeAmount} extra credits`,
-    });
-
-    const invoice = await this.stripeService.createAndPayInvoice({
-      customer: workspace.stripeCustomerId,
     });
 
     if (invoice.status === 'paid') {
@@ -303,15 +299,14 @@ export class CreditService {
           source: 'AUTOMATIC',
           metadata: {
             triggeredAt: new Date().toISOString(),
-            stripeInvoiceId: invoice.id,
-            stripeInvoiceItemId: invoiceItem.id,
+            stripeInvoiceId: invoice.id
           },
         },
       });
 
       this.websocketService.sendToClient(workspaceId, 'workspaceCreditsUpdate', {
         planCredits: remainingPlanCredits,
-        extraCredits: remainingExtraCredits + setting.rechargeAmount,
+        extraCredits: remainingExtraCredits + setting.rechargeAmount
       });
     }
   }
