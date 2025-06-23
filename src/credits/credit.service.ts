@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebsocketService } from '../websocket/websocket.service';
 import { StripeService } from '../stripe/stripe.service';
@@ -30,6 +30,8 @@ export class CreditService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly websocketService: WebsocketService,
+
+    @Inject(forwardRef(() => StripeService))
     private readonly stripeService: StripeService,
   ) {}
  
@@ -304,9 +306,11 @@ export class CreditService {
         },
       });
 
+      const { planCreditsRemaining, extraCreditsRemaining } = await this.getWorkspaceRemainingCredits(workspaceId);
+
       this.websocketService.sendToClient(workspaceId, 'workspaceCreditsUpdate', {
-        planCredits: remainingPlanCredits,
-        extraCredits: remainingExtraCredits + setting.rechargeAmount
+        planCredits: planCreditsRemaining,
+        extraCredits: extraCreditsRemaining
       });
     }
   }

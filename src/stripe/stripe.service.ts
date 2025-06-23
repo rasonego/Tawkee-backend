@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import Stripe from 'stripe';
 import { CreatePlanFromStripeDto } from './dto/create-plan-from-stripe.dto';
 import { WebsocketService } from 'src/websocket/websocket.service';
+import { CreditService } from 'src/credits/credit.service';
 
 const PRICE_PER_CREDIT_CENTS = 4;
 
@@ -15,6 +16,10 @@ export class StripeService {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
+
+    @Inject(forwardRef(() => CreditService))
+    private creditService: CreditService,
+
     private websocketService: WebsocketService
   ) {
     this.stripe = new Stripe(
@@ -864,6 +869,8 @@ export class StripeService {
         }
       }
 
+      
+
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
 
@@ -903,8 +910,13 @@ export class StripeService {
             },
           });
 
+          const { planCreditsRemaining, extraCreditsRemaining } = await this.creditService.getWorkspaceRemainingCredits(
+            workspace.id
+          );
+
           this.websocketService.sendToClient(workspace.id, 'workspaceCreditsUpdate', {
-            extraCredits: quantity,
+            planCredits: planCreditsRemaining,
+            extraCredits: extraCreditsRemaining,
           });
 
           this.logger.log(`Registered ${quantity} auto-credits for workspace ${workspace.id}`);
