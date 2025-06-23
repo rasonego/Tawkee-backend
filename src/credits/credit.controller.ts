@@ -39,5 +39,5 @@ export class CreditController {
     @Body() dto: UpdateSmartRechargeSettingDto
   ) {
     return this.creditService.updateSmartRechargeSetting(workspaceId, dto);
-  }x
+  }
 }
