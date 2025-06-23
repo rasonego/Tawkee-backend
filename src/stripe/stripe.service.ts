@@ -353,7 +353,7 @@ export class StripeService {
     const totalCents = params.amount * PRICE_PER_CREDIT_CENTS;
 
     try {
-      // 1. Cria o invoice item (fica pendente)
+      // 1. Cria o invoice item pendente
       await this.stripe.invoiceItems.create({
         customer: params.customer,
         amount: totalCents,
@@ -361,23 +361,25 @@ export class StripeService {
         description: params.description,
       });
 
-      // 2. Cria a fatura com auto inclusão de itens pendentes
+      // 2. Recupera o customer para verificar se tem payment method
+      const customer = await this.stripe.customers.retrieve(params.customer) as Stripe.Customer;
+
+      if (!customer.invoice_settings?.default_payment_method) {
+        this.logger.warn(`Customer ${params.customer} does not have a default_payment_method set.`);
+        throw new Error('Cannot pay invoice: missing default payment method.');
+      }
+
+      // 3. Cria a fatura com auto inclusão de itens pendentes
       const invoice = await this.stripe.invoices.create({
         customer: params.customer,
-        auto_advance: false,
+        auto_advance: true, // deixa a Stripe cuidar da finalização
         collection_method: 'charge_automatically',
         pending_invoice_items_behavior: 'include',
       });
 
-      // 3. Finaliza
-      const finalized = await this.stripe.invoices.finalizeInvoice(invoice.id);
+      this.logger.log(`Invoice ${invoice.id} created with ${totalCents} cents.`);
 
-      // 4. Paga se necessário
-      if (finalized.status !== 'paid') {
-        return await this.stripe.invoices.pay(finalized.id);
-      }
-
-      return finalized;
+      return invoice; // não é necessário pagar manualmente
     } catch (error: any) {
       this.logger.error(`Error creating or paying invoice: ${error.message}`);
       throw error;
@@ -515,13 +517,32 @@ export class StripeService {
           return;
         }
 
-        if (session.mode === 'subscription') {
-          // Reexpande customer + subscription
-          const fullSession = await this.stripe.checkout.sessions.retrieve(session.id, {
-            expand: ['customer', 'subscription']
-          });
+        const fullSession = await this.stripe.checkout.sessions.retrieve(session.id, {
+          expand: ['customer', 'subscription', 'setup_intent', 'payment_intent']
+        });
 
-          const customer = fullSession.customer as Stripe.Customer;
+        const customer = fullSession.customer as Stripe.Customer;
+
+        // Determina e aplica o payment_method ao Customer
+        let paymentMethodId: string | undefined;
+        if (fullSession.setup_intent) {
+          const setupIntent = await this.stripe.setupIntents.retrieve(fullSession.setup_intent as string);
+          paymentMethodId = setupIntent.payment_method as string;
+        } else if (fullSession.payment_intent) {
+          const paymentIntent = await this.stripe.paymentIntents.retrieve(fullSession.payment_intent as string);
+          paymentMethodId = paymentIntent.payment_method as string;
+        }
+
+        if (paymentMethodId) {
+          await this.stripe.customers.update(customer.id, {
+            invoice_settings: { default_payment_method: paymentMethodId }
+          });
+          this.logger.log(`Set default_payment_method for customer ${customer.id}`);
+        } else {
+          this.logger.warn(`Could not extract payment_method for customer ${customer.id}`);
+        }
+
+        if (session.mode === 'subscription') {
           const subscription = fullSession.subscription as Stripe.Subscription;
           const item = subscription.items.data[0];
 
@@ -536,9 +557,7 @@ export class StripeService {
 
           await this.prisma.workspace.update({
             where: { id: workspaceId },
-            data: {
-              stripeCustomerId: customer.id
-            }
+            data: { stripeCustomerId: customer.id },
           });
 
           const existing = await this.prisma.subscription.findFirst({
@@ -626,7 +645,7 @@ export class StripeService {
                     isEnterprise: true,
                     trialDays: true                    
                   }
-                }                
+                }
               }
             });
           }
@@ -644,7 +663,6 @@ export class StripeService {
               ...stripePrice
             } : undefined
           });
-
         } else if (session.mode === 'payment') {
           const quantity = parseInt(session.metadata?.credits || '0', 10);
           if (!quantity || quantity <= 0) {
@@ -666,7 +684,6 @@ export class StripeService {
 
           this.logger.log(`Logged ${quantity} credits for workspace ${workspaceId}`);
         }
-
         break;
       }
 
