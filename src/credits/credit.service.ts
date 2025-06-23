@@ -284,11 +284,9 @@ export class CreditService {
       throw new Error('Cannot process recharge: missing Stripe customer ID');
     }
 
-    const amountInCents = setting.rechargeAmount * 100;
-
     const invoiceItem = await this.stripeService.createInvoiceItem({
       customer: workspace.stripeCustomerId,
-      amount: amountInCents,
+      amount: setting.rechargeAmount,
       currency: 'usd',
       description: `Smart Recharge: ${setting.rechargeAmount} extra credits`,
     });

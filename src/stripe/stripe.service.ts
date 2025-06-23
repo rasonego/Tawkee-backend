@@ -5,6 +5,8 @@ import Stripe from 'stripe';
 import { CreatePlanFromStripeDto } from './dto/create-plan-from-stripe.dto';
 import { WebsocketService } from 'src/websocket/websocket.service';
 
+const PRICE_PER_CREDIT_CENTS = 4;
+
 @Injectable()
 export class StripeService {
   private readonly stripe: Stripe;
@@ -312,8 +314,7 @@ export class StripeService {
     }
 
     // Set your price per credit here (e.g. $0.01 per credit)
-    const pricePerCreditCents = 4;
-    const totalCents = amount * pricePerCreditCents;
+    const totalCents = amount * PRICE_PER_CREDIT_CENTS;
 
     const session = await this.stripe.checkout.sessions.create({
       mode: 'payment',
@@ -349,10 +350,13 @@ export class StripeService {
     currency: string;
     description: string;
   }): Promise<Stripe.InvoiceItem> {
+
+    const totalCents = params.amount * PRICE_PER_CREDIT_CENTS;
+
     try {
       return await this.stripe.invoiceItems.create({
         customer: params.customer,
-        amount: params.amount,
+        amount: totalCents,
         currency: params.currency,
         description: params.description,
       });
@@ -368,11 +372,14 @@ export class StripeService {
     try {
       const invoice = await this.stripe.invoices.create({
         customer: params.customer,
-        auto_advance: true, // Automatically finalize the invoice
+        auto_advance: false, // Important: avoid paying the invoce before finalization
         collection_method: 'charge_automatically',
       });
 
-      return await this.stripe.invoices.pay(invoice.id);
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const finalized = await this.stripe.invoices.finalizeInvoice(invoice.id);
+      return await this.stripe.invoices.pay(finalized.id);
     } catch (error) {
       this.logger.error(`Error creating or paying invoice: ${error.message}`);
       throw error;
