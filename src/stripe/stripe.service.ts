@@ -197,18 +197,25 @@ export class StripeService {
     return subscriptions.data;
   }
 
-  async createCheckoutSession(workspaceId: string, priceId: string): Promise<string> {
-    const session = await this.stripe.checkout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${this.configService.get('FRONTEND_URL')}/billing-success`,
-      cancel_url: `${this.configService.get('FRONTEND_URL')}/cancel`,
-      metadata: { workspaceId },
-    });
+async createCheckoutSession(workspaceId: string, priceId: string): Promise<string> {
+  const session = await this.stripe.checkout.sessions.create({
+    mode: 'subscription',
+    payment_method_types: ['card'],
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${this.configService.get('FRONTEND_URL')}/billing-success`,
+    cancel_url: `${this.configService.get('FRONTEND_URL')}/cancel`,
+    metadata: { workspaceId },
 
-    return session.url!;
-  }
+    // 🔐 Garante que o método de pagamento será coletado e salvo
+    payment_method_collection: 'always',
+
+    // 🧾 Cria um novo customer caso ainda não exista
+    customer_creation: 'always',
+  });
+
+  return session.url!;
+}
+
 
   async getBillingStatus(workspaceId: string) {
     const workspace = await this.prisma.workspace.findUnique({
@@ -361,25 +368,27 @@ export class StripeService {
         description: params.description,
       });
 
-      // 2. Recupera o customer para verificar se tem payment method
+      // 2. Verifica se o customer tem payment method
       const customer = await this.stripe.customers.retrieve(params.customer) as Stripe.Customer;
 
-      if (!customer.invoice_settings?.default_payment_method) {
+      const defaultPm = customer.invoice_settings?.default_payment_method;
+      if (!defaultPm || (typeof defaultPm === 'string' && defaultPm.trim() === '')) {
         this.logger.warn(`Customer ${params.customer} does not have a default_payment_method set.`);
         throw new Error('Cannot pay invoice: missing default payment method.');
       }
 
-      // 3. Cria a fatura com auto inclusão de itens pendentes
+      // 3. Cria a fatura com cobrança automática
       const invoice = await this.stripe.invoices.create({
         customer: params.customer,
-        auto_advance: true, // deixa a Stripe cuidar da finalização
+        auto_advance: true,
         collection_method: 'charge_automatically',
         pending_invoice_items_behavior: 'include',
       });
 
       this.logger.log(`Invoice ${invoice.id} created with ${totalCents} cents.`);
 
-      return invoice; // não é necessário pagar manualmente
+      // 4. Não é necessário pagar manualmente — webhook tratará se necessário
+      return invoice;
     } catch (error: any) {
       this.logger.error(`Error creating or paying invoice: ${error.message}`);
       throw error;
