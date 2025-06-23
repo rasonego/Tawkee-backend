@@ -354,45 +354,51 @@ export class StripeService {
     customer: string;
     amount: number;
     currency: string;
-    description: string;
+    description: string; // ex: "Smart Recharge - 100 créditos"
   }): Promise<Stripe.Invoice> {
     const totalCents = params.amount * PRICE_PER_CREDIT_CENTS;
 
     try {
-      // 1. Cria o invoice item pendente
+      // 1. Cria o item da fatura pendente
       await this.stripe.invoiceItems.create({
         customer: params.customer,
         amount: totalCents,
         currency: params.currency,
-        description: params.description,
+        description: params.description || `Smart Recharge - ${params.amount} créditos`,
       });
 
-      // 2. Verifica se o customer tem payment method
+      // 2. Verifica se o customer tem payment method padrão
       const customer = await this.stripe.customers.retrieve(params.customer) as Stripe.Customer;
-      
+
       const defaultPm = customer.invoice_settings?.default_payment_method;
-      
+
       if (!defaultPm || (typeof defaultPm === 'string' && defaultPm.trim() === '')) {
         this.logger.warn(`Customer ${params.customer} does not have a default_payment_method set.`);
         throw new Error('Cannot pay invoice: missing default payment method.');
       }
-      
-      if (typeof defaultPm === 'string') {
-        const pm = await this.stripe.paymentMethods.retrieve(defaultPm);
-        this.logger.debug(`Customer ${params.customer} default payment method info: ${JSON.stringify(pm, null, 2)}`);
+
+      // 3. Loga o método de pagamento para debug
+      try {
+        const pm = typeof defaultPm === 'string'
+          ? await this.stripe.paymentMethods.retrieve(defaultPm)
+          : defaultPm;
+
+        this.logger.debug(`Customer ${params.customer} default payment method: ${JSON.stringify(pm, null, 2)}`);
+      } catch (err) {
+        this.logger.warn(`Could not retrieve default payment method: ${err.message}`);
       }
 
-      // 3. Cria a fatura com cobrança automática
+      // 4. Cria a fatura com cobrança automática
       const invoice = await this.stripe.invoices.create({
         customer: params.customer,
-        auto_advance: true,
+        auto_advance: true, // Stripe finaliza e tenta cobrar automaticamente
         collection_method: 'charge_automatically',
         pending_invoice_items_behavior: 'include',
       });
 
-      this.logger.log(`Invoice ${invoice.id} created with ${totalCents} cents.`);
+      this.logger.log(`Invoice ${invoice.id} created for customer ${params.customer} with ${totalCents} cents.`);
 
-      // 4. Não é necessário pagar manualmente — webhook tratará se necessário
+      // ⚠️ Não pague manualmente. O webhook `invoice.payment_succeeded` processará a lógica de crédito.
       return invoice;
     } catch (error: any) {
       this.logger.error(`Error creating or paying invoice: ${error.message}`);
@@ -537,24 +543,24 @@ export class StripeService {
 
         const customer = fullSession.customer as Stripe.Customer;
 
-        // Determina e aplica o payment_method ao Customer
+        // Determina e aplica o payment_method ao Customer (somente se ainda não tiver)
         let paymentMethodId: string | undefined;
-        if (fullSession.setup_intent) {
-          const setupIntent = await this.stripe.setupIntents.retrieve(fullSession.setup_intent as string);
+
+        if (typeof fullSession.setup_intent === 'string') {
+          const setupIntent = await this.stripe.setupIntents.retrieve(fullSession.setup_intent);
           paymentMethodId = setupIntent.payment_method as string;
-        } else if (fullSession.payment_intent) {
-          const paymentIntent = await this.stripe.paymentIntents.retrieve(fullSession.payment_intent as string);
+        } else if (typeof fullSession.payment_intent === 'string') {
+          const paymentIntent = await this.stripe.paymentIntents.retrieve(fullSession.payment_intent);
           paymentMethodId = paymentIntent.payment_method as string;
         }
 
         if (paymentMethodId) {
-          // 1. Anexa ao customer (necessário para tornar válido)
           try {
             await this.stripe.paymentMethods.attach(paymentMethodId, {
-              customer: customer.id
+              customer: customer.id,
             });
             this.logger.log(`Attached payment method ${paymentMethodId} to customer ${customer.id}`);
-          } catch (e) {
+          } catch (e: any) {
             if (e.code !== 'resource_already_attached') {
               this.logger.error(`Failed to attach payment method ${paymentMethodId}: ${e.message}`);
               throw e;
@@ -563,7 +569,6 @@ export class StripeService {
             }
           }
 
-          // 2. Define como default
           await this.stripe.customers.update(customer.id, {
             invoice_settings: { default_payment_method: paymentMethodId }
           });
@@ -606,90 +611,81 @@ export class StripeService {
             canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
           };
 
-          let subscriptionUpdated;
-          if (existing) {
-            subscriptionUpdated = await this.prisma.subscription.update({
-              where: { id: existing.id },
-              data: subscriptionData,
-              select: {
-                status: true,
-                currentPeriodEnd: true,
-                trialEnd: true,
-                featureOverrides: true,
-                creditsLimitOverrides: true,
-                agentLimitOverrides: true,
-                trainingTextLimitOverrides: true,
-                trainingWebsiteLimitOverrides: true,
-                trainingVideoLimitOverrides: true,
-                trainingDocumentLimitOverrides: true,
-                cancelAtPeriodEnd: true,
-                canceledAt: true,
-                plan: {
-                  select: {
-                    name: true,
-                    stripePriceId: true,
-                    description: true,
-                    features: true,
-                    creditsLimit: true,
-                    agentLimit: true,
-                    trainingTextLimit: true,
-                    trainingWebsiteLimit: true,
-                    trainingVideoLimit: true,
-                    trainingDocumentLimit: true,
-                    isEnterprise: true,
-                    trialDays: true                    
+          const subscriptionUpdated = existing
+            ? await this.prisma.subscription.update({
+                where: { id: existing.id },
+                data: subscriptionData,
+                select: {
+                  status: true,
+                  currentPeriodEnd: true,
+                  trialEnd: true,
+                  featureOverrides: true,
+                  creditsLimitOverrides: true,
+                  agentLimitOverrides: true,
+                  trainingTextLimitOverrides: true,
+                  trainingWebsiteLimitOverrides: true,
+                  trainingVideoLimitOverrides: true,
+                  trainingDocumentLimitOverrides: true,
+                  cancelAtPeriodEnd: true,
+                  canceledAt: true,
+                  plan: {
+                    select: {
+                      name: true,
+                      stripePriceId: true,
+                      description: true,
+                      features: true,
+                      creditsLimit: true,
+                      agentLimit: true,
+                      trainingTextLimit: true,
+                      trainingWebsiteLimit: true,
+                      trainingVideoLimit: true,
+                      trainingDocumentLimit: true,
+                      isEnterprise: true,
+                      trialDays: true                    
+                    }
                   }
                 }
-              }
-            });
-          } else {
-            subscriptionUpdated = await this.prisma.subscription.create({
-              data: subscriptionData,
-              select: {
-                status: true,
-                currentPeriodEnd: true,
-                trialEnd: true,
-                featureOverrides: true,
-                creditsLimitOverrides: true,
-                agentLimitOverrides: true,
-                trainingTextLimitOverrides: true,
-                trainingWebsiteLimitOverrides: true,
-                trainingVideoLimitOverrides: true,
-                trainingDocumentLimitOverrides: true,
-                cancelAtPeriodEnd: true,
-                canceledAt: true,
-                plan: {
-                  select: {
-                    name: true,
-                    stripePriceId: true,
-                    description: true,
-                    features: true,
-                    creditsLimit: true,
-                    agentLimit: true,
-                    trainingTextLimit: true,
-                    trainingWebsiteLimit: true,
-                    trainingVideoLimit: true,
-                    trainingDocumentLimit: true,
-                    isEnterprise: true,
-                    trialDays: true                    
+              })
+            : await this.prisma.subscription.create({
+                data: subscriptionData,
+                select: {
+                  status: true,
+                  currentPeriodEnd: true,
+                  trialEnd: true,
+                  featureOverrides: true,
+                  creditsLimitOverrides: true,
+                  agentLimitOverrides: true,
+                  trainingTextLimitOverrides: true,
+                  trainingWebsiteLimitOverrides: true,
+                  trainingVideoLimitOverrides: true,
+                  trainingDocumentLimitOverrides: true,
+                  cancelAtPeriodEnd: true,
+                  canceledAt: true,
+                  plan: {
+                    select: {
+                      name: true,
+                      stripePriceId: true,
+                      description: true,
+                      features: true,
+                      creditsLimit: true,
+                      agentLimit: true,
+                      trainingTextLimit: true,
+                      trainingWebsiteLimit: true,
+                      trainingVideoLimit: true,
+                      trainingDocumentLimit: true,
+                      isEnterprise: true,
+                      trialDays: true                    
+                    }
                   }
                 }
-              }
-            });
-          }
+              });
 
-          const { planData, remainingData } = subscriptionUpdated;
-
-          const stripePrice = planData?.stripePriceId
-            ? await this.getPriceDetailsById(planData.stripePriceId)
-            : undefined;
+          const { plan: planData, ...remainingData } = subscriptionUpdated;
+          const stripePrice = planData?.stripePriceId ? await this.getPriceDetailsById(planData.stripePriceId) : undefined;
 
           this.websocketService.sendToClient(workspaceId, 'subscriptionUpdated', {
             subscription: remainingData,
-            plan: planData && stripePrice ? {
-              ...planData,
-              ...stripePrice
-            } : undefined
+            plan: planData && stripePrice ? { ...planData, ...stripePrice } : undefined
           });
         } else if (session.mode === 'payment') {
           const quantity = parseInt(session.metadata?.credits || '0', 10);
@@ -712,8 +708,10 @@ export class StripeService {
 
           this.logger.log(`Logged ${quantity} credits for workspace ${workspaceId}`);
         }
+
         break;
       }
+
 
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
