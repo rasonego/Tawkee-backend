@@ -366,13 +366,19 @@ export class StripeService {
 
       // 2. Verifica se o customer tem payment method
       const customer = await this.stripe.customers.retrieve(params.customer) as Stripe.Customer;
-
+      
       const defaultPm = customer.invoice_settings?.default_payment_method;
+      
       if (!defaultPm || (typeof defaultPm === 'string' && defaultPm.trim() === '')) {
         this.logger.warn(`Customer ${params.customer} does not have a default_payment_method set.`);
         throw new Error('Cannot pay invoice: missing default payment method.');
       }
-
+      
+      if (typeof defaultPm === 'string') {
+        const pm = await this.stripe.paymentMethods.retrieve(defaultPm);
+        this.logger.debug(`Customer ${params.customer} default payment method info: ${JSON.stringify(pm, null, 2)}`);
+      }
+      
       // 3. Cria a fatura com cobrança automática
       const invoice = await this.stripe.invoices.create({
         customer: params.customer,
@@ -539,12 +545,26 @@ export class StripeService {
         }
 
         if (paymentMethodId) {
+          // 1. Anexa ao customer (necessário para tornar válido)
+          try {
+            await this.stripe.paymentMethods.attach(paymentMethodId, {
+              customer: customer.id
+            });
+            this.logger.log(`Attached payment method ${paymentMethodId} to customer ${customer.id}`);
+          } catch (e) {
+            if (e.code !== 'resource_already_attached') {
+              this.logger.error(`Failed to attach payment method ${paymentMethodId}: ${e.message}`);
+              throw e;
+            } else {
+              this.logger.warn(`Payment method ${paymentMethodId} already attached`);
+            }
+          }
+
+          // 2. Define como default
           await this.stripe.customers.update(customer.id, {
             invoice_settings: { default_payment_method: paymentMethodId }
           });
           this.logger.log(`Set default_payment_method for customer ${customer.id}`);
-        } else {
-          this.logger.warn(`Could not extract payment_method for customer ${customer.id}`);
         }
 
         if (session.mode === 'subscription') {
