@@ -113,11 +113,11 @@ export class ChannelsService {
         );
       }
 
-      try {
-        // Generate a unique instance name based on agent and timestamp
-        // const instanceName = 'default';
-        const instanceName = `TA-${channel.id}`;
+      // Generate a unique instance name based on agent and timestamp
+      // const instanceName = 'default';
+      const instanceName = `TA-${channel.id}`;
 
+      try {
         // Construct the webhook URL for this channel
         const baseUrl = process.env.OUR_ADDRESS || 'http://localhost:5000';
         const webhookUrl = `${baseUrl}/webhooks/waha`;
@@ -137,19 +137,12 @@ export class ChannelsService {
           webhookUrl,
         });
 
-        this.logger.log(JSON.stringify(instanceResult));
+        this.logger.log(JSON.stringify(instanceResult, null, 4));
 
         // Store the Waha API configuration with enhanced information
         config = {
           wahaApi: {
             instanceName,
-            serverUrl: wahaApiUrl,
-            apiKey: wahaApiKey,
-            webhookToken: createChannelDto.webhookToken || '',
-            webhookUrl,
-            status: instanceResult.status,
-            config: instanceResult.config,
-            me: instanceResult.me,
             createdAt: new Date().toISOString(),
           },
         };
@@ -165,11 +158,9 @@ export class ChannelsService {
         // Store the basic configuration with error information
         config = {
           wahaApi: {
-            serverUrl: wahaApiUrl,
-            apiKey: wahaApiKey,
-            webhookToken: createChannelDto.webhookToken || '',
-            error: error.message,
+            instanceName,
             createdAt: new Date().toISOString(),
+            error: error.message
           },
         };
 
@@ -212,8 +203,6 @@ export class ChannelsService {
       where: { id: channelId },
     });
 
-    console.log(channel);
-
     if (!channel) {
       throw new NotFoundException(`Channel with ID ${channelId} not found`);
     }
@@ -237,11 +226,14 @@ export class ChannelsService {
         `Refreshing QR code for instance ${wahaApi.instanceName}`
       );
 
+      const wahaApiUrl = process.env.WAHA_API_URL;
+      const wahaApiKey = process.env.WAHA_API_KEY;
+
       const qrResult = await this.wahaApiService.getInstanceQR(
         channel.id,
         wahaApi.instanceName, // Use instanceName, not instanceId as per Waha API docs
-        wahaApi.serverUrl,
-        wahaApi.apiKey
+        wahaApiUrl,
+        wahaApiKey
       );
 
       this.logger.log(
@@ -254,30 +246,13 @@ export class ChannelsService {
         );
       }
 
-      // Create updated config with fresh QR code and webhook information
-      const updatedConfig = {
-        ...config,
-        wahaApi: {
-          ...wahaApi,
-          status: 'SCAN_QR_CODE',
-          qrCode: qrResult.value || null,
-        },
-      };
-
-      // Update the channel with the fresh QR code
-      await this.prisma.channel.update({
-        where: { id: channelId },
-        data: {
-          config: updatedConfig,
-        },
-      });
-
       // Return the fresh QR code info
       return {
         instanceName: wahaApi.instanceName,
         status: 'SCAN_QR_CODE',
         qrCode: qrResult.value || null,
       };
+      
     } catch (error) {
       this.logger.error(
         `Error refreshing QR code: ${error.message}`,
