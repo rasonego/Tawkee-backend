@@ -350,29 +350,38 @@ export class StripeService {
     currency: string;
     description: string;
   }): Promise<Stripe.Invoice> {
+    const totalCents = params.amount;
+
     try {
-      // Passo 1: Cria fatura sem avançar
+      // Cria o item que será incluído na fatura
+      await this.stripe.invoiceItems.create({
+        customer: params.customer,
+        amount: totalCents,
+        currency: params.currency,
+        description: params.description,
+      });
+
+      // Cria fatura sem auto-advance (manual finalization)
       const invoice = await this.stripe.invoices.create({
         customer: params.customer,
         auto_advance: false,
         collection_method: 'charge_automatically',
       });
 
-      const totalCents = params.amount * PRICE_PER_CREDIT_CENTS;
+      // Aguarda um pequeno tempo para garantir consistência (evita race conditions)
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Passo 2: Associa item diretamente à fatura
-      await this.stripe.invoiceItems.create({
-        customer: params.customer,
-        amount: totalCents,
-        currency: params.currency,
-        description: params.description,
-        invoice: invoice.id, // força vinculação direta
-      });
-
-      // Passo 3: Finaliza e paga
+      // Finaliza a fatura (gera o PDF, define o valor final etc.)
       const finalized = await this.stripe.invoices.finalizeInvoice(invoice.id);
-      return await this.stripe.invoices.pay(finalized.id);
-    } catch (error) {
+
+      // Só paga se ainda não estiver paga (evita erro de invoice already paid)
+      if (finalized.status !== 'paid') {
+        return await this.stripe.invoices.pay(finalized.id);
+      }
+
+      // Retorna diretamente se já estiver paga
+      return finalized;
+    } catch (error: any) {
       this.logger.error(`Error creating or paying invoice: ${error.message}`);
       throw error;
     }
