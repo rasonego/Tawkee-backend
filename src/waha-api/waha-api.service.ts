@@ -159,179 +159,6 @@ export class WahaApiService {
     }
   }
 
-  /**
-   * Send a media message through Waha API
-   */
-  // async sendMediaMessage(options: SendMediaMessageOptions): Promise<any> {
-  //   try {
-  //     const {
-  //       phoneNumber,
-  //       mediaUrl,
-  //       caption,
-  //       mediaType,
-  //       mediaMimeType,
-  //       fileName,
-  //       instanceName,
-  //       serverUrl,
-  //       apiKey
-  //     } = options;
-
-  //     // Ensure phone number is properly formatted - remove any non-numeric characters except +
-  //     const formattedPhone = phoneNumber.replace(/[^\d+]/g, '');
-
-  //     // If phone number doesn't start with +, ensure it doesn't start with a leading 0
-  //     const finalPhoneNumber = formattedPhone.startsWith('+')
-  //       ? formattedPhone.substring(1) // Waha API doesn't want the + prefix
-  //       : formattedPhone.replace(/^0/, ''); // Remove leading 0 if present
-
-  //     // This must actually only happen on the first time sending message to the contact
-  //     this.logger.log(
-  //       `Checking actual ${finalPhoneNumber} chatId value using instance ${instanceName}`
-  //     );
-  //     let response = await axios.get(
-  //       `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`, {
-  //         headers: {
-  //           'x-api-key': apiKey
-  //         }
-  //       }
-  //     );
-
-  //     const chatId = response.data.chatId;
-
-  //     this.logger.log(
-  //       `Sending ${mediaType} to ${finalPhoneNumber} using instance ${instanceName}`
-  //     );
-
-  //     let endpoint;
-  //     const payload: any = {
-  //       session: instanceName,
-  //       chatId,
-  //     };
-
-  //     switch (mediaType) {
-  //       case 'image': {
-  //         endpoint = 'sendImage';
-  //         payload.caption = caption ? caption : '';
-  //         payload.file = {
-  //           mimetype: mediaMimeType,
-  //           url: mediaUrl,
-  //           filename: fileName,
-  //         };
-  //         break;
-  //       }
-  //       case 'video': {
-  //         endpoint = 'sendVideo';
-  //         payload.caption = caption ? caption : '';
-  //         payload.asNote = false;
-  //         payload.file = {
-  //           mimetype: mediaMimeType,
-  //           url: mediaUrl,
-  //           filename: fileName,
-  //         };
-  //         break;
-  //       }
-  //       case 'audio': {
-  //         endpoint = 'sendVoice';
-  //         payload.caption = caption;
-  //         payload.file = {
-  //           mimetype: mediaMimeType,
-  //           data: mediaUrl.toString(),
-  //           fileName: fileName
-  //         };
-  //         break;
-  //       }
-  //       case 'document': {
-  //         endpoint = 'sendFile';
-  //         payload.caption = caption ? caption : '';
-  //         payload.file = {
-  //           mimetype: mediaMimeType,
-  //           url: mediaUrl,
-  //           fileName: fileName,
-  //         };
-  //         break;
-  //       }
-  //       default:
-  //         throw new Error(`Unsupported media type: ${mediaType}`);
-  //     }
-
-  //     this.logger.debug(
-  //       `Sending media with payload: ${JSON.stringify(payload).slice(0, 250)}... to ${serverUrl}/${endpoint}`
-  //     );
-
-  //     // According to Waha API docs, use instanceName instead of instanceId
-  //     response = await axios.post(
-  //       `${serverUrl}/${endpoint}`,
-  //       payload,
-  //       {
-  //         headers: {
-  //           'Content-Type': 'application/json',
-  //           'x-api-key': apiKey,
-  //         },
-  //         timeout: 15000, // 15 second timeout for media (larger than text timeout)
-  //       }
-  //     );
-
-  //     // Apply the same improved validation logic as for text messages
-  //     if (response.status === 200 || response.status === 201) {
-  //       this.logger.log(`Media sent successfully to ${finalPhoneNumber}`);
-  //       return response.data;
-  //     } else {
-  //       // Log the issue but don't throw an error since the media might have been sent
-  //       this.logger.warn(
-  //         `Unexpected response from Waha API for media: ${JSON.stringify(response.data)}`
-  //       );
-  //       return response.data; // Return the data anyway so the caller can decide what to do
-  //     }
-  //   } catch (error) {
-  //     // Specific error handling for common API errors
-  //     if (error.response) {
-  //       // The request was made and the server responded with a status code
-  //       // that falls out of the range of 2xx
-  //       this.logger.error(
-  //         `Waha API error (media): Status ${error.response.status}}`
-  //       );
-
-  //       // Check for specific error codes and provide more helpful messages
-  //       if (error.response.status === 401) {
-  //         return {
-  //           success: false,
-  //           error: 'Authentication failed. Check your API key.',
-  //         };
-  //       } else if (error.response.status === 404) {
-  //         return {
-  //           success: false,
-  //           error:
-  //             'Instance not found. It may have been deleted or not created correctly.',
-  //         };
-  //       } else if (error.response.status === 410) {
-  //         return {
-  //           success: false,
-  //           error:
-  //             'WhatsApp session is not active. The QR code may need to be rescanned.',
-  //         };
-  //       } else if (error.response.status === 500) {
-  //         return {
-  //           success: false,
-  //           error:
-  //             'Server error from Waha API. The instance may not be connected properly or media URL is invalid.',
-  //           details: error.response.data,
-  //         };
-  //       }
-  //     } else if (error.request) {
-  //       // The request was made but no response was received
-  //       this.logger.error(`Waha API no response (media): ${error.message}`);
-  //       return {
-  //         success: false,
-  //         error:
-  //           'No response from Waha API server. Check your server URL and network connection.',
-  //       };
-  //     }
-
-  //     // Generic error logging
-  //     this.logger.error(`Error sending media: ${error.message}`, error.stack);
-  //     return { success: false, error: error.message };
-  //   }
-  // }
   async sendMediaMessage(options: SendMediaMessageOptions): Promise<any> {
     try {
       const {
@@ -385,32 +212,32 @@ export class WahaApiService {
           payload.caption = caption ? caption : '';
           payload.file = {
             mimetype: mediaMimeType,
-            url: mediaUrl,
             filename: fileName,
+            data: mediaUrl
           };
           break;
         }
         case 'video': {
           endpoint = 'sendVideo';
           payload.caption = caption ? caption : '';
+          payload.convert = true;
           payload.asNote = false;
           payload.file = {
             mimetype: mediaMimeType,
-            url: mediaUrl,
             filename: fileName,
+            data: mediaUrl
           };
           break;
         }
         case 'audio': {
           endpoint = 'sendVoice';
-          // payload.caption = caption;
           this.logger.debug('Converting data to base64...');
           const base64String = mediaUrl.toString('base64');
 
           payload.file = {
             mimetype: 'audio/ogg; codecs=opus',
             filename: 'audio.ogg',
-            data: base64String,
+            data: base64String
           };
           payload.convert = true;
           break;
@@ -420,8 +247,8 @@ export class WahaApiService {
           payload.caption = caption ? caption : '';
           payload.file = {
             mimetype: mediaMimeType,
-            url: mediaUrl,
-            fileName: fileName,
+            filename: fileName, 
+            data: mediaUrl
           };
           break;
         }
@@ -460,49 +287,30 @@ export class WahaApiService {
       if (error.response) {
         // The request was made and the server responded with a status code
         // that falls out of the range of 2xx
+        console.log(error);
         this.logger.error(
-          `Waha API error (media): Status ${error.response.status}, error: ${error.response}}`
+          `Waha API error (media): Status ${error.response.status}`
         );
 
         // Check for specific error codes and provide more helpful messages
         if (error.response.status === 401) {
-          return {
-            success: false,
-            error: 'Authentication failed. Check your API key.',
-          };
+          throw 'Authentication failed. Check your API key.';
         } else if (error.response.status === 404) {
-          return {
-            success: false,
-            error:
-              'Instance not found. It may have been deleted or not created correctly.',
-          };
+          throw 'Instance not found. It may have been deleted or not created correctly.';
         } else if (error.response.status === 410) {
-          return {
-            success: false,
-            error:
-              'WhatsApp session is not active. The QR code may need to be rescanned.',
-          };
+          throw 'WhatsApp session is not active. The QR code may need to be rescanned.';
         } else if (error.response.status === 500) {
-          return {
-            success: false,
-            error:
-              'Server error from Waha API. The instance may not be connected properly or media URL is invalid.',
-            details: error.response.data,
-          };
+          throw 'Server error from Waha API. The instance may not be connected properly or media URL is invalid.';
         }
       } else if (error.request) {
         // The request was made but no response was received
         this.logger.error(`Waha API no response (media): ${error.message}`);
-        return {
-          success: false,
-          error:
-            'No response from Waha API server. Check your server URL and network connection.',
-        };
+        throw 'No response from Waha API server. Check your server URL and network connection.';
       }
 
       // Generic error logging
       this.logger.error(`Error sending media: ${error.message}`, error.stack);
-      return { success: false, error: error.message };
+      throw error.message;
     }
   }
 
