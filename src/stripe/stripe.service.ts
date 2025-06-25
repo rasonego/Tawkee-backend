@@ -98,7 +98,9 @@ export class StripeService {
     );
 
     if (!product) {
-      throw new Error(`No active Stripe product found with name "${dto.planName}"`);
+      throw new Error(
+        `No active Stripe product found with name "${dto.planName}"`
+      );
     }
 
     const prices = await this.stripe.prices.list({
@@ -109,7 +111,9 @@ export class StripeService {
 
     const selectedPrice = prices.data[0];
     if (!selectedPrice) {
-      throw new Error(`No active Stripe price found for product "${product.name}"`);
+      throw new Error(
+        `No active Stripe price found for product "${product.name}"`
+      );
     }
 
     const existingPlan = await this.prisma.plan.findFirst({
@@ -181,12 +185,16 @@ export class StripeService {
         intervalCount: price.recurring?.interval_count ?? 1,
       };
     } catch (error) {
-      this.logger.warn(`Failed to retrieve Stripe price (${stripePriceId}): ${error.message}`);
+      this.logger.warn(
+        `Failed to retrieve Stripe price (${stripePriceId}): ${error.message}`
+      );
       return null;
     }
   }
 
-  async getSubscriptionsForWorkspace(workspaceId: string): Promise<Stripe.Subscription[]> {
+  async getSubscriptionsForWorkspace(
+    workspaceId: string
+  ): Promise<Stripe.Subscription[]> {
     const workspace = await this.prisma.workspace.findUnique({
       where: { id: workspaceId },
     });
@@ -202,7 +210,10 @@ export class StripeService {
     return subscriptions.data;
   }
 
-  async createCheckoutSession(workspaceId: string, priceId: string): Promise<string> {
+  async createCheckoutSession(
+    workspaceId: string,
+    priceId: string
+  ): Promise<string> {
     const session = await this.stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -215,7 +226,7 @@ export class StripeService {
       payment_method_collection: 'always',
 
       // 🛠 Força a criação de SetupIntent, mesmo em modo subscription
-      setup_intent_data: {},      
+      setup_intent_data: {},
     });
 
     return session.url!;
@@ -254,29 +265,32 @@ export class StripeService {
                 trainingVideoLimit: true,
                 trainingDocumentLimit: true,
                 isEnterprise: true,
-                trialDays: true                    
-              }
-            }
-          }
+                trialDays: true,
+              },
+            },
+          },
         },
-        usageRecords: true
+        usageRecords: true,
       },
     });
 
     const latestSub = workspace?.subscriptions?.[0];
-    
+
     const { plan, ...remainingData } = latestSub;
 
     const stripePrice = plan?.stripePriceId
       ? await this.getPriceDetailsById(plan.stripePriceId)
       : undefined;
-    
-    return { 
+
+    return {
       subscription: remainingData,
-      plan: plan && stripePrice ? {
-        ...plan,
-        ...stripePrice
-      } : undefined
+      plan:
+        plan && stripePrice
+          ? {
+              ...plan,
+              ...stripePrice,
+            }
+          : undefined,
     };
   }
 
@@ -309,8 +323,14 @@ export class StripeService {
       where: { id: workspaceId },
     });
 
-    if (!workspace || !workspace.stripeCustomerId || workspace.stripeCustomerId === 'trial-local') {
-      throw new Error('Cannot purchase credits: workspace does not have a valid Stripe customer');
+    if (
+      !workspace ||
+      !workspace.stripeCustomerId ||
+      workspace.stripeCustomerId === 'trial-local'
+    ) {
+      throw new Error(
+        'Cannot purchase credits: workspace does not have a valid Stripe customer'
+      );
     }
 
     const subscription = await this.prisma.subscription.findFirst({
@@ -369,15 +389,23 @@ export class StripeService {
         customer: params.customer,
         amount: totalCents,
         currency: params.currency,
-        description: params.description || `Smart Recharge - ${params.amount} créditos`,
+        description:
+          params.description || `Smart Recharge - ${params.amount} créditos`,
       });
 
       // 2. Verifica se o cliente tem payment method padrão
-      let customer = await this.stripe.customers.retrieve(params.customer) as Stripe.Customer;
+      const customer = (await this.stripe.customers.retrieve(
+        params.customer
+      )) as Stripe.Customer;
       let defaultPm = customer.invoice_settings?.default_payment_method;
 
-      if (!defaultPm || (typeof defaultPm === 'string' && defaultPm.trim() === '')) {
-        this.logger.warn(`Customer ${params.customer} has no default payment method. Attempting to set one manually.`);
+      if (
+        !defaultPm ||
+        (typeof defaultPm === 'string' && defaultPm.trim() === '')
+      ) {
+        this.logger.warn(
+          `Customer ${params.customer} has no default payment method. Attempting to set one manually.`
+        );
 
         const paymentMethods = await this.stripe.paymentMethods.list({
           customer: params.customer,
@@ -387,7 +415,9 @@ export class StripeService {
         const firstValidPm = paymentMethods.data[0];
 
         if (!firstValidPm) {
-          throw new Error(`Cannot pay invoice: no valid card payment methods found for customer ${params.customer}.`);
+          throw new Error(
+            `Cannot pay invoice: no valid card payment methods found for customer ${params.customer}.`
+          );
         }
 
         await this.stripe.customers.update(params.customer, {
@@ -395,7 +425,9 @@ export class StripeService {
         });
 
         defaultPm = firstValidPm.id;
-        this.logger.log(`Set default payment method ${firstValidPm.id} for customer ${params.customer}.`);
+        this.logger.log(
+          `Set default payment method ${firstValidPm.id} for customer ${params.customer}.`
+        );
       }
 
       // 3. Cria a fatura (auto_advance manual)
@@ -406,7 +438,9 @@ export class StripeService {
         pending_invoice_items_behavior: 'include',
       });
 
-      this.logger.log(`Invoice ${invoice.id} created for customer ${params.customer} with ${totalCents} cents.`);
+      this.logger.log(
+        `Invoice ${invoice.id} created for customer ${params.customer} with ${totalCents} cents.`
+      );
 
       // 4. Finaliza a fatura
       const finalized = await this.stripe.invoices.finalizeInvoice(invoice.id);
@@ -532,8 +566,13 @@ export class StripeService {
     };
   }
 
-  constructWebhookEvent(rawBody: Buffer, signature: string | string[]): Stripe.Event {
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+  constructWebhookEvent(
+    rawBody: Buffer,
+    signature: string | string[]
+  ): Stripe.Event {
+    const webhookSecret = this.configService.get<string>(
+      'STRIPE_WEBHOOK_SECRET'
+    );
     return this.stripe.webhooks.constructEvent(
       rawBody,
       signature as string,
@@ -543,7 +582,10 @@ export class StripeService {
 
   async handleWebhook(event: Stripe.Event): Promise<void> {
     const data = event.data.object;
-    this.logger.debug("Received Stripe webhook:", JSON.stringify(event, null, 4));
+    this.logger.debug(
+      'Received Stripe webhook:',
+      JSON.stringify(event, null, 4)
+    );
 
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -554,9 +596,17 @@ export class StripeService {
           return;
         }
 
-        const fullSession = await this.stripe.checkout.sessions.retrieve(session.id, {
-          expand: ['customer', 'subscription', 'setup_intent', 'payment_intent']
-        });
+        const fullSession = await this.stripe.checkout.sessions.retrieve(
+          session.id,
+          {
+            expand: [
+              'customer',
+              'subscription',
+              'setup_intent',
+              'payment_intent',
+            ],
+          }
+        );
 
         const customer = fullSession.customer as Stripe.Customer;
 
@@ -564,10 +614,14 @@ export class StripeService {
         let paymentMethodId: string | undefined;
 
         if (typeof fullSession.setup_intent === 'string') {
-          const setupIntent = await this.stripe.setupIntents.retrieve(fullSession.setup_intent);
+          const setupIntent = await this.stripe.setupIntents.retrieve(
+            fullSession.setup_intent
+          );
           paymentMethodId = setupIntent.payment_method as string;
         } else if (typeof fullSession.payment_intent === 'string') {
-          const paymentIntent = await this.stripe.paymentIntents.retrieve(fullSession.payment_intent);
+          const paymentIntent = await this.stripe.paymentIntents.retrieve(
+            fullSession.payment_intent
+          );
           paymentMethodId = paymentIntent.payment_method as string;
         }
 
@@ -576,20 +630,28 @@ export class StripeService {
             await this.stripe.paymentMethods.attach(paymentMethodId, {
               customer: customer.id,
             });
-            this.logger.log(`Attached payment method ${paymentMethodId} to customer ${customer.id}`);
+            this.logger.log(
+              `Attached payment method ${paymentMethodId} to customer ${customer.id}`
+            );
           } catch (e: any) {
             if (e.code !== 'resource_already_attached') {
-              this.logger.error(`Failed to attach payment method ${paymentMethodId}: ${e.message}`);
+              this.logger.error(
+                `Failed to attach payment method ${paymentMethodId}: ${e.message}`
+              );
               throw e;
             } else {
-              this.logger.warn(`Payment method ${paymentMethodId} already attached`);
+              this.logger.warn(
+                `Payment method ${paymentMethodId} already attached`
+              );
             }
           }
 
           await this.stripe.customers.update(customer.id, {
-            invoice_settings: { default_payment_method: paymentMethodId }
+            invoice_settings: { default_payment_method: paymentMethodId },
           });
-          this.logger.log(`Set default_payment_method for customer ${customer.id}`);
+          this.logger.log(
+            `Set default_payment_method for customer ${customer.id}`
+          );
         }
 
         if (session.mode === 'subscription') {
@@ -622,10 +684,16 @@ export class StripeService {
             status: subscription.status.toUpperCase() as any,
             currentPeriodStart: new Date(item.current_period_start * 1000),
             currentPeriodEnd: new Date(item.current_period_end * 1000),
-            trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
-            trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+            trialStart: subscription.trial_start
+              ? new Date(subscription.trial_start * 1000)
+              : null,
+            trialEnd: subscription.trial_end
+              ? new Date(subscription.trial_end * 1000)
+              : null,
             cancelAtPeriodEnd: subscription.cancel_at_period_end,
-            canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
+            canceledAt: subscription.canceled_at
+              ? new Date(subscription.canceled_at * 1000)
+              : null,
           };
 
           const subscriptionUpdated = existing
@@ -658,10 +726,10 @@ export class StripeService {
                       trainingVideoLimit: true,
                       trainingDocumentLimit: true,
                       isEnterprise: true,
-                      trialDays: true                    
-                    }
-                  }
-                }
+                      trialDays: true,
+                    },
+                  },
+                },
               })
             : await this.prisma.subscription.create({
                 data: subscriptionData,
@@ -691,19 +759,28 @@ export class StripeService {
                       trainingVideoLimit: true,
                       trainingDocumentLimit: true,
                       isEnterprise: true,
-                      trialDays: true                    
-                    }
-                  }
-                }
+                      trialDays: true,
+                    },
+                  },
+                },
               });
 
           const { plan: planData, ...remainingData } = subscriptionUpdated;
-          const stripePrice = planData?.stripePriceId ? await this.getPriceDetailsById(planData.stripePriceId) : undefined;
+          const stripePrice = planData?.stripePriceId
+            ? await this.getPriceDetailsById(planData.stripePriceId)
+            : undefined;
 
-          this.websocketService.sendToClient(workspaceId, 'subscriptionUpdated', {
-            subscription: remainingData,
-            plan: planData && stripePrice ? { ...planData, ...stripePrice } : undefined
-          });
+          this.websocketService.sendToClient(
+            workspaceId,
+            'subscriptionUpdated',
+            {
+              subscription: remainingData,
+              plan:
+                planData && stripePrice
+                  ? { ...planData, ...stripePrice }
+                  : undefined,
+            }
+          );
         } else if (session.mode === 'payment') {
           const quantity = parseInt(session.metadata?.credits || '0', 10);
           if (!quantity || quantity <= 0) {
@@ -723,12 +800,13 @@ export class StripeService {
             },
           });
 
-          this.logger.log(`Logged ${quantity} credits for workspace ${workspaceId}`);
+          this.logger.log(
+            `Logged ${quantity} credits for workspace ${workspaceId}`
+          );
         }
 
         break;
       }
-
 
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
@@ -740,12 +818,16 @@ export class StripeService {
           data: {
             status: sub.status.toUpperCase() as any,
             cancelAtPeriodEnd: sub.cancel_at_period_end,
-            canceledAt: sub.canceled_at ? new Date(sub.canceled_at * 1000) : null,
+            canceledAt: sub.canceled_at
+              ? new Date(sub.canceled_at * 1000)
+              : null,
             currentPeriodStart: new Date(item.current_period_start * 1000),
             currentPeriodEnd: new Date(item.current_period_end * 1000),
-            trialStart: sub.trial_start ? new Date(sub.trial_start * 1000) : null,
+            trialStart: sub.trial_start
+              ? new Date(sub.trial_start * 1000)
+              : null,
             trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
-          }
+          },
         });
 
         const existing = await this.prisma.subscription.findFirst({
@@ -777,11 +859,11 @@ export class StripeService {
                 trainingVideoLimit: true,
                 trainingDocumentLimit: true,
                 isEnterprise: true,
-                trialDays: true                    
-              }
-            }                
-          }
-        })
+                trialDays: true,
+              },
+            },
+          },
+        });
 
         const { workspaceId, plan, ...remainingData } = existing;
 
@@ -791,10 +873,13 @@ export class StripeService {
 
         this.websocketService.sendToClient(workspaceId, 'subscriptionUpdated', {
           subscription: remainingData,
-          plan: plan && stripePrice ? {
-            ...plan,
-            ...stripePrice
-          } : undefined
+          plan:
+            plan && stripePrice
+              ? {
+                  ...plan,
+                  ...stripePrice,
+                }
+              : undefined,
         });
         break;
       }
@@ -802,14 +887,19 @@ export class StripeService {
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
         if (invoice.parent?.type === 'subscription_details') {
-          const subscriptionId = invoice.parent.subscription_details.subscription;
-          console.log(`Pagamento falhou para a assinatura: ${subscriptionId} (Invoice ${invoice.id})`);
+          const subscriptionId =
+            invoice.parent.subscription_details.subscription;
+          console.log(
+            `Pagamento falhou para a assinatura: ${subscriptionId} (Invoice ${invoice.id})`
+          );
 
           if (!subscriptionId) {
-            this.logger.warn(`No subscription found for failed invoice ${invoice.id}`);
+            this.logger.warn(
+              `No subscription found for failed invoice ${invoice.id}`
+            );
             return;
           }
-  
+
           await this.prisma.subscription.updateMany({
             where: { stripeSubscriptionId: subscriptionId as string },
             data: { status: 'PAST_DUE' },
@@ -844,11 +934,11 @@ export class StripeService {
                   trainingVideoLimit: true,
                   trainingDocumentLimit: true,
                   isEnterprise: true,
-                  trialDays: true                    
-                }
-              }                
-            }
-          })
+                  trialDays: true,
+                },
+              },
+            },
+          });
 
           const { workspaceId, plan, ...remainingData } = existing;
 
@@ -856,23 +946,32 @@ export class StripeService {
             ? await this.getPriceDetailsById(plan.stripePriceId)
             : undefined;
 
-          this.websocketService.sendToClient(workspaceId, 'subscriptionUpdated', {
-            subscription: remainingData,
-            plan: plan && stripePrice ? {
-              ...plan,
-              ...stripePrice
-            } : undefined
-          });            
+          this.websocketService.sendToClient(
+            workspaceId,
+            'subscriptionUpdated',
+            {
+              subscription: remainingData,
+              plan:
+                plan && stripePrice
+                  ? {
+                      ...plan,
+                      ...stripePrice,
+                    }
+                  : undefined,
+            }
+          );
 
-          this.logger.warn(`Payment failed for subscription: ${subscriptionId}`);
-          break;
+          this.logger.warn(
+            `Payment failed for subscription: ${subscriptionId}`
+          );
         }
-      }     
+        break;
+      }
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
 
-        const isOneTimeRecharge = invoice.lines?.data?.some(line =>
+        const isOneTimeRecharge = invoice.lines?.data?.some((line) =>
           line.description?.toLowerCase().includes('smart recharge')
         );
 
@@ -880,7 +979,7 @@ export class StripeService {
           const customerId = invoice.customer as string;
 
           const workspace = await this.prisma.workspace.findFirst({
-            where: { stripeCustomerId: customerId }
+            where: { stripeCustomerId: customerId },
           });
 
           if (!workspace) {
@@ -892,7 +991,9 @@ export class StripeService {
           const quantity = Math.floor(totalCents / PRICE_PER_CREDIT_CENTS);
 
           if (quantity <= 0) {
-            this.logger.warn(`Invoice ${invoice.id} paid but amount is too low for credits`);
+            this.logger.warn(
+              `Invoice ${invoice.id} paid but amount is too low for credits`
+            );
             break;
           }
 
@@ -919,16 +1020,21 @@ export class StripeService {
             });
           }
 
-          const { planCreditsRemaining, extraCreditsRemaining } = await this.creditService.getWorkspaceRemainingCredits(
-            workspace.id
+          const { planCreditsRemaining, extraCreditsRemaining } =
+            await this.creditService.getWorkspaceRemainingCredits(workspace.id);
+
+          this.websocketService.sendToClient(
+            workspace.id,
+            'workspaceCreditsUpdate',
+            {
+              planCredits: planCreditsRemaining,
+              extraCredits: extraCreditsRemaining,
+            }
           );
 
-          this.websocketService.sendToClient(workspace.id, 'workspaceCreditsUpdate', {
-            planCredits: planCreditsRemaining,
-            extraCredits: extraCreditsRemaining,
-          });
-
-          this.logger.log(`Registered ${quantity} auto-credits for workspace ${workspace.id}`);
+          this.logger.log(
+            `Registered ${quantity} auto-credits for workspace ${workspace.id}`
+          );
         }
 
         break;

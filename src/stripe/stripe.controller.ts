@@ -52,15 +52,21 @@ export class StripeController {
     @Res() res: Response,
     @Headers('stripe-signature') signature: string
   ): Promise<void> {
-    console.log("Got stripe webook event!")
+    console.log('Got stripe webook event!');
     const rawBody = (req as any).rawBody;
 
     if (!rawBody || !signature) {
-      throw new HttpException('Invalid Stripe webhook payload', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Invalid Stripe webhook payload',
+        HttpStatus.BAD_REQUEST
+      );
     }
 
     try {
-      const event = this.stripeService.constructWebhookEvent(rawBody, signature);
+      const event = this.stripeService.constructWebhookEvent(
+        rawBody,
+        signature
+      );
       await this.stripeService.handleWebhook(event);
       res.status(200).send({ received: true });
     } catch (err) {
@@ -70,18 +76,20 @@ export class StripeController {
   }
 
   @Get('products')
-  async getProducts(): Promise<{
-    product: Stripe.Product;
-    prices: Stripe.Price[];
-    planDetails?: any;
-  }[]> {
+  async getProducts(): Promise<
+    {
+      product: Stripe.Product;
+      prices: Stripe.Price[];
+      planDetails?: any;
+    }[]
+  > {
     return this.stripeService.getActiveProducts();
   }
 
   @Post('plans/sync-from-stripe')
   async createPlanFromStripe(
     @Body() dto: CreatePlanFromStripeDto,
-    @Headers('x-api-key') apiKey: string,
+    @Headers('x-api-key') apiKey: string
   ) {
     const expectedKey = this.configService.get<string>('ADMIN_API_KEY');
 
@@ -98,18 +106,25 @@ export class StripeController {
   ): Promise<{ url?: string; message?: string; subscriptionId?: string }> {
     const { workspaceId, priceId } = body;
 
-    const subscriptionList = await this.stripeService.getSubscriptionsForWorkspace(workspaceId);
+    const subscriptionList =
+      await this.stripeService.getSubscriptionsForWorkspace(workspaceId);
 
     const hasSubscription = subscriptionList?.length > 0;
 
     if (!hasSubscription) {
       // Usuário ainda não tem assinatura — cria checkout
-      const url = await this.stripeService.createCheckoutSession(workspaceId, priceId);
+      const url = await this.stripeService.createCheckoutSession(
+        workspaceId,
+        priceId
+      );
       return { url };
     }
 
     // Usuário já tem uma assinatura ativa — apenas troca o plano
-    const result = await this.stripeService.confirmPlanChange(workspaceId, priceId);
+    const result = await this.stripeService.confirmPlanChange(
+      workspaceId,
+      priceId
+    );
     return result;
   }
 

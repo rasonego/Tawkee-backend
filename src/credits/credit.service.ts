@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebsocketService } from '../websocket/websocket.service';
 import { StripeService } from '../stripe/stripe.service';
@@ -24,7 +24,6 @@ const modelCreditMap: Record<string, number> = {
   SABIA_3: 1,
 };
 
-
 @Injectable()
 export class CreditService {
   constructor(
@@ -32,9 +31,9 @@ export class CreditService {
     private readonly websocketService: WebsocketService,
 
     @Inject(forwardRef(() => StripeService))
-    private readonly stripeService: StripeService,
+    private readonly stripeService: StripeService
   ) {}
- 
+
   async getWorkspaceRemainingCredits(workspaceId: string) {
     let planCreditsRemaining = 0;
     let extraCreditsRemaining = 0;
@@ -107,7 +106,11 @@ export class CreditService {
       },
     });
 
-    if (!agent?.settings || !agent.workspace || !agent.workspace.subscriptions[0]) {
+    if (
+      !agent?.settings ||
+      !agent.workspace ||
+      !agent.workspace.subscriptions[0]
+    ) {
       throw new Error('Agent, workspace, subscription, or settings not found.');
     }
 
@@ -120,7 +123,8 @@ export class CreditService {
     const workspaceId = agent.workspace.id;
 
     // ✅ Reuse shared method for credit balances
-    const { planCreditsRemaining, extraCreditsRemaining } = await this.getWorkspaceRemainingCredits(workspaceId);
+    const { planCreditsRemaining, extraCreditsRemaining } =
+      await this.getWorkspaceRemainingCredits(workspaceId);
 
     const totalAvailable = planCreditsRemaining + extraCreditsRemaining;
     const allowed = totalAvailable >= creditCost;
@@ -164,7 +168,11 @@ export class CreditService {
       },
     });
 
-    if (!agent?.settings || !agent.workspace || !agent.workspace.subscriptions[0]) {
+    if (
+      !agent?.settings ||
+      !agent.workspace ||
+      !agent.workspace.subscriptions[0]
+    ) {
       throw new Error('Agent, workspace, subscription, or settings not found.');
     }
 
@@ -205,7 +213,8 @@ export class CreditService {
     });
 
     let remainingExtraCredits =
-      (totalExtraCredits._sum.quantity ?? 0) - (extraCreditsUsed._sum.quantity ?? 0);
+      (totalExtraCredits._sum.quantity ?? 0) -
+      (extraCreditsUsed._sum.quantity ?? 0);
 
     const creditEventId = uuidv4();
     const records = [];
@@ -261,18 +270,24 @@ export class CreditService {
       extraCredits: remainingExtraCredits,
     });
 
-    await this.handleSmartRechargeIfNeeded(workspaceId, remainingPlanCredits, remainingExtraCredits);
-
+    await this.handleSmartRechargeIfNeeded(
+      workspaceId,
+      remainingPlanCredits,
+      remainingExtraCredits
+    );
   }
 
   private async handleSmartRechargeIfNeeded(
-    workspaceId: string, remainingPlanCredits: number, remainingExtraCredits: number
+    workspaceId: string,
+    remainingPlanCredits: number,
+    remainingExtraCredits: number
   ) {
     const setting = await this.prisma.smartRechargeSetting.findUnique({
       where: { workspaceId },
     });
 
-    const remainingCredits: number = remainingPlanCredits + remainingExtraCredits;
+    const remainingCredits: number =
+      remainingPlanCredits + remainingExtraCredits;
 
     if (!setting || !setting.active || remainingCredits >= setting.threshold) {
       return;
@@ -301,17 +316,22 @@ export class CreditService {
           source: 'AUTOMATIC',
           metadata: {
             triggeredAt: new Date().toISOString(),
-            stripeInvoiceId: invoice.id
+            stripeInvoiceId: invoice.id,
           },
         },
       });
 
-      const { planCreditsRemaining, extraCreditsRemaining } = await this.getWorkspaceRemainingCredits(workspaceId);
+      const { planCreditsRemaining, extraCreditsRemaining } =
+        await this.getWorkspaceRemainingCredits(workspaceId);
 
-      this.websocketService.sendToClient(workspaceId, 'workspaceCreditsUpdate', {
-        planCredits: planCreditsRemaining,
-        extraCredits: extraCreditsRemaining
-      });
+      this.websocketService.sendToClient(
+        workspaceId,
+        'workspaceCreditsUpdate',
+        {
+          planCredits: planCreditsRemaining,
+          extraCredits: extraCreditsRemaining,
+        }
+      );
     }
   }
 
@@ -341,5 +361,5 @@ export class CreditService {
     });
 
     return updatedSetting;
-  }  
+  }
 }

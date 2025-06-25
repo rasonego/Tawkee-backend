@@ -29,7 +29,7 @@ export class CreditController {
   })
   async getWorkspaceCredits(
     @Param('workspaceId') workspaceId: string
-  ): Promise<{ planCreditsRemaining: number, extraCreditsRemaining: number }> {
+  ): Promise<{ planCreditsRemaining: number; extraCreditsRemaining: number }> {
     return this.creditService.getWorkspaceRemainingCredits(workspaceId);
   }
 
