@@ -3,7 +3,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WebsocketService } from 'src/websocket/websocket.service';
 import { WorkspaceDto } from './dto/workspace.dto';
 import { AIModel } from '@prisma/client';
-import { randomUUID } from 'crypto';
 
 @Injectable()
 export class WorkspacesService {
@@ -79,7 +78,10 @@ export class WorkspacesService {
     const resolvedByAI = resolved.filter((i) => i.userId === null);
     const resolvedByHuman = resolved.filter((i) => i.userId !== null);
 
-    const resolvedTimeSeriesMap: Record<string, { total: number; byAI: number; byHuman: number }> = {};
+    const resolvedTimeSeriesMap: Record<
+      string,
+      { total: number; byAI: number; byHuman: number }
+    > = {};
     for (const i of resolved) {
       const date = i.resolvedAt!.toISOString().slice(0, 10);
       if (!resolvedTimeSeriesMap[date]) {
@@ -149,7 +151,9 @@ export class WorkspacesService {
       );
 
     const avgInteractionTimeMs =
-      durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+      durations.length > 0
+        ? durations.reduce((a, b) => a + b, 0) / durations.length
+        : 0;
 
     const prevDurations = prevResolved
       .filter((i) => i.resolvedAt && i.startAt)
@@ -158,7 +162,9 @@ export class WorkspacesService {
       );
 
     const prevAvgTime =
-      prevDurations.length > 0 ? prevDurations.reduce((a, b) => a + b, 0) / prevDurations.length : 0;
+      prevDurations.length > 0
+        ? prevDurations.reduce((a, b) => a + b, 0) / prevDurations.length
+        : 0;
 
     // Usage tracking (replaces creditSpent)
     const usageRecords = await this.prisma.usageRecord.findMany({
@@ -187,7 +193,10 @@ export class WorkspacesService {
       string,
       {
         totalCredits: number;
-        creditsByAgent: Record<string, { credits: number; agentName: string | null }>;
+        creditsByAgent: Record<
+          string,
+          { credits: number; agentName: string | null }
+        >;
       }
     > = {};
 
@@ -207,11 +216,13 @@ export class WorkspacesService {
             agentName: record.agent?.name ?? 'Unknown',
           };
         }
-        creditByDate[dateKey].creditsByAgent[record.agentId].credits += record.quantity;
+        creditByDate[dateKey].creditsByAgent[record.agentId].credits +=
+          record.quantity;
       }
 
       if (record.model) {
-        modelTotals[record.model] = (modelTotals[record.model] || 0) + record.quantity;
+        modelTotals[record.model] =
+          (modelTotals[record.model] || 0) + record.quantity;
       }
     }
 
@@ -221,17 +232,24 @@ export class WorkspacesService {
         date,
         totalCredits: data.totalCredits,
         creditsByAgent: Object.entries(data.creditsByAgent).map(
-          ([agentId, { credits, agentName }]) => ({ agentId, agentName, credits })
+          ([agentId, { credits, agentName }]) => ({
+            agentId,
+            agentName,
+            credits,
+          })
         ),
       }));
 
-    const agentTotals: Record<string, {
-      agentId: string;
-      name: string | null;
-      jobName: string | null;
-      avatar: string | null;
-      totalCredits: number;
-    }> = {};
+    const agentTotals: Record<
+      string,
+      {
+        agentId: string;
+        name: string | null;
+        jobName: string | null;
+        avatar: string | null;
+        totalCredits: number;
+      }
+    > = {};
 
     for (const record of usageRecords) {
       const id = record.agentId;
@@ -264,9 +282,18 @@ export class WorkspacesService {
         byHuman: resolvedByHuman.length,
         timeSeries,
         trend: {
-          total: prevTotal > 0 ? this.getTrend(resolved.length, prevTotal) : undefined,
-          byAI: prevByAI > 0 ? this.getTrend(resolvedByAI.length, prevByAI) : undefined,
-          byHuman: prevByHuman > 0 ? this.getTrend(resolvedByHuman.length, prevByHuman) : undefined,
+          total:
+            prevTotal > 0
+              ? this.getTrend(resolved.length, prevTotal)
+              : undefined,
+          byAI:
+            prevByAI > 0
+              ? this.getTrend(resolvedByAI.length, prevByAI)
+              : undefined,
+          byHuman:
+            prevByHuman > 0
+              ? this.getTrend(resolvedByHuman.length, prevByHuman)
+              : undefined,
         },
       },
       running: {
@@ -275,7 +302,10 @@ export class WorkspacesService {
         interactions: runningInteractions,
       },
       avgInteractionTimeMs,
-      avgTimeTrend: prevDurations.length > 0 ? this.getTrend(avgInteractionTimeMs, prevAvgTime) : undefined,
+      avgTimeTrend:
+        prevDurations.length > 0
+          ? this.getTrend(avgInteractionTimeMs, prevAvgTime)
+          : undefined,
       creditsPerDay,
       topAgents,
       topModels,

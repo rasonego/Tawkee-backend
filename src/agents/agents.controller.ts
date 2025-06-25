@@ -24,7 +24,6 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ApiPaginationQueries } from '../common/decorators/api-pagination.decorator';
 import { PaginatedAgentsResponseDto } from './dto/paginated-agents-response.dto';
-import { CreditSpentResponseDto } from './dto/credit-spent-response.dto';
 import { EnhancedAgentDto } from './dto/enhanced-agent.dto';
 
 @ApiTags('Agents')

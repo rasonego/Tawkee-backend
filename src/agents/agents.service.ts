@@ -3,7 +3,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
-import { CreditSpentResponseDto } from './dto/credit-spent-response.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { EnhancedAgentDto } from './dto/enhanced-agent.dto';
 import { GroupingTime, AIModel } from '@prisma/client';
@@ -694,7 +693,7 @@ export class AgentsService {
       // If there are no related records, delete the agent
       await this.prisma.agent.update({
         where: { id },
-        data: { isDeleted: true }
+        data: { isDeleted: true },
       });
 
       return { success: true, message: 'Agent deleted successfully' };

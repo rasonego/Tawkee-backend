@@ -40,12 +40,15 @@ export class UsersService {
     this.stateSecret = this.configService.get<string>('GOOGLE_STATE_SECRET');
   }
 
-  async create(createUserDto: CreateUserDto): Promise<{ user: UserResponseDto; token: string }> {
+  async create(
+    createUserDto: CreateUserDto
+  ): Promise<{ user: UserResponseDto; token: string }> {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: createUserDto.email },
     });
 
-    if (existingUser) throw new ConflictException('User with this email already exists');
+    if (existingUser)
+      throw new ConflictException('User with this email already exists');
 
     const salt = randomBytes(16).toString('hex');
     const buf = (await scryptAsync(createUserDto.password, salt, 64)) as Buffer;
@@ -77,14 +80,16 @@ export class UsersService {
             trainingVideoLimit: true,
             trainingDocumentLimit: true,
             isEnterprise: true,
-            trialDays: true
-          }
+            trialDays: true,
+          },
         });
 
         if (!plan) throw new Error('No valid public trial plan found');
 
         const now = new Date();
-        const trialEnd = new Date(now.getTime() + (plan.trialDays ?? 14) * 86400000);
+        const trialEnd = new Date(
+          now.getTime() + (plan.trialDays ?? 14) * 86400000
+        );
 
         const subscription = await prisma.subscription.create({
           data: {
@@ -110,8 +115,8 @@ export class UsersService {
             trainingVideoLimitOverrides: true,
             trainingDocumentLimitOverrides: true,
             cancelAtPeriodEnd: true,
-            canceledAt: true
-          }
+            canceledAt: true,
+          },
         });
 
         await prisma.smartRechargeSetting.create({
@@ -140,8 +145,11 @@ export class UsersService {
           workspaceId: user.workspaceId,
         });
 
-        const stripePrice = await this.stripeService.getPriceDetailsById(plan.stripePriceId);
+        const stripePrice = await this.stripeService.getPriceDetailsById(
+          plan.stripePriceId
+        );
 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, stripePriceId, ...sanitizedPlan } = plan;
 
         return {
@@ -169,14 +177,16 @@ export class UsersService {
             plan: {
               ...sanitizedPlan,
               ...stripePrice,
-              features: sanitizedPlan.features as string[]
+              features: sanitizedPlan.features as string[],
             },
           },
           token,
         };
       });
 
-      if (this.configService.get<string>('REQUIRE_EMAIL_VERIFICATION') !== 'false') {
+      if (
+        this.configService.get<string>('REQUIRE_EMAIL_VERIFICATION') !== 'false'
+      ) {
         await this.verificationService.sendVerificationEmail(result.user.id);
       }
 
@@ -187,20 +197,28 @@ export class UsersService {
     }
   }
 
-  async login(loginUserDto: LoginUserDto): Promise<{ user: UserResponseDto; token: string }> {
+  async login(
+    loginUserDto: LoginUserDto
+  ): Promise<{ user: UserResponseDto; token: string }> {
     let user = await this.prisma.user.findUnique({
       where: { email: loginUserDto.email },
       include: { workspace: true },
     });
 
     if (!user || !user.password) {
-      throw new BadRequestException('Invalid credentials or social login account');
+      throw new BadRequestException(
+        'Invalid credentials or social login account'
+      );
     }
 
     try {
       const [storedHash, salt] = user.password.split('.');
       const storedHashBuf = Buffer.from(storedHash, 'hex');
-      const suppliedHashBuf = (await scryptAsync(loginUserDto.password, salt, 64)) as Buffer;
+      const suppliedHashBuf = (await scryptAsync(
+        loginUserDto.password,
+        salt,
+        64
+      )) as Buffer;
 
       if (!timingSafeEqual(storedHashBuf, suppliedHashBuf)) {
         throw new BadRequestException('Invalid credentials');
@@ -210,7 +228,11 @@ export class UsersService {
       throw new BadRequestException('Invalid credentials');
     }
 
-    if (this.configService.get<string>('REQUIRE_EMAIL_VERIFICATION') !== 'false' && !user.emailVerified) {
+    if (
+      this.configService.get<string>('REQUIRE_EMAIL_VERIFICATION') !==
+        'false' &&
+      !user.emailVerified
+    ) {
       await this.verificationService.sendVerificationEmail(user.id);
     }
 
@@ -256,14 +278,16 @@ export class UsersService {
             trainingVideoLimit: true,
             trainingDocumentLimit: true,
             isEnterprise: true,
-            trialDays: true
-          } 
-        }
+            trialDays: true,
+          },
+        },
       },
     });
 
     const stripePrice = subscription?.plan?.stripePriceId
-      ? await this.stripeService.getPriceDetailsById(subscription.plan.stripePriceId)
+      ? await this.stripeService.getPriceDetailsById(
+          subscription.plan.stripePriceId
+        )
       : undefined;
 
     const token = this.jwtService.sign({
@@ -272,7 +296,8 @@ export class UsersService {
       workspaceId: user.workspaceId,
     });
 
-    const { stripePriceId, ...sanitizedPlan } = subscription.plan; 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { stripePriceId, ...sanitizedPlan } = subscription.plan;
 
     return {
       user: {
@@ -294,13 +319,14 @@ export class UsersService {
               featureOverrides: subscription.featureOverrides as string[],
             }
           : undefined,
-        plan: sanitizedPlan && stripePrice
-          ? {
-              ...sanitizedPlan,
-              ...stripePrice,
-              features: sanitizedPlan.features as string[]
-            }
-          : undefined,
+        plan:
+          sanitizedPlan && stripePrice
+            ? {
+                ...sanitizedPlan,
+                ...stripePrice,
+                features: sanitizedPlan.features as string[],
+              }
+            : undefined,
       },
       token,
     };
@@ -350,17 +376,20 @@ export class UsersService {
             trainingVideoLimit: true,
             trainingDocumentLimit: true,
             isEnterprise: true,
-            trialDays: true
-          }
-        }
+            trialDays: true,
+          },
+        },
       },
     });
 
     const stripePrice = subscription?.plan?.stripePriceId
-      ? await this.stripeService.getPriceDetailsById(subscription.plan.stripePriceId)
+      ? await this.stripeService.getPriceDetailsById(
+          subscription.plan.stripePriceId
+        )
       : undefined;
 
-    const { stripePriceId, ...sanitizedPlan } = subscription.plan; 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { stripePriceId, ...sanitizedPlan } = subscription.plan;
 
     return {
       id: user.id,
@@ -381,14 +410,15 @@ export class UsersService {
             featureOverrides: subscription.featureOverrides as string[],
           }
         : undefined,
-      plan: sanitizedPlan && stripePrice
-        ? {
-            ...sanitizedPlan,
-            ...stripePrice,
-            name: sanitizedPlan.name,
-            features: sanitizedPlan.features as string[],
-          }
-        : undefined,
+      plan:
+        sanitizedPlan && stripePrice
+          ? {
+              ...sanitizedPlan,
+              ...stripePrice,
+              name: sanitizedPlan.name,
+              features: sanitizedPlan.features as string[],
+            }
+          : undefined,
     };
   }
 

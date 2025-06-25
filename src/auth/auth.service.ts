@@ -150,14 +150,16 @@ export class AuthService {
           trainingVideoLimit: true,
           trainingDocumentLimit: true,
           isEnterprise: true,
-          trialDays: true
-        }
+          trialDays: true,
+        },
       });
 
       if (!plan) throw new Error('No valid public trial plan found');
 
       const now = new Date();
-      const trialEnd = new Date(now.getTime() + (plan.trialDays ?? 14) * 86400000);
+      const trialEnd = new Date(
+        now.getTime() + (plan.trialDays ?? 14) * 86400000
+      );
 
       await this.prisma.subscription.create({
         data: {
@@ -170,7 +172,7 @@ export class AuthService {
           currentPeriodEnd: trialEnd,
           trialStart: now,
           trialEnd: trialEnd,
-        }
+        },
       });
 
       await this.prisma.smartRechargeSetting.create({

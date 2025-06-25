@@ -314,7 +314,7 @@ export class ConversationsService {
             };
           }
 
-          const timezone = timezoneMap[enhancedAgent.settings.timezone]
+          const timezone = timezoneMap[enhancedAgent.settings.timezone];
 
           try {
             this.logger.debug(
@@ -789,7 +789,7 @@ export class ConversationsService {
         await this.googleCalendarOAuthService.getValidAccessToken(agentId);
       this.logger.debug(`[executeIntention] Access token retrieved`);
 
-      let timezone = agentTimezone || 'UTC';
+      const timezone = agentTimezone || 'UTC';
 
       const toISOStringWithTZ = (dt: string, tz: string): string => {
         return DateTime.fromISO(dt, { zone: tz })

@@ -465,7 +465,8 @@ export class WebhooksService {
       );
     if (creditCheck.allowed === false) {
       const creditsCost = creditCheck.requiredCredits;
-      const creditsAvailable = creditCheck.planCreditsAvailable + creditCheck.extraCreditsAvailable;
+      const creditsAvailable =
+        creditCheck.planCreditsAvailable + creditCheck.extraCreditsAvailable;
       const model = creditCheck.model;
       this.logger.log(
         `Skipping message due to lack of credits: ${webhookEvent.channel.agent.id}'s model ${model} required ${creditsCost}, but only ${creditsAvailable} are available.`
@@ -616,12 +617,25 @@ export class WebhooksService {
           );
 
           this.logger.log(`Updating chat ${chat.id} as unread`);
-          await this.prisma.chat.update({
+          const updatedChat = await this.prisma.chat.update({
             where: { id: chat.id },
             data: {
               read: false,
               unReadCount: { increment: 1 },
               finished: false,
+            },
+            select: {
+              id: true,
+              agentId: true,
+              title: true,
+              name: true,
+              userName: true,
+              userPicture: true,
+              whatsappPhone: true,
+              humanTalk: true,
+              read: true,
+              finished: true,
+              unReadCount: true,
             },
           });
 
@@ -637,14 +651,12 @@ export class WebhooksService {
             },
           });
 
-          const updatedChat = await this.prisma.chat.findUnique({
-            where: { id: chat.id },
-          });
           await this.prisma.interaction.update({
             where: { id: latestInteraction.id },
             data: { status: 'WAITING' },
           });
-          const paginatedInteractions =
+
+          const latestInteractionUpdated =
             await this.interactionsService.findLatestInteractionByChatWithMessages(
               chat.id
             );
@@ -653,8 +665,8 @@ export class WebhooksService {
             webhookEvent.channel.agent.workspaceId,
             'messageChatUpdate',
             {
-              ...updatedChat,
-              paginatedInteractions: paginatedInteractions,
+              chat: updatedChat,
+              latestInteraction: latestInteractionUpdated,
               latestMessage: {
                 ...message,
                 whatsappTimestamp: message?.whatsappTimestamp?.toString(),
@@ -689,10 +701,25 @@ export class WebhooksService {
               time: Date.now(),
             },
           });
+
           const updatedChat = await this.prisma.chat.findUnique({
             where: { id: chat.id },
+            select: {
+              id: true,
+              agentId: true,
+              title: true,
+              name: true,
+              userName: true,
+              userPicture: true,
+              whatsappPhone: true,
+              humanTalk: true,
+              read: true,
+              finished: true,
+              unReadCount: true,
+            },
           });
-          const paginatedInteractions =
+
+          const latestInteractionUpdated =
             await this.interactionsService.findLatestInteractionByChatWithMessages(
               chat.id
             );
@@ -700,8 +727,8 @@ export class WebhooksService {
             webhookEvent.channel.agent.workspaceId,
             'messageChatUpdate',
             {
-              ...updatedChat,
-              paginatedInteractions: paginatedInteractions,
+              chat: updatedChat,
+              latestInteraction: latestInteractionUpdated,
               latestMessage: {
                 ...systemMessage,
                 whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
@@ -713,7 +740,9 @@ export class WebhooksService {
         }
 
         if (insufficientCredits) {
-          const creditsAvailable = (creditCheck?.planCreditsAvailable || 0) + (creditCheck?.extraCreditsAvailable || 0);
+          const creditsAvailable =
+            (creditCheck?.planCreditsAvailable || 0) +
+            (creditCheck?.extraCreditsAvailable || 0);
           const systemMessage = await this.prisma.message.create({
             data: {
               text: `Workspace lacks credits to process ${webhookEvent.channel.agent.name}'s message using the ${creditCheck.model} model. It required ${creditCheck.requiredCredits} but only ${creditsAvailable} was available at the time.`,
@@ -724,19 +753,34 @@ export class WebhooksService {
               time: Date.now(),
             },
           });
-          const updatedChat = await this.prisma.chat.findUnique({
-            where: { id: chat.id },
-          });
-          const paginatedInteractions =
+          const latestInteractionUpdated =
             await this.interactionsService.findLatestInteractionByChatWithMessages(
               chat.id
             );
+
+          const updatedChat = await this.prisma.chat.findUnique({
+            where: { id: chat.id },
+            select: {
+              id: true,
+              agentId: true,
+              title: true,
+              name: true,
+              userName: true,
+              userPicture: true,
+              whatsappPhone: true,
+              humanTalk: true,
+              read: true,
+              finished: true,
+              unReadCount: true,
+            },
+          });
+
           this.websocketService.sendToClient(
             webhookEvent.channel.agent.workspaceId,
             'messageChatUpdate',
             {
-              ...updatedChat,
-              paginatedInteractions: paginatedInteractions,
+              chat: updatedChat,
+              latestInteraction: latestInteractionUpdated,
               latestMessage: {
                 ...systemMessage,
                 whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
@@ -946,16 +990,13 @@ export class WebhooksService {
               },
             });
 
-            const updatedChatAfterResponse = await this.prisma.chat.findUnique({
-              where: { id: chat.id },
-            });
-            const paginatedInteractionsAfterResponse =
+            const latestInteractionUpdated =
               await this.interactionsService.findLatestInteractionByChatWithMessages(
                 chat.id
               );
             const agentAfterResponse = await this.prisma.agent.findFirst({
               where: { id: chat.agentId },
-              select: { workspaceId: true },
+              select: { id: true, workspaceId: true },
             });
 
             // Fetch the latest message (could be text or audio) to send in websocket update
@@ -964,12 +1005,29 @@ export class WebhooksService {
               orderBy: { createdAt: 'desc' },
             });
 
+            const updatedChat = await this.prisma.chat.findUnique({
+              where: { id: chat.id },
+              select: {
+                id: true,
+                agentId: true,
+                title: true,
+                name: true,
+                userName: true,
+                userPicture: true,
+                whatsappPhone: true,
+                humanTalk: true,
+                read: true,
+                finished: true,
+                unReadCount: true,
+              },
+            });
+
             this.websocketService.sendToClient(
               agentAfterResponse.workspaceId,
               'messageChatUpdate',
               {
-                ...updatedChatAfterResponse,
-                paginatedInteractions: paginatedInteractionsAfterResponse,
+                chat: updatedChat,
+                latestInteraction: latestInteractionUpdated,
                 latestMessage: {
                   ...latestMessageSent,
                   whatsappTimestamp:

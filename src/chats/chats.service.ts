@@ -166,12 +166,25 @@ export class ChatsService {
 
     const chat = await this.prisma.chat.findUnique({
       where: { id: chatId },
+      select: {
+        id: true,
+        agentId: true,
+        title: true,
+        name: true,
+        userName: true,
+        userPicture: true,
+        whatsappPhone: true,
+        humanTalk: true,
+        read: true,
+        finished: true,
+        unReadCount: true,
+      },
     });
 
     // Find the agent who left the conversation
     const agent = await this.prisma.agent.findFirst({
       where: { id: chat.agentId },
-      select: { workspaceId: true, name: true },
+      select: { id: true, workspaceId: true, name: true },
     });
 
     // Create a new message indicating the start of human attendance
@@ -186,20 +199,15 @@ export class ChatsService {
       },
     });
 
-    // Fetch latest data to send to socket clients
-    const updatedChat = await this.prisma.chat.findUnique({
-      where: { id: chat.id },
-    });
-
-    const paginatedInteractions =
+    const latestInteractionUpdated =
       await this.interactionsService.findLatestInteractionByChatWithMessages(
-        chatId
+        chat.id
       );
 
     // Send system message to frontend clients via websocket
     this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
-      ...updatedChat,
-      paginatedInteractions: paginatedInteractions,
+      chat,
+      latestInteraction: latestInteractionUpdated,
       latestMessage: {
         ...systemMessage,
         whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
@@ -257,12 +265,25 @@ export class ChatsService {
 
     const chat = await this.prisma.chat.findUnique({
       where: { id: chatId },
+      select: {
+        id: true,
+        agentId: true,
+        title: true,
+        name: true,
+        userName: true,
+        userPicture: true,
+        whatsappPhone: true,
+        humanTalk: true,
+        read: true,
+        finished: true,
+        unReadCount: true,
+      },
     });
 
     // Find the agent who left the conversation
     const agent = await this.prisma.agent.findFirst({
       where: { id: chat.agentId },
-      select: { workspaceId: true, name: true },
+      select: { id: true, workspaceId: true, name: true },
     });
 
     // Create a new message indicating the start of human attendance
@@ -277,20 +298,15 @@ export class ChatsService {
       },
     });
 
-    // Fetch latest data to send to socket clients
-    const updatedChat = await this.prisma.chat.findUnique({
-      where: { id: chat.id },
-    });
-
-    const paginatedInteractions =
+    const latestInteraction =
       await this.interactionsService.findLatestInteractionByChatWithMessages(
         chatId
       );
 
     // Send system message to frontend clients via websocket
     this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
-      ...updatedChat,
-      paginatedInteractions: paginatedInteractions,
+      chat,
+      latestInteraction,
       latestMessage: {
         ...systemMessage,
         whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
@@ -409,7 +425,7 @@ export class ChatsService {
     }
 
     // Update chat to indicate human attendance
-    await this.prisma.chat.update({
+    const chatUpdated = await this.prisma.chat.update({
       where: { id: chatId },
       data: {
         humanTalk: true,
@@ -417,6 +433,19 @@ export class ChatsService {
         updatedAt: new Date(),
         read: false,
         unReadCount: { increment: 1 },
+      },
+      select: {
+        id: true,
+        agentId: true,
+        title: true,
+        name: true,
+        userName: true,
+        userPicture: true,
+        whatsappPhone: true,
+        humanTalk: true,
+        read: true,
+        finished: true,
+        unReadCount: true,
       },
     });
 
@@ -448,7 +477,7 @@ export class ChatsService {
     // Find the agent who left the conversation
     const agent = await this.prisma.agent.findFirst({
       where: { id: chat.agentId },
-      select: { workspaceId: true, name: true },
+      select: { id: true, workspaceId: true, name: true },
     });
 
     // Create a new message indicating the start of human attendance
@@ -463,20 +492,15 @@ export class ChatsService {
       },
     });
 
-    // Fetch latest data to send to socket clients
-    const updatedChat = await this.prisma.chat.findUnique({
-      where: { id: chat.id },
-    });
-
-    const paginatedInteractions =
+    const latestInteractionUpdated =
       await this.interactionsService.findLatestInteractionByChatWithMessages(
         chatId
       );
 
     // Send system message to frontend clients via websocket
     this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
-      ...updatedChat,
-      paginatedInteractions: paginatedInteractions,
+      chat: chatUpdated,
+      latestInteraction: latestInteractionUpdated,
       latestMessage: {
         ...systemMessage,
         whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
@@ -502,11 +526,24 @@ export class ChatsService {
     }
 
     // Update chat to stop human attendance
-    await this.prisma.chat.update({
+    const chatUpdated = await this.prisma.chat.update({
       where: { id: chatId },
       data: {
         humanTalk: false,
         updatedAt: new Date(),
+      },
+      select: {
+        id: true,
+        agentId: true,
+        title: true,
+        name: true,
+        userName: true,
+        userPicture: true,
+        whatsappPhone: true,
+        humanTalk: true,
+        read: true,
+        finished: true,
+        unReadCount: true,
       },
     });
 
@@ -547,7 +584,7 @@ export class ChatsService {
     // Find agent who joined the conversation
     const agent = await this.prisma.agent.findFirst({
       where: { id: chat.agentId },
-      select: { workspaceId: true, name: true },
+      select: { id: true, workspaceId: true, name: true },
     });
 
     // Create a system message indicating the end of human attendance
@@ -562,20 +599,15 @@ export class ChatsService {
       },
     });
 
-    // Fetch latest data to send to socket clients
-    const updatedChat = await this.prisma.chat.findUnique({
-      where: { id: chat.id },
-    });
-
-    const paginatedInteractions =
+    const latestInteractionUpdated =
       await this.interactionsService.findLatestInteractionByChatWithMessages(
         chatId
       );
 
     // Send system message to frontend clients via websocket
     this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
-      ...updatedChat,
-      paginatedInteractions: paginatedInteractions,
+      chat: chatUpdated,
+      latestInteraction: latestInteractionUpdated,
       latestMessage: {
         ...systemMessage,
         whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
@@ -673,16 +705,29 @@ export class ChatsService {
       data: {
         updatedAt: new Date(),
       },
+      select: {
+        id: true,
+        agentId: true,
+        title: true,
+        name: true,
+        userName: true,
+        userPicture: true,
+        whatsappPhone: true,
+        humanTalk: true,
+        read: true,
+        finished: true,
+        unReadCount: true,
+      },
     });
 
-    const paginatedInteractions =
+    const latestInteractionUpdated =
       await this.interactionsService.findLatestInteractionByChatWithMessages(
         chat.id
       );
 
     return {
-      ...updatedChat,
-      paginatedInteractions: paginatedInteractions,
+      chat: updatedChat,
+      latestInteraction: latestInteractionUpdated,
       latestMessage: {
         ...newMessage,
         whatsappTimestamp: newMessage?.whatsappTimestamp?.toString(),

@@ -160,7 +160,7 @@ export class ChannelsService {
           wahaApi: {
             instanceName,
             createdAt: new Date().toISOString(),
-            error: error.message
+            error: error.message,
           },
         };
 
@@ -252,7 +252,6 @@ export class ChannelsService {
         status: 'SCAN_QR_CODE',
         qrCode: qrResult.value || null,
       };
-      
     } catch (error) {
       this.logger.error(
         `Error refreshing QR code: ${error.message}`,

@@ -21,8 +21,12 @@ async function bootstrap() {
 
   const httpsOptions = isProduction
     ? {
-        key: readFileSync(process.env.SSL_KEY_PATH || '/etc/ssl/private/privkey.pem'),
-        cert: readFileSync(process.env.SSL_CERT_PATH || '/etc/ssl/certs/fullchain.pem'),
+        key: readFileSync(
+          process.env.SSL_KEY_PATH || '/etc/ssl/private/privkey.pem'
+        ),
+        cert: readFileSync(
+          process.env.SSL_CERT_PATH || '/etc/ssl/certs/fullchain.pem'
+        ),
       }
     : undefined;
 
@@ -44,7 +48,7 @@ async function bootstrap() {
       transform: true,
       forbidNonWhitelisted: true,
       skipMissingProperties: false,
-    }),
+    })
   );
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
