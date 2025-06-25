@@ -57,3 +57,7 @@ services:
 
 volumes:
   postgres_data:
+
+networks:
+  tawkee-network:
+    external: true
