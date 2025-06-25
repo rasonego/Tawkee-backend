@@ -56,7 +56,9 @@ services:
       - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
+    networks:
+      - tawkee-network
+      
 volumes:
   postgres_data:
 
