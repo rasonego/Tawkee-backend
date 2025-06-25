@@ -42,6 +42,8 @@ services:
     depends_on:
       - db
     restart: always
+    networks:
+      - tawkee-network
 
   db:
     image: postgres:15
