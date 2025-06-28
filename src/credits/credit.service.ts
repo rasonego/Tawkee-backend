@@ -4,6 +4,8 @@ import { WebsocketService } from '../websocket/websocket.service';
 import { StripeService } from '../stripe/stripe.service';
 import { v4 as uuidv4 } from 'uuid';
 import { RequestType } from '@prisma/client';
+import { eachDayOfInterval, endOfDay, isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
+import { OverrideValue } from 'src/workspaces/workspaces.service';
 
 const modelCreditMap: Record<string, number> = {
   GPT_4_1: 20,
@@ -86,6 +88,122 @@ export class CreditService {
     extraCreditsRemaining = Math.max(0, totalExtra - spentExtra);
 
     return { planCreditsRemaining, extraCreditsRemaining };
+  }
+  
+  private isOverrideValue(obj: unknown): obj is OverrideValue {
+    return (
+      typeof obj === 'object' &&
+      obj !== null &&
+      'value' in obj &&
+      'explicitlySet' in obj &&
+      (typeof (obj as any).value === 'number' || (obj as any).value === null) &&
+      typeof (obj as any).explicitlySet === 'boolean'
+    );
+  }
+  
+  async getDailyCreditBalanceInCurrentPeriod(
+    workspaceId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<
+    { date: string; planCreditsRemaining: number; extraCreditsRemaining: number }[]
+  > {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        workspaceId,
+        status: { in: ['ACTIVE', 'TRIAL'] },
+      },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!subscription) return [];
+
+    const {
+      currentPeriodStart,
+      currentPeriodEnd,
+      plan,
+      creditsLimitOverrides,
+    } = subscription;
+
+    const basePlanLimit = plan?.creditsLimit;
+    let effectiveLimit: number | null = basePlanLimit ?? null;
+
+    if (this.isOverrideValue(creditsLimitOverrides) && creditsLimitOverrides.explicitlySet) {
+      effectiveLimit = creditsLimitOverrides.value;
+    }
+
+    if (effectiveLimit === null || effectiveLimit === undefined) {
+      // Unlimited plan, skip computation
+      return [];
+    }
+
+    const start = startOfDay(startDate ? parseISO(startDate) : currentPeriodStart);
+    const end = endOfDay(endDate ? parseISO(endDate) : currentPeriodEnd);
+
+    const clampedStart = isBefore(start, currentPeriodStart)
+      ? startOfDay(currentPeriodStart)
+      : start;
+    const clampedEnd = isAfter(end, currentPeriodEnd)
+      ? endOfDay(currentPeriodEnd)
+      : end;
+
+    const days = eachDayOfInterval({ start: clampedStart, end: clampedEnd });
+
+    const usageRecords = await this.prisma.usageRecord.findMany({
+      where: {
+        workspaceId,
+        createdAt: {
+          gte: clampedStart,
+          lte: clampedEnd,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const extraPurchases = await this.prisma.extraCreditPurchase.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const usageMap = new Map<string, { plan: number; extra: number }>();
+    for (const record of usageRecords) {
+      const day = startOfDay(record.createdAt).toISOString().split('T')[0];
+      const existing = usageMap.get(day) ?? { plan: 0, extra: 0 };
+
+      if (record.usedFrom === 'PLAN') {
+        existing.plan += record.quantity;
+      } else if (record.usedFrom === 'EXTRA') {
+        existing.extra += record.quantity;
+      }
+
+      usageMap.set(day, existing);
+    }
+
+    const result = [];
+    let cumulativePlanUsed = 0;
+    let cumulativeExtraUsed = 0;
+
+    for (const date of days) {
+      const iso = date.toISOString().split('T')[0];
+      const usage = usageMap.get(iso) ?? { plan: 0, extra: 0 };
+
+      cumulativePlanUsed += usage.plan;
+      cumulativeExtraUsed += usage.extra;
+
+      // Sum only extra purchases available up to and including this date
+      const extraCreditsAvailable = extraPurchases
+        .filter(p => startOfDay(p.createdAt) <= date)
+        .reduce((sum, p) => sum + p.quantity, 0);
+
+      result.push({
+        date: iso,
+        planCreditsRemaining: Math.max(0, effectiveLimit - cumulativePlanUsed),
+        extraCreditsRemaining: Math.max(0, extraCreditsAvailable - cumulativeExtraUsed),
+      });
+    }
+
+    return result;
   }
 
   async checkAgentWorkspaceHasSufficientCredits(agentId: string) {

@@ -1,25 +1,92 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { WebsocketService } from 'src/websocket/websocket.service';
-import { WorkspaceDto } from './dto/workspace.dto';
+import { CreditService } from 'src/credits/credit.service';
+import { PaginatedWorkspaceResponseDto, WorkspaceDto } from './dto/workspace.dto';
 import { AIModel } from '@prisma/client';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
+
+export type OverrideValue = { value: number | null; explicitlySet: boolean };
+
+export function hasExplicitValue(override: unknown): override is OverrideValue {
+  return (
+    typeof override === 'object' &&
+    override !== null &&
+    'explicitlySet' in override &&
+    (override as OverrideValue).explicitlySet === true
+  );
+}
 
 @Injectable()
 export class WorkspacesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly websocketService: WebsocketService
+    private readonly creditService: CreditService
   ) {}
 
-  async findAll(): Promise<WorkspaceDto[]> {
+  async findAll(paginationDto: PaginationDto): Promise<PaginatedWorkspaceResponseDto> {
+    const { page = 1, pageSize = 3 } = paginationDto;
+    const skip = (page - 1) * pageSize;
+
+    const where = {
+      isDeleted: false
+    };
+
+    const total = await this.prisma.workspace.count({ where });
+    const totalPages = Math.ceil(total / pageSize);
+
     const workspaces = await this.prisma.workspace.findMany({
-      select: {
-        id: true,
-        name: true,
+      where,
+      skip,
+      take: pageSize,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        subscriptions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            status: true,
+            plan: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+        user: {
+          select: {
+            email: true,
+          },
+        },
       },
     });
 
-    return workspaces;
+    const data = workspaces.map((ws) => {
+      const subscription = ws.subscriptions?.[0] ?? null;
+
+      return {
+        id: ws.id,
+        name: ws.name,
+        createdAt: ws.createdAt.toISOString(),
+        email: ws.user?.email ?? null,
+        isActive: ws.isActive,
+        subscription: subscription
+          ? {
+              status: subscription.status,
+              plan: subscription.plan ? { name: subscription.plan.name } : undefined,
+            }
+          : null,
+      };
+    });
+
+    return {
+      data,
+      meta: {
+        page,
+        pageSize,
+        total,
+        totalPages,
+      }
+    };
   }
 
   async findOne(id: string) {
@@ -309,6 +376,115 @@ export class WorkspacesService {
       creditsPerDay,
       topAgents,
       topModels,
+    };
+  }
+
+  async getDetailedWorkspace(workspaceId: string): Promise<any> {
+    const ws = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      include: {
+        subscriptions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: {
+            plan: true,
+          },
+        },
+        agents: {
+          include: {
+            channels: true,
+          },
+        },
+        user: true
+      },
+    });
+
+    if (!ws) {
+      throw new Error(`Workspace with ID ${workspaceId} not found`);
+    }
+
+    const { planCreditsRemaining, extraCreditsRemaining } =
+      await this.creditService.getWorkspaceRemainingCredits(ws.id);
+
+    const subscription = ws.subscriptions[0] || null;
+
+    return {
+      id: ws.id,
+      name: ws.name,
+      createdAt: ws.createdAt.toISOString(),
+      workspacePlanCredits: planCreditsRemaining ?? 0,
+      workspaceExtraCredits: extraCreditsRemaining ?? 0,
+      subscription: subscription
+        ? {
+            id: subscription.id,
+            stripeSubscriptionId: subscription.stripeSubscriptionId,
+            stripeCustomerId: subscription.stripeCustomerId,
+            status: subscription.status,
+            currentPeriodStart: subscription.currentPeriodStart.toISOString(),
+            currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
+            cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+            trialStart: subscription.trialStart?.toISOString() ?? null,
+            trialEnd: subscription.trialEnd?.toISOString() ?? null,
+            featureOverrides: subscription.featureOverrides ?? null,
+            ...(hasExplicitValue(subscription.agentLimitOverrides)
+              ? { agentLimitOverrides: subscription.agentLimitOverrides.value }
+              : {}),
+            ...(hasExplicitValue(subscription.creditsLimitOverrides)
+              ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value }
+              : {}),            
+            ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
+              ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
+              ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
+              ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
+              ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value }
+              : {}),
+            plan: subscription.plan && {
+              name: subscription.plan.name,
+              stripePriceId: subscription.plan.stripePriceId,
+              stripeProductId: subscription.plan.stripeProductId,
+              description: subscription.plan.description,
+              features: subscription.plan.features,
+              creditsLimit: subscription.plan.creditsLimit,
+              agentLimit: subscription.plan.agentLimit,
+              trainingTextLimit: subscription.plan.trainingTextLimit,
+              trainingWebsiteLimit: subscription.plan.trainingWebsiteLimit,
+              trainingVideoLimit: subscription.plan.trainingVideoLimit,
+              trainingDocumentLimit: subscription.plan.trainingDocumentLimit,
+              isEnterprise: subscription.plan.isEnterprise,
+              trialDays: subscription.plan.trialDays,
+            },
+          }
+        : null,
+      agents: ws.agents.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        isActive: agent.isActive,
+        channels: agent.channels.map((channel) => ({
+          id: channel.id,
+          name: channel.name,
+          connected: channel.connected,
+        })),
+      })),
+      users: ws.user
+        ? [
+            {
+              id: ws.user.id,
+              name: ws.user.name,
+              email: ws.user.email,
+              workspaceId: ws.id,
+              avatar: ws.user.avatar,
+              provider: ws.user.provider,
+              emailVerified: ws.user.emailVerified,
+              createdAt: ws.user.createdAt.toISOString(),
+            },
+          ]
+        : []
     };
   }
 }

@@ -1551,8 +1551,15 @@ export class WebhooksService {
           );
         } else if (messageType === 'audio') {
           // Handle audio message (typically no text)
-          messageContent = '(Audio message)';
-          this.logger.debug(`Received audio message without text`);
+          const { apiKey } = this.wahaApiService.getWahaConfig();
+          const textContent =
+            await this.mediaService.extractTextFromMedia(
+              dataObject.media.url,
+              JSON.parse(dataObject.media.mimetype as string)
+                ?.mimetype,
+              apiKey
+            );
+          messageContent = textContent || '(Audio message)';
         } else {
           // Unknown message type
           this.logger.warn(

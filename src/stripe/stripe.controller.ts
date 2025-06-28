@@ -16,6 +16,8 @@ import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { CreatePlanFromStripeDto } from './dto/create-plan-from-stripe.dto';
 import { ConfigService } from '@nestjs/config';
+import { UpdatePlanFromFormDto } from './dto/update-plan-from-form.dto';
+import { UpdateSubscriptionOverridesDto } from './dto/update-subscription-overrides.dto';
 
 @Controller('stripe')
 export class StripeController {
@@ -83,8 +85,30 @@ export class StripeController {
       planDetails?: any;
     }[]
   > {
-    return this.stripeService.getActiveProducts();
+    return this.stripeService.getStripeProducts();
   }
+
+  @Post('plans/create-from-form')
+  async createPlanFromForm(
+    @Body() dto: UpdatePlanFromFormDto
+  ) {
+    return this.stripeService.createPlanFromForm(dto);
+  }
+
+  @Post('plans/update-from-form')
+  async updatePlanFromForm(
+    @Body() dto: UpdatePlanFromFormDto
+  ) {
+    return this.stripeService.updatePlanFromForm(dto);
+  }
+
+  @Post('subscription/update-overrides')
+  async updateSubscriptionOverrides(
+    @Body() dto: UpdateSubscriptionOverridesDto
+  ) {
+    return this.stripeService.updateSubscriptionOverrides(dto);
+  }
+
 
   @Post('plans/sync-from-stripe')
   async createPlanFromStripe(

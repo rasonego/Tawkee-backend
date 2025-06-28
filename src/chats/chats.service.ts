@@ -646,9 +646,12 @@ export class ChatsService {
         text: message,
         role: 'human', // From human operator
         chatId,
-        type: 'text',
+        type: media.type,
         time: Date.now(),
         sentToEvolution: false, // Will be updated after sending
+        imageUrl: media.type === 'image' ? media.url : undefined,
+        audioUrl: media.type === 'audio' ? media.url : undefined,
+        documentUrl: media.type === 'document' ? media.url : undefined,
         interactionId: latestInteraction.id,
       },
     });
@@ -669,6 +672,21 @@ export class ChatsService {
         );
 
         // Update the message with the response data
+        newMessage = await this.prisma.message.update({
+          where: { id: newMessage.id },
+          data: {
+            sentToEvolution: true,
+            sentAt: new Date(),
+            whatsappMessageId: response?.id?.id ?? response?.key?.id,
+            whatsappStatus: response?.ack?.toString(), // convertido para string, conforme esperado no schema
+            whatsappTimestamp: response?.timestamp.toString(),
+            type: response?.type,
+            text: response?.body,
+            mimetype: response?._data?.mimetype,
+            fileName: response?._data?.caption,
+          },
+        });
+
         newMessage = await this.prisma.message.update({
           where: { id: newMessage.id },
           data: {

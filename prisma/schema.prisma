@@ -35,11 +35,13 @@ model User {
 }
 
 model Workspace {
-  id                 String             @id @default(uuid())
-  name               String
-  stripeCustomerId   String?            @unique
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                   String               @id @default(uuid())
+  name                 String
+  stripeCustomerId     String?              @unique
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  isActive             Boolean              @default(true)
+  isDeleted            Boolean              @default(false)
 
   agents               Agent[]
   chats                Chat[]
@@ -430,7 +432,7 @@ model Plan {
 }
 
 model Subscription {
-  id                   String             @id @default(uuid())
+  id                   String   @id @default(uuid())
   workspaceId          String
   planId               String
   stripeSubscriptionId String
@@ -438,20 +440,21 @@ model Subscription {
   status               SubscriptionStatus
   currentPeriodStart   DateTime
   currentPeriodEnd     DateTime
-  cancelAtPeriodEnd    Boolean            @default(false)
+  cancelAtPeriodEnd    Boolean  @default(false)
   canceledAt           DateTime?
   trialStart           DateTime?
   trialEnd             DateTime?
 
   // 🆕 Optional overrides (per-enterprise customer)
-  customStripePriceId String? 
-  featureOverrides    Json? 
-  creditsLimitOverrides Int?
-  agentLimitOverrides Int?
-  trainingTextLimitOverrides Int?
-  trainingWebsiteLimitOverrides Int?
-  trainingVideoLimitOverrides Int?
-  trainingDocumentLimitOverrides Int?
+  customStripePriceId        String?
+  featureOverrides           Json?
+
+  creditsLimitOverrides      Json? // { value: number | 'UNLIMITED', explicitlySet: boolean }
+  agentLimitOverrides        Json?
+  trainingTextLimitOverrides Json?
+  trainingWebsiteLimitOverrides Json?
+  trainingVideoLimitOverrides   Json?
+  trainingDocumentLimitOverrides Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

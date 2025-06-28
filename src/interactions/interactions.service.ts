@@ -82,7 +82,7 @@ export class InteractionsService {
       where: whereCondition,
       skip,
       take: pageSize,
-      orderBy: { startAt: 'desc' }, // Or any other order you prefer
+      orderBy: { startAt: 'desc' },
       include: {
         agent: {
           select: {
@@ -91,19 +91,10 @@ export class InteractionsService {
           },
         },
         messages: {
-          // Include messages related to the interaction
-          select: {
-            id: true,
-            text: true,
-            role: true,
-            userName: true,
-            createdAt: true,
-          },
           orderBy: {
             createdAt: 'asc', // Order messages chronologically
           },
         },
-        // No need to include chat again as we are filtering by chatId
       },
     });
 
@@ -121,14 +112,13 @@ export class InteractionsService {
         transferAt: interaction.transferAt || null,
         resolvedAt: interaction.resolvedAt || null,
         userId: interaction.userId || null,
-        // Map Prisma Message objects to MessageDto
-        messages: interaction.messages.map((message) => ({
-          id: message.id,
-          text: message.text ?? null, // Handle potential null text
-          role: message.role,
-          userName: message.userName ?? null, // Handle potential null userName
-          createdAt: message.createdAt,
-        })),
+        messages: interaction.messages.map(message => ({
+          ...message,
+          whatsappTimestamp: message.whatsappTimestamp
+            ? message.whatsappTimestamp.toString()
+            : null,
+          time: message.time ? message.time.toString() : null,
+        }))
       })
     );
 
@@ -159,13 +149,6 @@ export class InteractionsService {
           },
         },
         messages: {
-          select: {
-            id: true,
-            text: true,
-            role: true,
-            userName: true,
-            createdAt: true,
-          },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -184,11 +167,9 @@ export class InteractionsService {
       resolvedAt: latestInteraction.resolvedAt || null,
       userId: latestInteraction.userId || null,
       messages: latestInteraction.messages.map((message) => ({
-        id: message.id,
-        text: message.text ?? null,
-        role: message.role,
-        userName: message.userName ?? null,
-        createdAt: message.createdAt,
+        ...message,
+        whatsappTimestamp: message?.whatsappTimestamp?.toString() || null,
+        time: message?.time?.toString() || null
       })),
     };
   }
@@ -273,8 +254,8 @@ export class InteractionsService {
         humanTalk: true,
         read: true,
         finished: true,
-        unReadCount: true,
-      },
+        unReadCount: true 
+      }
     });
 
     const latestInteraction =
@@ -416,8 +397,8 @@ export class InteractionsService {
         humanTalk: true,
         read: true,
         finished: true,
-        unReadCount: true,
-      },
+        unReadCount: true 
+      }
     });
 
     const latestInteraction =

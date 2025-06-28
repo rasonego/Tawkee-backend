@@ -15,8 +15,14 @@ import { VerificationService } from '../email/verification.service';
 import { ConfigService } from '@nestjs/config';
 import { CreditService } from 'src/credits/credit.service';
 import { StripeService } from 'src/stripe/stripe.service';
+import { hasExplicitValue } from 'src/workspaces/workspaces.service';
 
 const scryptAsync = promisify(scrypt);
+
+export type LimitOverrideDto = {
+  value: number | null;
+  explicitlySet: boolean;
+};
 
 @Injectable()
 export class UsersService {
@@ -108,8 +114,8 @@ export class UsersService {
             currentPeriodEnd: true,
             trialEnd: true,
             featureOverrides: true,
-            creditsLimitOverrides: true,
             agentLimitOverrides: true,
+            creditsLimitOverrides: true,
             trainingTextLimitOverrides: true,
             trainingWebsiteLimitOverrides: true,
             trainingVideoLimitOverrides: true,
@@ -169,10 +175,28 @@ export class UsersService {
               active: false,
             },
             subscription: {
-              ...subscription,
               featureOverrides: subscription.featureOverrides as string[],
               currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
               trialEnd: subscription.trialEnd?.toISOString(),
+
+            ...(hasExplicitValue(subscription.agentLimitOverrides)
+              ? { agentLimitOverrides: subscription.agentLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.creditsLimitOverrides)
+              ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value as number }
+              : {}),              
+            ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
+              ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
+              ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
+              ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
+              ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value as number }
+              : {}),
             },
             plan: {
               ...sanitizedPlan,
@@ -313,10 +337,28 @@ export class UsersService {
         smartRecharge: smartRecharge || undefined,
         subscription: subscription
           ? {
-              ...subscription,
               currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
               trialEnd: subscription.trialEnd?.toISOString(),
               featureOverrides: subscription.featureOverrides as string[],
+
+            ...(hasExplicitValue(subscription.agentLimitOverrides)
+              ? { agentLimitOverrides: subscription.agentLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.creditsLimitOverrides)
+              ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value as number }
+              : {}),              
+            ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
+              ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
+              ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
+              ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
+              ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value as number }
+              : {}), 
             }
           : undefined,
         plan:
@@ -404,10 +446,28 @@ export class UsersService {
       smartRecharge: smartRecharge || undefined,
       subscription: subscription
         ? {
-            ...subscription,
             currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
             trialEnd: subscription.trialEnd?.toISOString(),
             featureOverrides: subscription.featureOverrides as string[],
+
+            ...(hasExplicitValue(subscription.agentLimitOverrides)
+              ? { agentLimitOverrides: subscription.agentLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.creditsLimitOverrides)
+              ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value as number }
+              : {}),              
+            ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
+              ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
+              ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
+              ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value as number }
+              : {}),
+            ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
+              ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value as number }
+              : {}), 
           }
         : undefined,
       plan:

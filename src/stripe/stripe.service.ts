@@ -5,6 +5,8 @@ import Stripe from 'stripe';
 import { CreatePlanFromStripeDto } from './dto/create-plan-from-stripe.dto';
 import { WebsocketService } from 'src/websocket/websocket.service';
 import { CreditService } from 'src/credits/credit.service';
+import { UpdatePlanFromFormDto } from './dto/update-plan-from-form.dto';
+import { UpdateSubscriptionOverridesDto } from './dto/update-subscription-overrides.dto';
 
 const PRICE_PER_CREDIT_CENTS = 4;
 
@@ -30,7 +32,7 @@ export class StripeService {
     );
   }
 
-  async getActiveProducts(): Promise<
+  async getStripeProducts(): Promise<
     {
       product: Stripe.Product;
       prices: Stripe.Price[];
@@ -44,7 +46,6 @@ export class StripeService {
     }[]
   > {
     const allProducts = await this.stripe.products.list({
-      active: true,
       limit: 100,
     });
 
@@ -56,24 +57,12 @@ export class StripeService {
     const enrichedProducts = await Promise.all(
       customProducts.map(async (product) => {
         const prices = await this.stripe.prices.list({
-          product: product.id,
-          active: true,
-          limit: 10,
+          product: product.id
         });
 
         // Try to find a corresponding plan in your database using price ID
         const matchedPlan = await this.prisma.plan.findFirst({
-          where: {
-            stripeProductId: product.id,
-            isActive: true,
-          },
-          select: {
-            features: true,
-            creditsLimit: true,
-            agentLimit: true,
-            isEnterprise: true,
-            trialDays: true,
-          },
+          where: { stripeProductId: product.id }
         });
 
         return {
@@ -87,9 +76,232 @@ export class StripeService {
     return enrichedProducts;
   }
 
+  async createPlanFromForm({
+    name,
+    description,
+    price, // in cents
+    features,
+    creditsLimit,
+    agentsLimit,
+    trialDays,
+    trainingTextLimit,
+    trainingDocumentLimit,
+    trainingVideoLimit,
+    trainingWebsiteLimit,
+    isEnterprise,
+  }: UpdatePlanFromFormDto): Promise<{ message: string; plan: any }> {
+    // 1. Verifica se já existe um plano local com o mesmo nome
+    const existingLocalPlan = await this.prisma.plan.findFirst({
+      where: { name },
+    });
+
+    if (existingLocalPlan) {
+      throw new Error(`Já existe um plano local com o nome "${name}".`);
+    }
+
+    // 2. Verifica se já existe um produto no Stripe com o mesmo nome
+    const stripeProducts = await this.stripe.products.list({ limit: 100 });
+    const existingStripeProduct = stripeProducts.data.find(
+      (p) => p.name.toLowerCase() === name.toLowerCase()
+    );
+
+    if (existingStripeProduct) {
+      throw new Error(`Já existe um produto no Stripe com o nome "${name}".`);
+    }
+
+    // 3. Cria novo produto no Stripe
+    const product = await this.stripe.products.create({
+      name,
+      description,
+      metadata: {
+        createdFrom: 'app',
+      },
+    });
+
+    // 4. Cria novo preço no Stripe
+    const newPrice = await this.stripe.prices.create({
+      product: product.id,
+      currency: 'usd',
+      unit_amount: price,
+      recurring: {
+        interval: 'month',
+      },
+    });
+
+    // 5. Cria o plano no banco com isActive = false
+    const createdPlan = await this.prisma.plan.create({
+      data: {
+        name,
+        description,
+        stripeProductId: product.id,
+        stripePriceId: newPrice.id,
+        features,
+        creditsLimit,
+        agentLimit: agentsLimit,
+        trialDays,
+        trainingTextLimit,
+        trainingDocumentLimit,
+        trainingVideoLimit,
+        trainingWebsiteLimit,
+        isEnterprise,
+        isActive: false, // força desativado
+      },
+    });
+
+    return {
+      message: 'Plano criado com sucesso no Stripe e localmente',
+      plan: createdPlan,
+    };
+  }
+
+  async updatePlanFromForm({
+    name,
+    description,
+    price, // in cents
+    features,
+    creditsLimit,
+    agentsLimit,
+    trialDays,
+    trainingTextLimit,
+    trainingDocumentLimit,
+    trainingVideoLimit,
+    trainingWebsiteLimit,
+    isEnterprise,
+    isActive
+  }: UpdatePlanFromFormDto): Promise<{ message: string; plan: any }> {
+    // 1. Look up product by name
+    const products = await this.stripe.products.list({ limit: 100 });
+    const product = products.data.find(
+      (p) => p.name.toLowerCase() === name.toLowerCase()
+    );
+
+    if (!product) {
+      throw new Error(`No product found with name "${name}"`);
+    }
+
+    // 2. Update product description
+    await this.stripe.products.update(product.id, {
+      description: description,
+    });
+
+    // 3. Find current price and create a new one if necessary
+    const prices = await this.stripe.prices.list({ product: product.id });
+    const currentPrice = prices.data[0];
+
+    let priceId = currentPrice?.id;
+
+    // Only create new price if value changed or none exists
+    if (!currentPrice || currentPrice.unit_amount !== price) {
+      const newPrice = await this.stripe.prices.create({
+        product: product.id,
+        currency: 'usd',
+        unit_amount: price,
+        recurring: {
+          interval: 'month',
+        },
+      });
+      priceId = newPrice.id;
+    }
+
+    // 4. Update local plan entry
+    const plan = await this.prisma.plan.findFirst({
+      where: { name: name },
+    });
+
+    if (!plan) {
+      throw new Error(`No local plan found with name "${name}"`);
+    }
+
+    const updated = await this.prisma.plan.update({
+      where: { id: plan.id },
+      data: {
+        description,
+        stripePriceId: priceId,
+        stripeProductId: product.id,
+        features,
+        creditsLimit,
+        agentLimit: agentsLimit,
+        trainingTextLimit,
+        trainingDocumentLimit,
+        trainingVideoLimit,
+        trainingWebsiteLimit,
+        isEnterprise,
+        isActive,
+        trialDays,
+      },
+    });
+
+    return {
+      message: 'Stripe and local plan updated successfully',
+      plan: updated,
+    };
+  }
+
+  async updateSubscriptionOverrides(
+    dto: UpdateSubscriptionOverridesDto
+  ): Promise<{ message: string; subscriptionId: string }> {
+    const { subscriptionId, overrides } = dto;
+
+    const existingSub = await this.prisma.subscription.findUnique({
+      where: {
+        id: subscriptionId,
+        status: {
+          in: ['ACTIVE', 'TRIAL'],
+        },
+      },
+    });
+
+    if (!existingSub) {
+      throw new Error(`No active or trial subscription found with ID ${subscriptionId}`);
+    }
+
+    const updatePayload: Record<string, any> = {};
+
+    if ('featureOverrides' in overrides)
+      updatePayload.featureOverrides = overrides.featureOverrides;
+
+    if ('customStripePriceId' in overrides)
+      updatePayload.customStripePriceId = overrides.customStripePriceId;
+
+    const overrideFields: (keyof typeof overrides)[] = [
+      'creditsLimitOverrides',
+      'agentLimitOverrides',
+      'trainingTextLimitOverrides',
+      'trainingWebsiteLimitOverrides',
+      'trainingVideoLimitOverrides',
+      'trainingDocumentLimitOverrides',
+    ];
+
+    for (const field of overrideFields) {
+      const value = overrides[field];
+      if (
+        value === null ||
+        (typeof value === 'object' &&
+          value !== null &&
+          'explicitlySet' in value &&
+          typeof value.explicitlySet === 'boolean')
+      ) {
+        updatePayload[field] = value;
+      } else if (value !== undefined) {
+        throw new Error(`Invalid override structure for ${field}`);
+      }
+    }
+
+    const updated = await this.prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: updatePayload,
+      select: { id: true },
+    });
+
+    return {
+      message: 'Subscription overrides updated successfully',
+      subscriptionId: updated.id,
+    };
+  }
+
+
   async syncPlanFromStripe(dto: CreatePlanFromStripeDto) {
     const matchingProducts = await this.stripe.products.list({
-      active: true,
       limit: 100,
     });
 
@@ -105,7 +317,6 @@ export class StripeService {
 
     const prices = await this.stripe.prices.list({
       product: product.id,
-      active: true,
       limit: 10,
     });
 
