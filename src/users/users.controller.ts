@@ -10,6 +10,8 @@ import {
   Query,
   BadRequestException,
   UseFilters,
+  Put,
+  Param,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,6 +19,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiQuery,
+  ApiParam,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -33,6 +36,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyResetTokenDto } from './dto/verify-reset-token.dto';
 import { GoogleCalendarOAuthService } from 'src/intentions/google-calendar/google-calendar-oauth.service';
+import { UpdateUserPermissionsDto } from './dto/update-user-permission.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -393,4 +397,37 @@ export class UsersController {
     );
     return { valid: isValid };
   }
+
+  @Put(':userId/permissions')
+  @UseGuards(AuthGuard) // Protect this route with an AuthGuard
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update user permissions' })
+  @ApiParam({ name: 'userId', description: 'ID of the user to update permissions' })
+  @ApiResponse({
+    status: 200,
+    description: 'User permissions updated successfully.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request or user permissions update failed.',
+  })
+  async updateUserPermissions(
+    @Param('userId') userId: string,
+    @Body() updateUserPermissionsDto: UpdateUserPermissionsDto
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const result = await this.usersService.updatePermissions(userId, updateUserPermissionsDto);
+
+      if (result.success) {
+        return { success: true, message: 'User permissions updated successfully!' };
+      } else {
+        throw new BadRequestException('Failed to update user permissions');
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'An error occurred while updating user permissions',
+      };
+    }
+  } 
 }

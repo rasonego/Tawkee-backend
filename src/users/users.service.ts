@@ -16,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 import { CreditService } from 'src/credits/credit.service';
 import { StripeService } from 'src/stripe/stripe.service';
 import { hasExplicitValue } from 'src/workspaces/workspaces.service';
+import { UpdateUserPermissionsDto } from './dto/update-user-permission.dto';
 
 const scryptAsync = promisify(scrypt);
 
@@ -47,7 +48,9 @@ export class UsersService {
   }
 
   async create(
-    createUserDto: CreateUserDto
+    createUserDto: CreateUserDto,
+    roleName: string = 'CLIENT', // Optional role parameter, defaults to CLIENT
+    userPermissionsEntries: { action: string; resource: string; allowed: boolean }[] = [] // Optional permissions array, defaults to empty
   ): Promise<{ user: UserResponseDto; token: string }> {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: createUserDto.email },
@@ -93,9 +96,7 @@ export class UsersService {
         if (!plan) throw new Error('No valid public trial plan found');
 
         const now = new Date();
-        const trialEnd = new Date(
-          now.getTime() + (plan.trialDays ?? 14) * 86400000
-        );
+        const trialEnd = new Date(now.getTime() + (plan.trialDays ?? 14) * 86400000);
 
         const subscription = await prisma.subscription.create({
           data: {
@@ -134,6 +135,10 @@ export class UsersService {
           },
         });
 
+        const role = await prisma.role.findUnique({
+          where: { name: roleName }
+        });
+
         const user = await prisma.user.create({
           data: {
             email: createUserDto.email,
@@ -142,6 +147,7 @@ export class UsersService {
             workspaceId: workspace.id,
             provider: 'password',
             emailVerified: false,
+            roleId: role.id
           },
         });
 
@@ -151,9 +157,50 @@ export class UsersService {
           workspaceId: user.workspaceId,
         });
 
-        const stripePrice = await this.stripeService.getPriceDetailsById(
-          plan.stripePriceId
-        );
+        // Create UserPermission entries if provided
+        if (userPermissionsEntries.length > 0) {
+          const userPermissionsData = await Promise.all(
+            userPermissionsEntries.map(async (permission) => {
+              const permissionId = await this.getPermissionId(permission.resource, permission.action); // Get permission ID asynchronously
+              return {
+                userId: user.id,
+                permissionId: permissionId, // Use the permission ID
+                allowed: permission.allowed,
+              };
+            })
+          );
+
+          // Create UserPermission entries
+          await prisma.userPermission.createMany({
+            data: userPermissionsData,
+          });
+        }
+
+        const rolePermissions = await this.prisma.rolePermission.findMany({
+          where: { roleId: role.id},
+          include: {
+            permission: {
+              select: {
+                resource: true,
+                action: true
+              }
+            }
+          }
+        });
+
+        const userPermissions = await this.prisma.userPermission.findMany({
+          where: { userId: user.id},
+          include: {
+            permission: {
+              select: {
+                resource: true,
+                action: true
+              }
+            }
+          }
+        });
+
+        const stripePrice = await this.stripeService.getPriceDetailsById(plan.stripePriceId);
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, stripePriceId, ...sanitizedPlan } = plan;
@@ -169,6 +216,19 @@ export class UsersService {
             lastName: user.lastName || undefined,
             avatar: user.avatar || undefined,
             emailVerified: user.emailVerified || false,
+            role: {
+              name: role.name,
+              description: role.description,
+            },
+            rolePermissions: rolePermissions.map(permission => { return {
+              resource: permission.permission.resource,
+              action: permission.permission.action
+            }}),
+            userPermissions: userPermissions.map(permission => { return {
+              allowed: permission.allowed,
+              resource: permission.permission.resource,
+              action: permission.permission.action
+            }}),
             smartRecharge: {
               threshold: 1000,
               rechargeAmount: 1000,
@@ -179,24 +239,24 @@ export class UsersService {
               currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
               trialEnd: subscription.trialEnd?.toISOString(),
 
-            ...(hasExplicitValue(subscription.agentLimitOverrides)
-              ? { agentLimitOverrides: subscription.agentLimitOverrides.value as number }
-              : {}),
-            ...(hasExplicitValue(subscription.creditsLimitOverrides)
-              ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value as number }
-              : {}),              
-            ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
-              ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value as number }
-              : {}),
-            ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
-              ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value as number }
-              : {}),
-            ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
-              ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value as number }
-              : {}),
-            ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
-              ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value as number }
-              : {}),
+              ...(hasExplicitValue(subscription.agentLimitOverrides)
+                ? { agentLimitOverrides: subscription.agentLimitOverrides.value as number }
+                : {}),
+              ...(hasExplicitValue(subscription.creditsLimitOverrides)
+                ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value as number }
+                : {}),              
+              ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
+                ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value as number }
+                : {}),
+              ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
+                ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value as number }
+                : {}),
+              ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
+                ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value as number }
+                : {}),
+              ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
+                ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value as number }
+                : {}),               
             },
             plan: {
               ...sanitizedPlan,
@@ -208,9 +268,7 @@ export class UsersService {
         };
       });
 
-      if (
-        this.configService.get<string>('REQUIRE_EMAIL_VERIFICATION') !== 'false'
-      ) {
+      if (this.configService.get<string>('REQUIRE_EMAIL_VERIFICATION') !== 'false') {
         await this.verificationService.sendVerificationEmail(result.user.id);
       }
 
@@ -263,7 +321,9 @@ export class UsersService {
     user = await this.prisma.user.update({
       where: { id: user.id },
       data: { provider: 'password' },
-      include: { workspace: true },
+      include: { 
+        workspace: true
+      },
     });
 
     const smartRecharge = await this.prisma.smartRechargeSetting.findUnique({
@@ -323,6 +383,42 @@ export class UsersService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { stripePriceId, ...sanitizedPlan } = subscription.plan;
 
+    const roleOfUser = await this.prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      select: {
+        role: true      
+      },
+    });
+    
+    const rolePermissions = await this.prisma.rolePermission.findMany({
+      where: { roleId: roleOfUser.role.id },
+      select: {
+        permission: {
+          select: {
+            resource: true,
+            action: true
+          }
+        },      
+      },
+    });
+
+    const userPermissions = await this.prisma.userPermission.findMany({
+      where: {
+        id: user.id,
+      },
+      select: {
+        allowed: true,
+        permission: {
+          select: {
+            resource: true,
+            action: true
+          }
+        },      
+      },
+    });  
+
     return {
       user: {
         id: user.id,
@@ -334,6 +430,16 @@ export class UsersService {
         lastName: user.lastName || undefined,
         avatar: user.avatar || undefined,
         emailVerified: user.emailVerified || false,
+        role: roleOfUser.role,
+        rolePermissions: rolePermissions.map(permission => { return {
+          resource: permission.permission.resource,
+          action: permission.permission.action
+        }}),
+        userPermissions: userPermissions.map(permission => { return {
+          allowed: permission.allowed,
+          resource: permission.permission.resource,
+          action: permission.permission.action
+        }}),
         smartRecharge: smartRecharge || undefined,
         subscription: subscription
           ? {
@@ -430,6 +536,42 @@ export class UsersService {
         )
       : undefined;
 
+    const roleOfUser = await this.prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      select: {
+        role: true      
+      },
+    });
+    
+    const rolePermissions = await this.prisma.rolePermission.findMany({
+      where: { roleId: roleOfUser.role.id },
+      select: {
+        permission: {
+          select: {
+            resource: true,
+            action: true
+          }
+        },      
+      },
+    });
+
+    const userPermissions = await this.prisma.userPermission.findMany({
+      where: {
+        id: user.id,
+      },
+      select: {
+        allowed: true,
+        permission: {
+          select: {
+            resource: true,
+            action: true
+          }
+        },      
+      },
+    });   
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { stripePriceId, ...sanitizedPlan } = subscription.plan;
 
@@ -443,6 +585,16 @@ export class UsersService {
       lastName: user.lastName || undefined,
       avatar: user.avatar || undefined,
       emailVerified: user.emailVerified || false,
+      role: roleOfUser.role,
+      rolePermissions: rolePermissions.map(permission => { return {
+        resource: permission.permission.resource,
+        action: permission.permission.action
+      }}),
+      userPermissions: userPermissions.map(permission => { return {
+        allowed: permission.allowed,
+        resource: permission.permission.resource,
+        action: permission.permission.action
+      }}),
       smartRecharge: smartRecharge || undefined,
       subscription: subscription
         ? {
@@ -510,6 +662,96 @@ export class UsersService {
     } catch (error) {
       this.logger.error(`Error during logout: ${error.message}`);
       throw error;
+    }
+  }
+
+  // Method to update user permissions
+  async updatePermissions(
+    userId: string,
+    updateUserPermissionsDto: UpdateUserPermissionsDto
+  ): Promise<{ success: boolean }> {
+    try {
+      // Step 1: Retrieve user and their associated role
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          role: { include: { permissions: true } }, // Include permissions related to role
+          userPermissions: { include: { permission: true } }, // Include current user permissions
+        },
+      });
+
+      if (!user) {
+        throw new BadRequestException('User not found');
+      }
+
+      // Step 2: Ensure we have the role permissions available
+      const rolePermissions = user.role?.permissions || [];
+      const userPermissions = user.userPermissions;
+
+      // Step 3: Create user permissions based on the role permissions if not exist (done only once)
+      for (const rolePermission of rolePermissions) {
+        const exists = userPermissions.some(
+          (userPermission) => userPermission.permissionId === rolePermission.permissionId
+        );
+
+        // If permission does not exist for user, create it with allowed = true
+        if (!exists) {
+          await this.prisma.userPermission.create({
+            data: {
+              userId,
+              permissionId: rolePermission.permissionId,
+              allowed: true, // Default permission is allowed = true
+            },
+          });
+        }
+      }
+
+      // Step 4: Now, update the permissions as per the input provided
+      for (const perm of updateUserPermissionsDto.permissions) {
+        const permission = await this.prisma.permission.findUnique({
+          where: { action_resource: { action: perm.action, resource: perm.resource } },
+        });
+
+        if (!permission) {
+          throw new BadRequestException(
+            `Permission with action ${perm.action} and resource ${perm.resource} does not exist`
+          );
+        }
+
+        // Update the user permission entry for this specific permission
+        await this.prisma.userPermission.updateMany({
+          where: {
+            userId,
+            permissionId: permission.id,
+          },
+          data: {
+            allowed: perm.allowed, // Set the new allowed state as per input
+          },
+        });
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error(error);
+      throw new BadRequestException('An error occurred while updating permissions');
+    }
+  }  
+
+  private async getPermissionId(resource: string, action: string): Promise<string | null> {
+    try {
+      const permission = await this.prisma.permission.findUnique({
+        where: {
+          action_resource: {
+            action: action,
+            resource: resource,
+          },
+        },
+      });
+      
+      return permission?.id || null;
+    } catch (error) {
+      this.logger.error(`Error fetching permission ID: ${error.message}`);
+      throw new Error('Permission not found');
     }
   }
 }

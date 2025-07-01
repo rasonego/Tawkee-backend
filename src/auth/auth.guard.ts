@@ -45,7 +45,7 @@ export class AuthGuard implements CanActivate {
     }
 
     if (isBlacklisted) {
-      throw new UnauthorizedException('Token has been revoked');
+      throw new UnauthorizedException('Your session has been expired. Please log in again.');
     }
 
     try {

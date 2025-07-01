@@ -58,6 +58,36 @@ export class UserResponseDto {
   emailVerified?: boolean;
 
   @ApiProperty({
+    description: 'Role associated with the user',
+    required: true,
+    example: { name: 'CLIENT', description: 'Client with limited permissions to their own workspace' },
+  })
+  role: {
+    name: string;
+    description?: string;
+  };
+
+  @ApiProperty({
+    description: 'Role permissions for accessing various resources in the workspace',
+    required: false,
+    example: [
+      { action: 'VIEW_PROFILE', resource: 'USER' },
+      { action: 'EDIT_PROFILE', resource: 'USER' },
+    ],
+  })
+  rolePermissions: { action: string; resource: string }[];
+
+  @ApiProperty({
+    description: 'User permissions for accessing various resources in the workspace',
+    required: false,
+    example: [
+      { action: 'VIEW_PROFILE', resource: 'USER', allowed: true },
+      { action: 'EDIT_PROFILE', resource: 'USER', allowed: false },
+    ],
+  })
+  userPermissions: { action: string; resource: string; allowed: boolean }[];
+
+  @ApiProperty({
     description: 'Smart recharge settings for extra credits',
     required: false,
     example: {

@@ -10,6 +10,10 @@ import { UpdateSubscriptionOverridesDto } from './dto/update-subscription-overri
 
 const PRICE_PER_CREDIT_CENTS = 4;
 
+interface ExtendedInvoice extends Stripe.Invoice {
+  subscription?: string;
+}
+
 @Injectable()
 export class StripeService {
   private readonly stripe: Stripe;
@@ -299,7 +303,6 @@ export class StripeService {
     };
   }
 
-
   async syncPlanFromStripe(dto: CreatePlanFromStripeDto) {
     const matchingProducts = await this.stripe.products.list({
       limit: 100,
@@ -570,6 +573,10 @@ export class StripeService {
             product_data: {
               name: `${amount} Extra Credits`,
               description: 'One-time credit purchase',
+              metadata: {
+                type: 'credit',
+                credits: amount.toString()
+              }
             },
           },
           quantity: 1,
@@ -580,6 +587,15 @@ export class StripeService {
       metadata: {
         workspaceId,
         credits: amount.toString(),
+        type: 'credit_purchase'
+      },
+      // Add payment intent data to make identification easier
+      payment_intent_data: {
+        metadata: {
+          workspaceId,
+          credits: amount.toString(),
+          type: 'credit_purchase',
+        },
       },
     });
 
@@ -776,6 +792,377 @@ export class StripeService {
       subscriptionId: updated.id,
     };
   }
+
+
+  async getWorkspacePaymentsInPeriod(workspaceId: string, startDate: Date, endDate: Date) {
+    const startTs = Math.floor(startDate.getTime() / 1000);
+    const endTs = Math.floor(endDate.getTime() / 1000);
+
+    // Get product IDs from your database
+    const subscriptionProductIds = await this.getSubscriptionProductIds();
+    const creditProductIds = await this.getCreditProductIds();
+
+    // Use Payment Intents for accurate data (recommended for newer API versions)
+    const paymentIntentsParams: Stripe.PaymentIntentListParams = {
+      limit: 100,
+      created: { gte: startTs, lte: endTs },
+      expand: ['data.invoice', 'data.customer']
+    };
+
+    // Get all successful payment intents
+    const paymentIntents = await this.getAllPaymentIntents(paymentIntentsParams);
+
+    // Process transactions
+    const allTransactions = await this.processTransactions(
+      paymentIntents,
+      subscriptionProductIds,
+      creditProductIds
+    );
+
+    // Initialize a map for daily aggregates
+    const summaryByDate: Record<string, {
+      date: string;
+      planAmount: number;
+      oneTimeAmount: number;
+      total: number;
+      clients: Record<string, number>;
+    }> = {};
+
+    for (const transaction of allTransactions) {
+      const dateStr = new Date(transaction.created * 1000).toISOString().slice(0, 10);
+      
+      if (!summaryByDate[dateStr]) {
+        summaryByDate[dateStr] = { 
+          date: dateStr, 
+          planAmount: 0, 
+          oneTimeAmount: 0, 
+          total: 0, 
+          clients: {} 
+        };
+      }
+      
+      const dayEntry = summaryByDate[dateStr];
+      const amountUsd = transaction.amount / 100;
+
+      if (transaction.isSubscription) {
+        dayEntry.planAmount += amountUsd;
+      } else {
+        dayEntry.oneTimeAmount += amountUsd;
+      }
+      dayEntry.total += amountUsd;
+
+      // Aggregate amount per client email for that day
+      dayEntry.clients[transaction.customerEmail] = 
+        (dayEntry.clients[transaction.customerEmail] || 0) + amountUsd;
+    }
+
+    return Object.values(summaryByDate).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  private async getAllPaymentIntents(params: Stripe.PaymentIntentListParams): Promise<Stripe.PaymentIntent[]> {
+    const paymentIntents: Stripe.PaymentIntent[] = [];
+    let hasMore = true;
+    
+    while (hasMore) {
+      const page = await this.stripe.paymentIntents.list(params);
+      
+      // Only include succeeded payment intents in USD
+      const validPaymentIntents = page.data.filter(pi => 
+        pi.status === 'succeeded' && pi.currency === 'usd'
+      );
+      
+      paymentIntents.push(...validPaymentIntents);
+      
+      hasMore = page.has_more;
+      if (hasMore) {
+        params.starting_after = page.data[page.data.length - 1].id;
+      }
+    }
+    
+    return paymentIntents;
+  }
+
+  private async processTransactions(
+    paymentIntents: Stripe.PaymentIntent[],
+    subscriptionProductIds: string[],
+    creditProductIds: string[]
+  ): Promise<Array<{
+    id: string;
+    amount: number;
+    created: number;
+    customerEmail: string;
+    isSubscription: boolean;
+    type: 'payment_intent';
+  }>> {
+    const transactions = [];
+
+    for (const pi of paymentIntents) {
+      const customerEmail = await this.getCustomerEmail(pi.customer, pi.receipt_email);
+      const isSubscription = await this.determineIfSubscription(pi, subscriptionProductIds, creditProductIds);
+      
+      transactions.push({
+        id: pi.id,
+        amount: pi.amount,
+        created: pi.created,
+        customerEmail,
+        isSubscription,
+        type: 'payment_intent' as const
+      });
+    }
+
+    return transactions;
+  }
+
+  private async getCustomerEmail(customer: any, receiptEmail?: string | null): Promise<string> {
+    if (receiptEmail) return receiptEmail;
+    
+    if (customer) {
+      if (typeof customer === 'string') {
+        try {
+          const customerObj = await this.stripe.customers.retrieve(customer);
+          return (customerObj as Stripe.Customer).email || 'unknown';
+        } catch (error) {
+          console.warn('Failed to fetch customer:', error);
+        }
+      } else if (customer.email) {
+        return customer.email;
+      }
+    }
+    
+    return 'unknown';
+  }
+
+  private async determineIfSubscription(
+    paymentIntent: Stripe.PaymentIntent,
+    subscriptionProductIds: string[],
+    creditProductIds: string[]
+  ): Promise<boolean> {
+    // Check metadata first
+    const metadata = paymentIntent.metadata || {};
+    if (metadata.subscription_id || metadata.type === 'subscription') {
+      return true;
+    }
+    if (metadata.type === 'credits' || metadata.type === 'one_time') {
+      return false;
+    }
+
+    // Check if this is a credit purchase based on checkout session metadata
+    const isCreditPurchase = await this.checkIfCreditPurchase(paymentIntent);
+    if (isCreditPurchase) {
+      return false;
+    }
+
+    // Check invoice if available
+    const invoice = (paymentIntent as any).invoice;
+    if (invoice) {
+      const isSubscriptionFromInvoice = await this.checkInvoiceForSubscription(
+        invoice, 
+        subscriptionProductIds, 
+        creditProductIds
+      );
+      if (isSubscriptionFromInvoice !== null) {
+        return isSubscriptionFromInvoice;
+      }
+    }
+
+    // Check if description contains subscription indicators
+    const description = paymentIntent.description?.toLowerCase() || '';
+    if (description.includes('subscription')) return true;
+    if (description.includes('credit') || description.includes('one-time')) return false;
+
+    // If we can't determine, check if it has a subscription context
+    // This is a fallback - you might want to adjust based on your business logic
+    return false;
+  }
+
+  private async checkInvoiceForSubscription(
+    invoice: any,
+    subscriptionProductIds: string[],
+    creditProductIds: string[]
+  ): Promise<boolean | null> {
+    try {
+      let fullInvoice: ExtendedInvoice;
+      
+      if (typeof invoice === 'string') {
+        // Fetch invoice with proper expansion limits
+        fullInvoice = await this.stripe.invoices.retrieve(invoice, {
+          expand: ['lines.data.price']
+        });
+      } else {
+        fullInvoice = invoice;
+      }
+
+      // If invoice has a subscription, it's definitely a subscription payment
+      if (fullInvoice.subscription) {
+        return true;
+      }
+
+      // Analyze line items to determine type
+      if (fullInvoice.lines?.data) {
+        const lineItemAnalysis = await this.analyzeInvoiceLineItems(
+          fullInvoice, 
+          subscriptionProductIds, 
+          creditProductIds
+        );
+        if (lineItemAnalysis !== null) {
+          return lineItemAnalysis;
+        }
+      }
+
+      return null; // Unable to determine from invoice
+    } catch (error) {
+      console.warn('Failed to analyze invoice:', error);
+      return null;
+    }
+  }
+
+  private async analyzeInvoiceLineItems(
+    invoice: Stripe.Invoice,
+    subscriptionProductIds: string[],
+    creditProductIds: string[]
+  ): Promise<boolean | null> {
+    if (!invoice.lines?.data) return null;
+
+    let hasSubscriptionProduct = false;
+    let hasCreditProduct = false;
+
+    for (const lineItem of invoice.lines.data) {
+      const price = (lineItem as any).price;
+      
+      if (price?.product) {
+        let productId: string;
+        
+        // If product is already expanded
+        if (typeof price.product === 'object') {
+          productId = price.product.id;
+        } else {
+          // Product is just an ID, need to fetch it if needed
+          productId = price.product;
+          
+          // For efficiency, we can also check the price metadata or description
+          // to avoid additional API calls
+          if (price.nickname?.toLowerCase().includes('credit') || 
+              price.metadata?.type === 'credit') {
+            hasCreditProduct = true;
+            continue;
+          }
+        }
+
+        if (subscriptionProductIds.includes(productId)) {
+          hasSubscriptionProduct = true;
+        }
+        if (creditProductIds.includes(productId)) {
+          hasCreditProduct = true;
+        }
+      }
+      
+      // Also check line item description for credit indicators
+      const description = (lineItem.description || '').toLowerCase();
+      if (description.includes('credit') || description.includes('extra credits')) {
+        hasCreditProduct = true;
+      }
+    }
+
+    // If we found subscription products, it's a subscription
+    if (hasSubscriptionProduct) return true;
+    
+    // If we found credit products, it's one-time
+    if (hasCreditProduct) return false;
+
+    // If we couldn't identify any products, return null for further analysis
+    return null;
+  }
+
+  // Fixed database methods
+  private async getSubscriptionProductIds(): Promise<string[]> {
+    const plans = await this.prisma.plan.findMany({
+      select: { stripeProductId: true }
+    });
+    
+    return plans
+      .map(plan => plan.stripeProductId)
+      .filter(id => id !== null); // Filter out null values
+  }
+
+  private async getCreditProductIds(): Promise<string[]> {
+    // Since ExtraCreditPurchase doesn't have stripeProductId, 
+    // you need to define your credit products elsewhere
+    // Option 1: Create a separate table for credit products
+    // Option 2: Use a configuration object
+    // Option 3: Query your price/product configuration
+    
+    // For now, I'll show you how to get them from Stripe directly
+    // You should replace this with your actual credit product IDs
+    return await this.getCreditProductIdsFromConfig();
+  }
+
+  private async checkIfCreditPurchase(paymentIntent: Stripe.PaymentIntent): Promise<boolean> {
+    try {
+      // If the payment intent has a checkout session, get it to check metadata
+      if (paymentIntent.metadata?.checkout_session_id) {
+        const session = await this.stripe.checkout.sessions.retrieve(
+          paymentIntent.metadata.checkout_session_id
+        );
+        
+        // Check if session metadata indicates credit purchase
+        if (session.metadata?.credits || session.metadata?.workspaceId) {
+          return true;
+        }
+      }
+
+      // Alternative: Check if this payment matches our credit purchase pattern
+      // Look for checkout sessions created around the same time with credit metadata
+      const sessions = await this.stripe.checkout.sessions.list({
+        limit: 10,
+        created: {
+          gte: paymentIntent.created - 300, // 5 minutes before
+          lte: paymentIntent.created + 300, // 5 minutes after
+        },
+      });
+
+      for (const session of sessions.data) {
+        if (
+          session.payment_intent === paymentIntent.id &&
+          (session.metadata?.credits || session.metadata?.workspaceId)
+        ) {
+          return true;
+        }
+      }
+
+      // Check if the line items contain credit-related product names
+      const charges = await this.stripe.charges.list({
+        payment_intent: paymentIntent.id,
+        limit: 1,
+      });
+
+      if (charges.data.length > 0) {
+        const charge = charges.data[0];
+        const description = charge.description?.toLowerCase() || '';
+        
+        // Check for credit-specific patterns in description
+        if (
+          description.includes('extra credits') ||
+          description.includes('credit purchase') ||
+          description.includes('credits')
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.warn('Failed to check if credit purchase:', error);
+      return false;
+    }
+  }
+
+  private async getCreditProductIdsFromConfig(): Promise<string[]> {
+    // Since you're using dynamic pricing, we don't need to fetch specific product IDs
+    // Instead, we'll identify credit purchases through checkout session metadata
+    // and product descriptions. Return empty array since we're not using predefined products.
+    return [];
+  }
+
 
   constructWebhookEvent(
     rawBody: Buffer,

@@ -29,9 +29,55 @@ model User {
   verificationToken   String?
   workspace           Workspace @relation(fields: [workspaceId], references: [id])
 
+  roleId                String?
+  role                  Role?      @relation(fields: [roleId], references: [id])
+  userPermissions       UserPermission[]
+
   @@index([provider, providerId])
   @@index([verificationToken])
   @@index([resetToken])
+}
+
+model Role {
+  id            String            @id @default(uuid())
+  name          String            @unique
+  description   String?
+  users         User[]
+  permissions   RolePermission[]
+}
+
+model Permission {
+  id         String             @id @default(uuid())
+  action     String             // ex: "CREATE"
+  resource   String             // ex: "AGENT"
+  description String            // ex: "Allows the user to create an Agent on the workspace" 
+  roles      RolePermission[]
+  users      UserPermission[]
+
+  @@unique([action, resource])
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+}
+
+model UserPermission {
+  id           String     @id @default(uuid())
+  userId       String
+  permissionId String
+  allowed      Boolean    // true = permitido, false = negado
+
+  user         User       @relation(fields: [userId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([userId, permissionId])
 }
 
 model Workspace {

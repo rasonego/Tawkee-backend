@@ -10,6 +10,7 @@ import {
   Get,
   UnauthorizedException,
   Param,
+  Query,
 } from '@nestjs/common';
 import { StripeService } from './stripe.service';
 import { Request, Response } from 'express';
@@ -18,6 +19,10 @@ import { CreatePlanFromStripeDto } from './dto/create-plan-from-stripe.dto';
 import { ConfigService } from '@nestjs/config';
 import { UpdatePlanFromFormDto } from './dto/update-plan-from-form.dto';
 import { UpdateSubscriptionOverridesDto } from './dto/update-subscription-overrides.dto';
+import { ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { DashboardMetricsDto } from 'src/workspaces/dto/dashboard-metrics.dto';
+import { WorkspacePaymentBalanceItem } from './dto/workspace-payment-balance-item';
+import { differenceInDays, isValid, parseISO } from 'date-fns';
 
 @Controller('stripe')
 export class StripeController {
@@ -177,5 +182,36 @@ export class StripeController {
   ) {
     const { workspaceId, priceId } = body;
     return this.stripeService.confirmPlanChange(workspaceId, priceId);
+  }
+
+  @Get('billing/payments/:workspaceId')
+  @ApiOperation({
+    summary: 'Retrieve daily cumulative payments (plan and one-time) for a workspace or all workspaces',
+  })
+  async getWorkspacePaymentsInPeriod(
+    @Param('workspaceId') workspaceIdParam: string,
+    @Query('startDate') startDateStr: string,
+    @Query('endDate') endDateStr: string
+  ): Promise<WorkspacePaymentBalanceItem[]> {
+    if (!startDateStr || !endDateStr) {
+      throw new HttpException('startDate and endDate are required', HttpStatus.BAD_REQUEST);
+    }
+
+    const startDate = parseISO(startDateStr);
+    const endDate = parseISO(endDateStr);
+
+    if (!isValid(startDate) || !isValid(endDate)) {
+      throw new HttpException('Invalid startDate or endDate format', HttpStatus.BAD_REQUEST);
+    }
+
+    const rangeDays = differenceInDays(endDate, startDate);
+    if (rangeDays > 180) {
+      throw new HttpException('Date range cannot exceed 180 days', HttpStatus.BAD_REQUEST);
+    }
+
+    // Interpret "all" keyword to fetch from all workspaces
+    const workspaceId = workspaceIdParam.toLowerCase() === 'all' ? null : workspaceIdParam;
+
+    return this.stripeService.getWorkspacePaymentsInPeriod(workspaceId, startDate, endDate);
   }
 }

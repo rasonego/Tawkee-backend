@@ -42,6 +42,17 @@ export class WorkspacesController {
     return this.workspacesService.findAll(paginationDto);
   }
 
+  @Get('basic')
+  @ApiOperation({ summary: 'List all workspaces (id, name, email) without pagination' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns all workspace ids, names, and user emails without pagination',
+    type: [Object], // Ideally replace with a DTO class if available
+  })
+  async findAllBasic(): Promise<{ id: string; name: string; email: string | null }[]> {
+    return this.workspacesService.findAllWorkspacesBasicInfo();
+  }
+
   @Get(':workspaceId/dashboard-metrics')
   async getDashboardMetrics(
     @Param('workspaceId') workspaceId: string,
@@ -70,7 +81,7 @@ export class WorkspacesController {
     const comparisonStart = subDays(comparisonEnd, rangeDays);
 
     return this.workspacesService.getDashboardMetrics(
-      workspaceId,
+      workspaceId != 'all' ? workspaceId : null,
       startDate,
       endDate,
       comparisonStart.toISOString().slice(0, 10),

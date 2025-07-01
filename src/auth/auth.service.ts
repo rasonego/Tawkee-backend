@@ -184,6 +184,10 @@ export class AuthService {
         },
       });
 
+      const role = await this.prisma.role.findUnique({
+        where: { name: 'CLIENT' }
+      });
+
       // Prepare user creation data
       const userData: any = {
         email,
@@ -195,6 +199,7 @@ export class AuthService {
         avatar,
         emailVerified: true,
         workspaceId: workspace.id,
+        roleId: role.id
       };
 
       // Set specific provider ID field based on the provider
@@ -203,7 +208,7 @@ export class AuthService {
       } else if (provider === 'facebook') {
         userData.facebookId = providerId;
       }
-
+     
       // Create the new user
       user = await this.prisma.user.create({
         data: userData,

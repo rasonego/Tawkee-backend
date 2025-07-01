@@ -89,6 +89,27 @@ export class WorkspacesService {
     };
   }
 
+  async findAllWorkspacesBasicInfo(): Promise<{ id: string; name: string; email: string | null }[]> {
+    const workspaces = await this.prisma.workspace.findMany({
+      where: { isDeleted: false },
+      select: {
+        id: true,
+        name: true,
+        user: {
+          select: {
+            email: true,
+          },
+        },
+      },
+    });
+
+    return workspaces.map(ws => ({
+      id: ws.id,
+      name: ws.name,
+      email: ws.user?.email ?? null,
+    }));
+  }
+
   async findOne(id: string) {
     const workspace = await this.prisma.workspace.findUnique({
       where: { id },
@@ -116,7 +137,7 @@ export class WorkspacesService {
   }
 
   async getDashboardMetrics(
-    workspaceId: string,
+    workspaceId: string | null,
     startDate: string,
     endDate: string,
     comparisonStartDate: string,
@@ -127,10 +148,14 @@ export class WorkspacesService {
     const prevStart = new Date(comparisonStartDate);
     const prevEnd = new Date(comparisonEndDate);
 
+    const workspaceFilter = workspaceId ? { workspaceId } : {};
+
+    console.log({ workspaceId });
+
     // Resolved interactions (current period)
     const resolved = await this.prisma.interaction.findMany({
       where: {
-        workspaceId,
+        ...workspaceFilter,
         status: 'RESOLVED',
         resolvedAt: { gte: start, lte: end },
       },
@@ -149,6 +174,7 @@ export class WorkspacesService {
       string,
       { total: number; byAI: number; byHuman: number }
     > = {};
+
     for (const i of resolved) {
       const date = i.resolvedAt!.toISOString().slice(0, 10);
       if (!resolvedTimeSeriesMap[date]) {
@@ -166,7 +192,7 @@ export class WorkspacesService {
     // Resolved interactions (comparison period)
     const prevResolved = await this.prisma.interaction.findMany({
       where: {
-        workspaceId,
+        ...workspaceFilter,
         status: 'RESOLVED',
         resolvedAt: { gte: prevStart, lte: prevEnd },
       },
@@ -184,7 +210,7 @@ export class WorkspacesService {
     // Active chats
     const activeChats = await this.prisma.interaction.findMany({
       where: {
-        workspaceId,
+        ...workspaceFilter,
         status: { not: 'RESOLVED' },
         startAt: { gte: start, lte: end },
       },
@@ -233,10 +259,10 @@ export class WorkspacesService {
         ? prevDurations.reduce((a, b) => a + b, 0) / prevDurations.length
         : 0;
 
-    // Usage tracking (replaces creditSpent)
+    // Usage tracking
     const usageRecords = await this.prisma.usageRecord.findMany({
       where: {
-        workspaceId,
+        ...workspaceFilter,
         createdAt: { gte: start, lte: end },
       },
       select: {
@@ -245,6 +271,7 @@ export class WorkspacesService {
         metadata: true,
         createdAt: true,
         agentId: true,
+        workspaceId: true,
         agent: {
           select: {
             id: true,
@@ -253,130 +280,294 @@ export class WorkspacesService {
             avatar: true,
           },
         },
+        workspace: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
-    const creditByDate: Record<
-      string,
-      {
-        totalCredits: number;
-        creditsByAgent: Record<
-          string,
-          { credits: number; agentName: string | null }
-        >;
+    if (workspaceId) {
+      // Agent-based aggregation for specific workspace
+      const creditByDate: Record<
+        string,
+        {
+          totalCredits: number;
+          creditsByAgent: Record<
+            string,
+            { credits: number; agentName: string | null }
+          >;
+        }
+      > = {};
+
+      const modelTotals: Partial<Record<AIModel, number>> = {};
+
+      for (const record of usageRecords) {
+        const dateKey = record.createdAt.toISOString().slice(0, 10);
+        if (!creditByDate[dateKey]) {
+          creditByDate[dateKey] = { totalCredits: 0, creditsByAgent: {} };
+        }
+        creditByDate[dateKey].totalCredits += record.quantity;
+
+        if (record.agentId) {
+          if (!creditByDate[dateKey].creditsByAgent[record.agentId]) {
+            creditByDate[dateKey].creditsByAgent[record.agentId] = {
+              credits: 0,
+              agentName: record.agent?.name ?? 'Unknown',
+            };
+          }
+          creditByDate[dateKey].creditsByAgent[record.agentId].credits +=
+            record.quantity;
+        }
+
+        if (record.model) {
+          modelTotals[record.model] =
+            (modelTotals[record.model] || 0) + record.quantity;
+        }
       }
-    > = {};
 
-    const modelTotals: Partial<Record<AIModel, number>> = {};
+      const creditsPerDay = Object.entries(creditByDate)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, data]) => ({
+          date,
+          totalCredits: data.totalCredits,
+          creditsByAgent: Object.entries(data.creditsByAgent).map(
+            ([agentId, { credits, agentName }]) => ({
+              agentId,
+              agentName,
+              credits,
+            })
+          ),
+        }));
 
-    for (const record of usageRecords) {
-      const dateKey = record.createdAt.toISOString().slice(0, 10);
-      if (!creditByDate[dateKey]) {
-        creditByDate[dateKey] = { totalCredits: 0, creditsByAgent: {} };
-      }
-      creditByDate[dateKey].totalCredits += record.quantity;
+      const agentTotals: Record<
+        string,
+        {
+          agentId: string;
+          name: string | null;
+          jobName: string | null;
+          avatar: string | null;
+          totalCredits: number;
+        }
+      > = {};
 
-      if (record.agentId) {
-        if (!creditByDate[dateKey].creditsByAgent[record.agentId]) {
-          creditByDate[dateKey].creditsByAgent[record.agentId] = {
-            credits: 0,
-            agentName: record.agent?.name ?? 'Unknown',
+      for (const record of usageRecords) {
+        const id = record.agentId;
+        if (!id) continue;
+        if (!agentTotals[id]) {
+          agentTotals[id] = {
+            agentId: id,
+            name: record.agent?.name ?? null,
+            jobName: record.agent?.jobName ?? null,
+            avatar: record.agent?.avatar ?? null,
+            totalCredits: 0,
           };
         }
-        creditByDate[dateKey].creditsByAgent[record.agentId].credits +=
-          record.quantity;
+        agentTotals[id].totalCredits += record.quantity;
       }
 
-      if (record.model) {
-        modelTotals[record.model] =
-          (modelTotals[record.model] || 0) + record.quantity;
-      }
-    }
+      const topAgents = Object.values(agentTotals)
+        .sort((a, b) => b.totalCredits - a.totalCredits)
+        .slice(0, 5);
 
-    const creditsPerDay = Object.entries(creditByDate)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, data]) => ({
-        date,
-        totalCredits: data.totalCredits,
-        creditsByAgent: Object.entries(data.creditsByAgent).map(
-          ([agentId, { credits, agentName }]) => ({
-            agentId,
-            agentName,
-            credits,
-          })
-        ),
-      }));
+      const topModels = Object.entries(modelTotals)
+        .map(([model, credits]) => ({ model, credits }))
+        .sort((a, b) => b.credits - a.credits)
+        .slice(0, 5);
 
-    const agentTotals: Record<
-      string,
-      {
-        agentId: string;
-        name: string | null;
-        jobName: string | null;
-        avatar: string | null;
-        totalCredits: number;
-      }
-    > = {};
-
-    for (const record of usageRecords) {
-      const id = record.agentId;
-      if (!id) continue;
-      if (!agentTotals[id]) {
-        agentTotals[id] = {
-          agentId: id,
-          name: record.agent?.name ?? null,
-          jobName: record.agent?.jobName ?? null,
-          avatar: record.agent?.avatar ?? null,
-          totalCredits: 0,
-        };
-      }
-      agentTotals[id].totalCredits += record.quantity;
-    }
-
-    const topAgents = Object.values(agentTotals)
-      .sort((a, b) => b.totalCredits - a.totalCredits)
-      .slice(0, 5);
-
-    const topModels = Object.entries(modelTotals)
-      .map(([model, credits]) => ({ model, credits }))
-      .sort((a, b) => b.credits - a.credits)
-      .slice(0, 5);
-
-    return {
-      resolved: {
-        total: resolved.length,
-        byAI: resolvedByAI.length,
-        byHuman: resolvedByHuman.length,
-        timeSeries,
-        trend: {
-          total:
-            prevTotal > 0
-              ? this.getTrend(resolved.length, prevTotal)
-              : undefined,
-          byAI:
-            prevByAI > 0
-              ? this.getTrend(resolvedByAI.length, prevByAI)
-              : undefined,
-          byHuman:
-            prevByHuman > 0
-              ? this.getTrend(resolvedByHuman.length, prevByHuman)
-              : undefined,
+      return {
+        resolved: {
+          total: resolved.length,
+          byAI: resolvedByAI.length,
+          byHuman: resolvedByHuman.length,
+          timeSeries,
+          trend: {
+            total:
+              prevTotal > 0
+                ? this.getTrend(resolved.length, prevTotal)
+                : undefined,
+            byAI:
+              prevByAI > 0
+                ? this.getTrend(resolvedByAI.length, prevByAI)
+                : undefined,
+            byHuman:
+              prevByHuman > 0
+                ? this.getTrend(resolvedByHuman.length, prevByHuman)
+                : undefined,
+          },
         },
-      },
-      running: {
-        total: runningInteractions.length,
-        waiting: waiting.length,
-        interactions: runningInteractions,
-      },
-      avgInteractionTimeMs,
-      avgTimeTrend:
-        prevDurations.length > 0
-          ? this.getTrend(avgInteractionTimeMs, prevAvgTime)
-          : undefined,
-      creditsPerDay,
-      topAgents,
-      topModels,
-    };
+        running: {
+          total: runningInteractions.length,
+          waiting: waiting.length,
+          interactions: runningInteractions,
+        },
+        avgInteractionTimeMs,
+        avgTimeTrend:
+          prevDurations.length > 0
+            ? this.getTrend(avgInteractionTimeMs, prevAvgTime)
+            : undefined,
+        creditsPerDay,
+        topAgents,
+        topModels,
+      };
+    } else {
+      // Workspace-based aggregation for global view
+      const creditByDate: Record<
+        string,
+        {
+          totalCredits: number;
+          creditsByWorkspace: Record<
+            string,
+            { credits: number; workspaceName: string | null }
+          >;
+        }
+      > = {};
+
+      const modelTotals: Partial<Record<AIModel, number>> = {};
+
+      for (const record of usageRecords) {
+        const dateKey = record.createdAt.toISOString().slice(0, 10);
+        if (!creditByDate[dateKey]) {
+          creditByDate[dateKey] = { totalCredits: 0, creditsByWorkspace: {} };
+        }
+        creditByDate[dateKey].totalCredits += record.quantity;
+
+        if (record.workspaceId) {
+          if (!creditByDate[dateKey].creditsByWorkspace[record.workspaceId]) {
+            creditByDate[dateKey].creditsByWorkspace[record.workspaceId] = {
+              credits: 0,
+              workspaceName: record.workspace?.name ?? 'Unknown',
+            };
+          }
+          creditByDate[dateKey].creditsByWorkspace[record.workspaceId].credits +=
+            record.quantity;
+        }
+
+        if (record.model) {
+          modelTotals[record.model] =
+            (modelTotals[record.model] || 0) + record.quantity;
+        }
+      }
+
+      const creditsPerDay = Object.entries(creditByDate)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, data]) => ({
+          date,
+          totalCredits: data.totalCredits,
+          creditsByWorkspace: Object.entries(data.creditsByWorkspace).map(
+            ([workspaceId, { credits, workspaceName }]) => ({
+              workspaceId,
+              workspaceName,
+              credits,
+            })
+          ),
+        }));
+
+      const workspaceTotals: Record<
+        string,
+        {
+          workspaceId: string;
+          name: string | null;
+          totalCredits: number;
+        }
+      > = {};
+
+      for (const record of usageRecords) {
+        const id = record.workspaceId;
+        if (!id) continue;
+        if (!workspaceTotals[id]) {
+          workspaceTotals[id] = {
+            workspaceId: id,
+            name: record.workspace?.name ?? null,
+            totalCredits: 0,
+          };
+        }
+        workspaceTotals[id].totalCredits += record.quantity;
+      }
+
+      const topWorkspaces = Object.values(workspaceTotals)
+        .sort((a, b) => b.totalCredits - a.totalCredits)
+        .slice(0, 5);
+
+      const topModels = Object.entries(modelTotals)
+        .map(([model, credits]) => ({ model, credits }))
+        .sort((a, b) => b.credits - a.credits)
+        .slice(0, 5);
+
+      console.log({
+        resolved: {
+          total: resolved.length,
+          byAI: resolvedByAI.length,
+          byHuman: resolvedByHuman.length,
+          timeSeries,
+          trend: {
+            total:
+              prevTotal > 0
+                ? this.getTrend(resolved.length, prevTotal)
+                : undefined,
+            byAI:
+              prevByAI > 0
+                ? this.getTrend(resolvedByAI.length, prevByAI)
+                : undefined,
+            byHuman:
+              prevByHuman > 0
+                ? this.getTrend(resolvedByHuman.length, prevByHuman)
+                : undefined,
+          },
+        },
+        running: {
+          total: runningInteractions.length,
+          waiting: waiting.length,
+          interactions: runningInteractions,
+        },
+        avgInteractionTimeMs,
+        avgTimeTrend:
+          prevDurations.length > 0
+            ? this.getTrend(avgInteractionTimeMs, prevAvgTime)
+            : undefined,
+        creditsPerDay,
+        topWorkspaces,
+        topModels,
+      });
+
+      return {
+        resolved: {
+          total: resolved.length,
+          byAI: resolvedByAI.length,
+          byHuman: resolvedByHuman.length,
+          timeSeries,
+          trend: {
+            total:
+              prevTotal > 0
+                ? this.getTrend(resolved.length, prevTotal)
+                : undefined,
+            byAI:
+              prevByAI > 0
+                ? this.getTrend(resolvedByAI.length, prevByAI)
+                : undefined,
+            byHuman:
+              prevByHuman > 0
+                ? this.getTrend(resolvedByHuman.length, prevByHuman)
+                : undefined,
+          },
+        },
+        running: {
+          total: runningInteractions.length,
+          waiting: waiting.length,
+          interactions: runningInteractions,
+        },
+        avgInteractionTimeMs,
+        avgTimeTrend:
+          prevDurations.length > 0
+            ? this.getTrend(avgInteractionTimeMs, prevAvgTime)
+            : undefined,
+        creditsPerDay,
+        topWorkspaces,
+        topModels,
+      };
+    }
   }
 
   async getDetailedWorkspace(workspaceId: string): Promise<any> {
@@ -395,9 +586,53 @@ export class WorkspacesService {
             channels: true,
           },
         },
-        user: true
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatar: true,
+            provider: true,
+            emailVerified: true,
+            createdAt: true,
+            updatedAt: true,
+            role: {
+              select: {
+                id: true,
+                name: true,
+                description: true
+              }
+            }
+          }
+        }
       },
     });
+
+    const rolePermissions = await this.prisma.rolePermission.findMany({
+      where: { roleId: ws.user.role.id },
+      select: {
+        permission: {
+          select: {
+            resource: true,
+            action: true,
+            description: true
+          }
+        },      
+      },
+    });
+
+    const userPermissions = await this.prisma.userPermission.findMany({
+      where: { userId: ws.user.id },
+      select: {
+        allowed: true,
+        permission: {
+          select: {
+            resource: true,
+            action: true
+          }
+        },      
+      },
+    });  
 
     if (!ws) {
       throw new Error(`Workspace with ID ${workspaceId} not found`);
@@ -481,7 +716,19 @@ export class WorkspacesService {
               avatar: ws.user.avatar,
               provider: ws.user.provider,
               emailVerified: ws.user.emailVerified,
+              role: ws.user.role,
+              rolePermissions: rolePermissions.map(permission => ({
+                resource: permission.permission.resource,
+                action: permission.permission.action,
+                description: permission.permission.description
+              })),
+              userPermissions: userPermissions.map(permission => ({
+                allowed: permission.allowed,
+                resource: permission.permission.resource,
+                action: permission.permission.action
+              })),
               createdAt: ws.user.createdAt.toISOString(),
+              updatedAt: ws.user.updatedAt.toISOString()
             },
           ]
         : []
