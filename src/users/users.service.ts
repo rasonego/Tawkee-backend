@@ -406,7 +406,7 @@ export class UsersService {
 
     const userPermissions = await this.prisma.userPermission.findMany({
       where: {
-        id: user.id,
+        userId: user.id,
       },
       select: {
         allowed: true,
@@ -559,7 +559,7 @@ export class UsersService {
 
     const userPermissions = await this.prisma.userPermission.findMany({
       where: {
-        id: user.id,
+        userId: user.id,
       },
       select: {
         allowed: true,
