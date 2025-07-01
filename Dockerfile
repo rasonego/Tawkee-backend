@@ -55,6 +55,9 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 
+# Ensure scripts are available in the production container
+COPY --from=builder /app/scripts ./scripts
+
 EXPOSE ${PORT:-5003}
 # Executa as migrações e inicia a aplicação
 CMD sh -c "npx prisma migrate deploy && node dist/main.js"
