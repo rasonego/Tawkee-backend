@@ -234,22 +234,32 @@ const createPermissionsAndRoles = async () => {
         description: 'Allows viewing the workspace billing.'
     },
     { 
-        action: 'MANAGE_PLAN_AS_CLIENT',
+        action: 'MANAGE_SUBSCRIPTION',
         resource: 'BILLING',
-        description: 'Allows managing the billing plan as a client.'
+        description: 'Allows managing the subscription of the workspace on Stripe.'
     },
     { 
-        action: 'MANAGE_EXTRA_CREDITS_AS_CLIENT',
+        action: 'MANAGE_SUBSCRIPTION_AS_ADMIN',
         resource: 'BILLING',
-        description: 'Allows managing extra credits as a client.'
+        description: 'Allows managing the subscription of any workspace on Stripe.'
     },
     { 
-        action: 'MANAGE_RECHARGE_SETTINGS',
+        action: 'PURCHASE_EXTRA_CREDITS',
+        resource: 'BILLING',
+        description: 'Allows purchasing extra credits for the workspace on Stripe.'
+    },
+    { 
+        action: 'PURCHASE_EXTRA_CREDITS_AS_ADMIN',
+        resource: 'BILLING',
+        description: 'Allows purchasing extra credits for any workspace on Stripe.'
+    },
+    { 
+        action: 'MANAGE_SMART_RECHARGE_SETTINGS',
         resource: 'BILLING',
         description: 'Allows managing the credit recharge settings for the workspace.'
     },
     { 
-        action: 'MANAGE_RECHARGE_SETTINGS_AS_ADMIN',
+        action: 'MANAGE_SMART_RECHARGE_SETTINGS_AS_ADMIN',
         resource: 'BILLING',
         description: 'Allows managing the credit recharge settings for any workspace.'
     },
@@ -321,9 +331,13 @@ const createPermissionsAndRoles = async () => {
 
   // Insert roles
   for (const role of roles) {
-    await prisma.role.create({
-      data: role,
-    });
+    try {
+        await prisma.role.create({
+          data: role,
+        });
+    } catch (error) {
+        console.log(error.message);
+    }
   }
 
   // Associating permissions with roles (ADMIN and CLIENT)

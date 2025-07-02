@@ -64,9 +64,15 @@ export class CreditService {
           },
         },
       });
-
+      
       const usedPlan = planUsage._sum.quantity ?? 0;
-      const totalPlan = subscription.plan.creditsLimit ?? 0;
+
+      const creditsLimitsOverrides = subscription?.creditsLimitOverrides as OverrideValue;
+
+      const totalPlan = creditsLimitsOverrides.explicitlySet
+        ? creditsLimitsOverrides.value
+        : subscription?.plan?.creditsLimit ?? 0;
+      
       planCreditsRemaining = Math.max(0, totalPlan - usedPlan);
     }
 
