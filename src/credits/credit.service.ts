@@ -69,7 +69,7 @@ export class CreditService {
 
       const creditsLimitsOverrides = subscription?.creditsLimitOverrides as OverrideValue;
 
-      const totalPlan = creditsLimitsOverrides.explicitlySet
+      const totalPlan = creditsLimitsOverrides?.explicitlySet
         ? creditsLimitsOverrides.value
         : subscription?.plan?.creditsLimit ?? 0;
       
