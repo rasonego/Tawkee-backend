@@ -488,6 +488,13 @@ export class StripeService {
       },
     });
 
+    const smartRecharge = await this.prisma.smartRechargeSetting.findUnique({
+      where: { workspaceId },
+    });    
+
+    const { planCreditsRemaining, extraCreditsRemaining } =
+      await this.creditService.getWorkspaceRemainingCredits(workspaceId);
+
     const latestSub = workspace?.subscriptions?.[0];
 
     const { plan, ...remainingData } = latestSub;
@@ -505,6 +512,9 @@ export class StripeService {
               ...stripePrice,
             }
           : undefined,
+      smartRecharge: smartRecharge || undefined,
+      planCreditsRemaining,
+      extraCreditsRemaining
     };
   }
 
