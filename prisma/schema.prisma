@@ -27,7 +27,7 @@ model User {
   resetToken          String?
   verificationExpires DateTime?
   verificationToken   String?
-  workspace           Workspace @relation(fields: [workspaceId], references: [id])
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: SetNull) // Change to SetNull
 
   roleId                String?
   role                  Role?      @relation(fields: [roleId], references: [id])
@@ -537,7 +537,7 @@ model UsageRecord {
   metadata       Json?
   createdAt      DateTime     @default(now())
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id])
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: SetNull) // Change to SetNull
   subscription Subscription? @relation(fields: [subscriptionId], references: [id])
   agent        Agent         @relation(fields: [agentId], references: [id])
 }
@@ -552,7 +552,7 @@ model ExtraCreditPurchase {
   metadata            Json?
   createdAt           DateTime   @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade) // Change to Cascade or SetNull
 }
 
 model SmartRechargeSetting {
@@ -564,7 +564,7 @@ model SmartRechargeSetting {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade) // Change to Cascade or SetNull
 }
 
 enum CreditRechargeMethod {
