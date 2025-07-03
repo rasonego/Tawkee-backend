@@ -14,6 +14,7 @@ import { AgentWebhooksDto } from '../../agent-webhooks/dto/agent-webhooks.dto';
 import { IntentionDto } from 'src/intentions/dto/intention.dto';
 import { PartialScheduleSettingsDto } from 'src/intentions/google-calendar/schedule-validation/dto/schedule-validation.dto';
 import { ElevenLabsSettingsDto } from 'src/elevenlabs/dto/elevenlabs.dto';
+import { SubscriptionOverrideDataDto } from 'src/stripe/dto/update-subscription-overrides.dto';
 
 class BasicAgentInfo {
   @ApiProperty({
@@ -165,4 +166,10 @@ export class EnhancedAgentDto {
     type: ElevenLabsSettingsDto,
   })
   elevenLabsSettings: Partial<ElevenLabsSettingsDto>;
+
+  @ApiProperty({
+    description: 'Subscription Limits Overrides',
+    type: SubscriptionOverrideDataDto,
+  })
+  subscriptionLimits?: any
 }

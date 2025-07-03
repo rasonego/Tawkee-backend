@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { WorkspacesService } from '../workspaces/workspaces.service';
+import { OverrideValue, WorkspacesService } from '../workspaces/workspaces.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { EnhancedAgentDto } from './dto/enhanced-agent.dto';
-import { GroupingTime, AIModel } from '@prisma/client';
+import { GroupingTime, AIModel, Subscription, Plan } from '@prisma/client';
 import { AvailableTimesDto } from 'src/intentions/google-calendar/schedule-validation/dto/schedule-validation.dto';
 
 @Injectable()
@@ -32,7 +32,15 @@ export class AgentsService {
     };
 
     // Get total count for pagination metadata
-    const total = await this.prisma.agent.count({ where });
+    const total = await this.prisma.agent.count({
+      where: {
+        workspaceId,
+        isDeleted: false,
+        ...(query
+          ? { name: { contains: query, mode: 'insensitive' as any } }
+          : {}),        
+      }      
+    });
 
     // Calculate total pages
     const totalPages = Math.ceil(total / pageSize);
@@ -115,6 +123,21 @@ export class AgentsService {
       },
     });
 
+    let subscription: any;
+    if (asAdmin) {
+      subscription = await this.prisma.subscription.findFirst({
+        where: { workspaceId },
+        select: {
+            agentLimitOverrides: true,
+            plan: {
+              select: {
+                agentLimit: true
+              }
+            }
+        }
+      })
+    }
+
     // Transform the data to match the EnhancedAgentDto structure
     const enhancedAgents = agents.map((agent) => {
       // Destructure the agent object including channels
@@ -144,6 +167,8 @@ export class AgentsService {
       };
     });
 
+    const agentLimitOverrides = subscription?.agentLimitOverrides as OverrideValue;
+
     return {
       data: enhancedAgents,
       meta: {
@@ -152,6 +177,11 @@ export class AgentsService {
         pageSize,
         totalPages,
       },
+      subscriptionLimits: {
+        agentLimit: agentLimitOverrides?.explicitlySet
+          ? agentLimitOverrides.value
+          : subscription?.plan?.agentLimit
+      }
     };
   }
 
@@ -449,13 +479,44 @@ export class AgentsService {
               },
             },
           },
-        },
+        }
       },
     });
 
     if (!agent) {
       throw new NotFoundException(`Agent with ID ${id} not found`);
     }
+
+    const subscription = await this.prisma.subscription.findFirst({
+      where: { workspaceId: agent.workspaceId},
+      select: {
+        featureOverrides: true,
+        creditsLimitOverrides: true,
+        agentLimitOverrides: true,
+        trainingTextLimitOverrides: true,
+        trainingWebsiteLimitOverrides: true,
+        trainingVideoLimitOverrides: true,
+        trainingDocumentLimitOverrides: true,
+        plan: {
+          select: {
+            features: true,
+            creditsLimit: true,
+            agentLimit: true,
+            trainingTextLimit: true,
+            trainingWebsiteLimit: true,
+            trainingVideoLimit: true,
+            trainingDocumentLimit: true,
+          }
+        }
+      }
+    });
+
+    const creditsLimitOverrides = subscription?.creditsLimitOverrides as OverrideValue;
+    const agentLimitOverrides = subscription?.agentLimitOverrides as OverrideValue;
+    const trainingTextLimitOverrides = subscription?.trainingTextLimitOverrides as OverrideValue;
+    const trainingWebsiteLimitOverrides = subscription?.trainingWebsiteLimitOverrides as OverrideValue;
+    const trainingVideoLimitOverrides = subscription?.trainingVideoLimitOverrides as OverrideValue;
+    const trainingDocumentLimitOverrides = subscription?.trainingDocumentLimitOverrides as OverrideValue;
 
     const {
       settings,
@@ -496,6 +557,26 @@ export class AgentsService {
       elevenLabsSettings: {
         ...elevenLabsSettings,
       },
+      subscriptionLimits: {
+        agentLimit: agentLimitOverrides.explicitlySet
+          ? agentLimitOverrides.value
+          : subscription.plan.agentLimit,
+        creditsLimit: creditsLimitOverrides.explicitlySet
+          ? creditsLimitOverrides.value
+          : subscription.plan.creditsLimit,
+        trainingTextLimit: trainingTextLimitOverrides.explicitlySet
+          ? trainingTextLimitOverrides.value
+          : subscription.plan.trainingTextLimit,
+        trainingWebsiteLimit: trainingWebsiteLimitOverrides.explicitlySet
+          ? trainingWebsiteLimitOverrides.value
+          : subscription.plan.trainingWebsiteLimit,
+        trainingVideoLimit: trainingVideoLimitOverrides.explicitlySet
+          ? trainingVideoLimitOverrides.value
+          : subscription.plan.trainingVideoLimit,
+        trainingDocumentLimit: trainingDocumentLimitOverrides.explicitlySet
+          ? trainingDocumentLimitOverrides.value
+          : subscription.plan.trainingDocumentLimit     
+      }
     };
   }
 
