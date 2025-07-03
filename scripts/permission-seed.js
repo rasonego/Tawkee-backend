@@ -57,19 +57,9 @@ const createPermissionsAndRoles = async () => {
         description: 'Allows activating or deactivating any workspace.'
     },
     { 
-        action: 'CREATE_USER_PERMISSION_AS_ADMIN',
-        resource: 'WORKSPACE',
-        description: 'Allows creating user permissions in any workspace.'
-    },
-    { 
         action: 'EDIT_USER_PERMISSION_AS_ADMIN',
         resource: 'WORKSPACE',
         description: 'Allows editing user permissions in any workspace.'
-    },
-    { 
-        action: 'DELETE_USER_PERMISSION_AS_ADMIN',
-        resource: 'WORKSPACE',
-        description: 'Allows deleting user permissions in any workspace.'
     },
     { 
         action: 'OVERRIDE_SUBSCRIPTION_LIMITS_AS_ADMIN',
@@ -95,6 +85,16 @@ const createPermissionsAndRoles = async () => {
         action: 'CREATE_AS_ADMIN',
         resource: 'AGENT',
         description: 'Allows creating an agent in any workspace.'
+    },
+    { 
+        action: 'ACTIVATE',
+        resource: 'AGENT',
+        description: 'Allows activating/deactivating an agent in the workspace.'
+    },
+    { 
+        action: 'ACTIVATE_AS_ADMIN',
+        resource: 'AGENT',
+        description: 'Allows activating/deactivating an agent in any workspace.'
     },
     { 
         action: 'EDIT_PROFILE',
@@ -137,9 +137,34 @@ const createPermissionsAndRoles = async () => {
         description: 'Allows deleting training from an agent in any workspace.'
     },
     { 
-        action: 'INTEGRATIONS_ACTIVATE_AS_CLIENT',
+        action: 'INTEGRATIONS_ACTIVATE',
         resource: 'AGENT',
-        description: 'Allows activating agent integrations in the workspace as a client.'
+        description: 'Allows activating integrations for agents in the workspace.'
+    },
+    { 
+        action: 'INTEGRATIONS_ACTIVATE_AS_ADMIN',
+        resource: 'AGENT',
+        description: 'Allows activating integrations for agents of any workspace.'
+    },
+    { 
+        action: 'INTEGRATIONS_MANAGE',
+        resource: 'AGENT',
+        description: 'Allows managing settings of active integrations of agents in the workspace.'
+    },
+    { 
+        action: 'INTEGRATIONS_MANAGE_AS_ADMIN',
+        resource: 'AGENT',
+        description: 'Allows managing settings of active integrations of agents of any workspace.'
+    },
+    { 
+        action: 'CONNECT_CHANNEL',
+        resource: 'AGENT',
+        description: 'Allows connecting/disconnecting agents in the workspace to channels.'
+    },
+    { 
+        action: 'CONNECT_CHANNEL_AS_ADMIN',
+        resource: 'AGENT',
+        description: 'Allows connecting/disconnecting agents of any workspace to channels.'
     },
     { 
         action: 'MANAGE_SETTINGS',
@@ -166,7 +191,6 @@ const createPermissionsAndRoles = async () => {
         resource: 'AGENT',
         description: 'Allows permanently deleting an agent from any workspace.'
     },
-
     { 
         action: 'VIEW_LIST',
         resource: 'CHAT',

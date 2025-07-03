@@ -50,6 +50,23 @@ export class AgentsController {
     return this.agentsService.findAll(workspaceId, paginationDto);
   }
 
+  @Get('workspace/:workspaceId/agents-as-admin')
+  @ApiOperation({ summary: 'List agents in a workspace as admin' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns the paginated list of agents with their settings and webhooks',
+    type: PaginatedAgentsResponseDto,
+  })
+  @ApiParam({ name: 'workspaceId', description: 'Workspace ID' })
+  @ApiPaginationQueries()
+  async findAllAsAdmin(
+    @Param('workspaceId') workspaceId: string,
+    @Query() paginationDto: PaginationDto
+  ): Promise<any> {
+    return this.agentsService.findAll(workspaceId, paginationDto, true);
+  }
+
   @Post('workspace/:workspaceId/agents')
   @ApiOperation({ summary: 'Create a new agent' })
   @ApiResponse({
@@ -128,6 +145,64 @@ export class AgentsController {
 
     return result;
   }
+
+  @Delete('agent-as-admin/:agentId')
+  @ApiOperation({ summary: 'Delete an agent as admin' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns whether the operation was successful or not, with detailed message',
+    schema: {
+      type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+          example: true,
+        },
+        message: {
+          type: 'string',
+          example: 'Agent deleted successfully',
+          description:
+            'Provides details about the operation result, including error details if any',
+        },
+      },
+    },
+  })
+  @ApiParam({ name: 'agentId', description: 'Agent ID' })
+  async removeAsAdmin(
+    @Param('agentId') agentId: string
+  ): Promise<{ success: boolean; message?: string }> {
+    const result = await this.agentsService.remove(agentId, true);
+
+    if (!result.success) {
+      // Return 400 Bad Request with the detailed error message
+      throw new BadRequestException(result.message);
+    }
+
+    return result;
+  }
+
+  @Put('agent/restore/:agentId')
+  @ApiOperation({ summary: 'Restore a deleted agent' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns whether the action was successful or not',
+    schema: {
+      type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+          example: true,
+        },
+      },
+    },
+  })
+  @ApiParam({ name: 'agentId', description: 'Agent ID' })
+  async restore(
+    @Param('agentId') agentId: string
+  ): Promise<{ success: boolean }> {
+    return this.agentsService.restore(agentId);
+  }  
 
   @Put('agent/:agentId/inactive')
   @ApiOperation({ summary: 'Deactivate an agent' })

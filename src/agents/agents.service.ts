@@ -15,7 +15,7 @@ export class AgentsService {
     private readonly workspacesService: WorkspacesService
   ) {}
 
-  async findAll(workspaceId: string, paginationDto: PaginationDto) {
+  async findAll(workspaceId: string, paginationDto: PaginationDto, asAdmin: boolean = false) {
     // Ensure the workspace exists
     await this.workspacesService.findOne(workspaceId);
 
@@ -25,7 +25,7 @@ export class AgentsService {
 
     const where = {
       workspaceId,
-      isDeleted: false,
+      ...(asAdmin ? {} : { isDeleted: false }), // Skip if condition is true
       ...(query
         ? { name: { contains: query, mode: 'insensitive' as any } }
         : {}),
@@ -53,6 +53,7 @@ export class AgentsService {
         jobSite: true,
         jobDescription: true,
         isActive: true,
+        isDeleted: true,
         settings: {
           select: {
             preferredModel: true,
@@ -312,7 +313,7 @@ export class AgentsService {
 
   async findOne(id: string): Promise<EnhancedAgentDto> {
     const agent = await this.prisma.agent.findUnique({
-      where: { id, isDeleted: false },
+      where: { id },
       select: {
         id: true,
         workspaceId: true,
@@ -325,6 +326,7 @@ export class AgentsService {
         jobSite: true,
         jobDescription: true,
         isActive: true,
+        isDeleted: true,
         settings: {
           select: {
             preferredModel: true,
@@ -688,15 +690,38 @@ export class AgentsService {
     };
   }
 
-  async remove(id: string): Promise<{ success: boolean; message?: string }> {
+  async remove(id: string, asAdmin?: boolean): Promise<{ success: boolean; message?: string, deletedPermanently: boolean; }> {
+    let deletedPermanently: boolean = false;
     try {
-      // If there are no related records, delete the agent
-      await this.prisma.agent.update({
-        where: { id },
-        data: { isDeleted: true },
-      });
+      if (asAdmin) {
+        // Check if agent has been marked for deletion
+        const agent = await this.prisma.agent.findUnique({
+          where: { id, isDeleted: true}
+        });
 
-      return { success: true, message: 'Agent deleted successfully' };
+        if (agent) {
+          // Actually delete from database
+          await this.prisma.agent.delete({
+            where: { id }
+          });
+          deletedPermanently = true;
+        } else {
+          // Mark as deleted       
+          await this.prisma.agent.update({
+            where: { id },
+            data: { isDeleted: true, isActive: false },
+          });
+        }
+
+      } else {
+        // Mark as deleted       
+        await this.prisma.agent.update({
+          where: { id },
+          data: { isDeleted: true, isActive: false },
+        });
+      }
+
+      return { success: true, message: 'Agent deleted successfully', deletedPermanently };
     } catch (error) {
       // Handle unexpected errors
       if (error.code === 'P2003') {
@@ -707,9 +732,24 @@ export class AgentsService {
         return {
           success: false,
           message: `Cannot delete this agent because it is referenced by other records (constraint: ${constraintName}). You must delete the dependent records first.`,
+          deletedPermanently: false
         };
       }
 
+      // Re-throw other errors to be handled by the global error handler
+      throw error;
+    }
+  }
+
+  async restore(id: string): Promise<{ success: boolean; message?: string; }> {
+    try {
+      await this.prisma.agent.update({
+        where: { id },
+        data: { isDeleted: false },
+      });
+
+      return { success: true, message: 'Agent restored successfully' };
+    } catch (error) {
       // Re-throw other errors to be handled by the global error handler
       throw error;
     }
