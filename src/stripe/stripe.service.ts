@@ -1670,34 +1670,35 @@ export class StripeService {
         break;
       }
 
-
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
-
         const customerId = invoice.customer as string;
 
         const workspace = await this.prisma.workspace.findFirst({
-          where: { stripeCustomerId: customerId }
+          where: { stripeCustomerId: customerId },
         });
 
         if (!workspace) {
           this.logger.warn(`Workspace not found for customer ${customerId} in invoice.payment_succeeded`);
-        } else {
-          const subscriptionLine = invoice.lines?.data?.find(
-            (line) => line.parent?.type === 'subscription_item_details'
-          );
+          break;
+        }
 
-          // 📌 Reativar o workspace caso tenha sido desativado por pagamento atrasado
+        const subscriptionLine = invoice.lines?.data?.find(
+          (line) => line.parent?.type === 'subscription_item_details'
+        );
+
+        const subscriptionId =
+          subscriptionLine?.parent?.subscription_item_details?.subscription ||
+          (invoice as any).subscription;
+
+        if (subscriptionId && typeof subscriptionId === 'string') {
           const subscriptionRecord = await this.prisma.subscription.findFirst({
-            where: {
-              stripeSubscriptionId: subscriptionLine.parent.subscription_item_details.subscription as string,
-              status: 'PAST_DUE',
-            }
+            where: { stripeSubscriptionId: subscriptionId },
           });
 
           if (subscriptionRecord) {
             const plan = await this.prisma.plan.findFirst({
-              where: { id: subscriptionRecord.planId }
+              where: { id: subscriptionRecord.planId },
             });
 
             await this.prisma.subscription.update({
@@ -1713,15 +1714,6 @@ export class StripeService {
               },
             });
 
-            await this.prisma.subscription.update({
-              where: { id: subscriptionRecord.id },
-              data: {
-                status: 'ACTIVE',
-                paymentRetryCount: 0,
-                lastPaymentFailedAt: null,
-              },
-            });
-
             try {
               await this.workspaceService.activateWorkspace(workspace.id);
               this.logger.log(`Workspace ${workspace.id} reactivated after payment`);
@@ -1730,43 +1722,26 @@ export class StripeService {
                 `Error to reactivate workspace ${workspace.id}: ${error.message}`
               );
             }
-          
-            // 🔄 Atualiza frontend via websocket
+
             const stripePrice = plan?.stripePriceId
               ? await this.getPriceDetailsById(plan.stripePriceId)
               : undefined;
 
-            this.websocketService.sendToClient(
-              workspace.id,
-              'subscriptionUpdated',
-              {
-                subscription: subscriptionRecord,
-                plan: plan && stripePrice
-                  ? { ...plan, ...stripePrice }
-                  : undefined,
-              }
-            ); 
+            this.websocketService.sendToClient(workspace.id, 'subscriptionUpdated', {
+              subscription: subscriptionRecord,
+              plan: plan && stripePrice ? { ...plan, ...stripePrice } : undefined,
+            });
           } else {
-            this.logger.warn(`Subscription ${(invoice as ExtendedInvoice).subscription} of ${customerId} not found.`);
-          }           
+            this.logger.warn(`Subscription ${subscriptionId} of ${customerId} not found.`);
+          }
         }
 
+        // Smart Recharge Credit Purchase
         const isOneTimeRecharge = invoice.lines?.data?.some((line) =>
           line.description?.toLowerCase().includes('smart recharge')
         );
 
         if (isOneTimeRecharge) {
-          const customerId = invoice.customer as string;
-
-          const workspace = await this.prisma.workspace.findFirst({
-            where: { stripeCustomerId: customerId },
-          });
-
-          if (!workspace) {
-            this.logger.warn(`Workspace not found for customer ${customerId}`);
-            break;
-          }
-
           const totalCents = invoice.amount_paid;
           const quantity = Math.floor(totalCents / PRICE_PER_CREDIT_CENTS);
 
