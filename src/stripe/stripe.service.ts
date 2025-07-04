@@ -841,7 +841,6 @@ export class StripeService {
     };
   }
 
-
   async getWorkspacePaymentsInPeriod(workspaceId: string, startDate: Date, endDate: Date) {
     const startTs = Math.floor(startDate.getTime() / 1000);
     const endTs = Math.floor(endDate.getTime() / 1000);
@@ -1459,6 +1458,15 @@ export class StripeService {
         const sub = data as Stripe.Subscription;
         const item = sub.items.data[0];
 
+        const existingPlan = await this.prisma.plan.findFirst({
+          where: { stripePriceId: item.price.id }
+        });
+
+        if (!existingPlan) {
+          this.logger.warn(`No plan found for updated price ID ${item.price.id}`);
+          return;
+        }
+
         await this.prisma.subscription.updateMany({
           where: { stripeSubscriptionId: sub.id },
           data: {
@@ -1473,6 +1481,7 @@ export class StripeService {
               ? new Date(sub.trial_start * 1000)
               : null,
             trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
+            planId: existingPlan.id
           },
         });
 
@@ -1515,7 +1524,7 @@ export class StripeService {
 
         const stripePrice = plan?.stripePriceId
           ? await this.getPriceDetailsById(plan.stripePriceId)
-          : undefined;
+          : undefined;     
 
         this.websocketService.sendToClient(workspaceId, 'subscriptionUpdated', {
           subscription: remainingData,
