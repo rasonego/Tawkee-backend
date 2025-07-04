@@ -1683,23 +1683,22 @@ export class StripeService {
         if (!workspace) {
           this.logger.warn(`Workspace not found for customer ${customerId} in invoice.payment_succeeded`);
         } else {
+          const subscriptionLine = invoice.lines?.data?.find(
+            (line) => line.parent?.type === 'subscription_item_details'
+          );
+
           // 📌 Reativar o workspace caso tenha sido desativado por pagamento atrasado
           const subscriptionRecord = await this.prisma.subscription.findFirst({
             where: {
-              stripeSubscriptionId: (invoice as ExtendedInvoice).subscription as string,
+              stripeSubscriptionId: subscriptionLine.parent.subscription_item_details.subscription as string,
               status: 'PAST_DUE',
             }
           });
 
-          const plan = await this.prisma.plan.findFirst({
-            where: { id: subscriptionRecord.planId }
-          });
-
-          
           if (subscriptionRecord) {
-            const subscriptionLine = invoice.lines?.data?.find(
-              (line) => line.parent?.type === 'subscription_item_details'
-            );
+            const plan = await this.prisma.plan.findFirst({
+              where: { id: subscriptionRecord.planId }
+            });
 
             await this.prisma.subscription.update({
               where: { id: subscriptionRecord.id },
@@ -1747,6 +1746,8 @@ export class StripeService {
                   : undefined,
               }
             ); 
+          } else {
+            this.logger.warn(`Subscription ${(invoice as ExtendedInvoice).subscription} of ${customerId} not found.`);
           }           
         }
 
