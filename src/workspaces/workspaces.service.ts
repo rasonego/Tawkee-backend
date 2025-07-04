@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotAcceptableException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditService } from 'src/credits/credit.service';
 import { PaginatedWorkspaceResponseDto, WorkspaceDto } from './dto/workspace.dto';
-import { AIModel } from '@prisma/client';
+import { AIModel, SubscriptionStatus } from '@prisma/client';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 
 export type OverrideValue = { value: number | null; explicitlySet: boolean };
@@ -120,6 +120,59 @@ export class WorkspacesService {
     }
 
     return workspace;
+  }
+
+  async activateWorkspace(workspaceId: string): Promise<void> {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        workspaceId,
+      },
+      select: {
+        status: true,
+      },
+    });
+
+    if (!subscription) {
+      throw new Error(`No subscription found for workspace ${workspaceId}`);
+    }
+
+    const disallowedStatuses: SubscriptionStatus[] = [
+      'CANCELED',
+      'PAST_DUE',
+      'INCOMPLETE',
+      'INCOMPLETE_EXPIRED',
+      'UNPAID',
+    ];
+
+    if (disallowedStatuses.includes(subscription.status)) {
+      throw new NotAcceptableException(
+        `Cannot activate workspace ${workspaceId}: subscription is in a disallowed status (${subscription.status})`
+      );
+    }
+
+    await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        isActive: true,
+      },
+    });
+  }
+
+  async deactivateWorkspace(workspaceId: string): Promise<void> {
+    await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        isActive: false,
+        agents: {
+          updateMany: {
+            where: {}, // leave empty to match all agents in the workspace
+            data: {
+              isActive: false,
+            },
+          },
+        },
+      },
+    });
   }
 
   // When user finishes a chat using our platform, it does not necessarily mean it is resolved by human.

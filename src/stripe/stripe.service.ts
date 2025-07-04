@@ -7,6 +7,8 @@ import { WebsocketService } from 'src/websocket/websocket.service';
 import { CreditService } from 'src/credits/credit.service';
 import { UpdatePlanFromFormDto } from './dto/update-plan-from-form.dto';
 import { UpdateSubscriptionOverridesDto } from './dto/update-subscription-overrides.dto';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { WorkspacesService } from 'src/workspaces/workspaces.service';
 
 const PRICE_PER_CREDIT_CENTS = 4;
 
@@ -26,6 +28,8 @@ export class StripeService {
     @Inject(forwardRef(() => CreditService))
     private creditService: CreditService,
 
+    @Inject(forwardRef(() => WorkspacesService))    
+    private workspaceService: WorkspacesService,
     private websocketService: WebsocketService
   ) {
     this.stripe = new Stripe(
@@ -33,6 +37,40 @@ export class StripeService {
       {
         apiVersion: '2025-05-28.basil',
       }
+    );
+  }
+
+
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async deactivateUnpaidWorkspacesTask() {
+    this.logger.log('Running scheduled task to check for unpaid workspaces...');
+  
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  
+    const subscriptionsToDeactivate = await this.prisma.subscription.findMany({
+      where: {
+        status: 'PAST_DUE',
+        lastPaymentFailedAt: {
+          lte: oneHourAgo,
+        },
+      },
+      select: {
+        workspaceId: true,
+      },
+    });
+  
+    for (const sub of subscriptionsToDeactivate) {
+      try {
+        await this.workspaceService.deactivateWorkspace(sub.workspaceId);
+      } catch (error) {
+        this.logger.error(
+          `Failed to deactivate workspace ${sub.workspaceId}: ${error.message}`
+        );
+      }
+    }
+  
+    this.logger.log(
+      `Finished checking unpaid workspaces: ${subscriptionsToDeactivate.length} deactivated`
     );
   }
 
@@ -1489,34 +1527,33 @@ export class StripeService {
                 }
               : undefined,
         });
+
+        if (existing.status === 'CANCELED') {
+          await this.workspaceService.deactivateWorkspace(workspaceId);
+        }
+
         break;
       }
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
         if (invoice.parent?.type === 'subscription_details') {
-          const subscriptionId =
-            invoice.parent.subscription_details.subscription;
-          console.log(
-            `Pagamento falhou para a assinatura: ${subscriptionId} (Invoice ${invoice.id})`
+          const subscriptionId = invoice.parent.subscription_details.subscription;
+          this.logger.warn(
+            `Payment failed for subscription: ${subscriptionId} (Invoice ${invoice.id})`
           );
 
           if (!subscriptionId) {
-            this.logger.warn(
-              `No subscription found for failed invoice ${invoice.id}`
-            );
+            this.logger.warn(`No subscription found for failed invoice ${invoice.id}`);
             return;
           }
-
-          await this.prisma.subscription.updateMany({
-            where: { stripeSubscriptionId: subscriptionId as string },
-            data: { status: 'PAST_DUE' },
-          });
 
           const existing = await this.prisma.subscription.findFirst({
             where: { stripeSubscriptionId: subscriptionId as string },
             select: {
+              id: true,
               workspaceId: true,
+              paymentRetryCount: true,
               status: true,
               currentPeriodEnd: true,
               trialEnd: true,
@@ -1548,30 +1585,35 @@ export class StripeService {
             },
           });
 
+          if (!existing) return;
+
+          const retryCount = (existing.paymentRetryCount ?? 0) + 1;
+
+          await this.prisma.subscription.update({
+            where: { id: existing.id },
+            data: {
+              status: 'PAST_DUE',
+              paymentRetryCount: retryCount,
+              lastPaymentFailedAt: new Date(),
+            },
+          });
+
           const { workspaceId, plan, ...remainingData } = existing;
 
           const stripePrice = plan?.stripePriceId
             ? await this.getPriceDetailsById(plan.stripePriceId)
             : undefined;
 
-          this.websocketService.sendToClient(
-            workspaceId,
-            'subscriptionUpdated',
-            {
-              subscription: remainingData,
-              plan:
-                plan && stripePrice
-                  ? {
-                      ...plan,
-                      ...stripePrice,
-                    }
-                  : undefined,
-            }
-          );
-
-          this.logger.warn(
-            `Payment failed for subscription: ${subscriptionId}`
-          );
+          this.websocketService.sendToClient(workspaceId, 'subscriptionUpdated', {
+            subscription: remainingData,
+            plan:
+              plan && stripePrice
+                ? {
+                    ...plan,
+                    ...stripePrice,
+                  }
+                : undefined,
+          });
         }
         break;
       }
@@ -1654,3 +1696,5 @@ export class StripeService {
     }
   }
 }
+
+

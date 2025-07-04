@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -102,4 +103,19 @@ export class WorkspacesController {
   ): Promise<any> {
     return this.workspacesService.getDetailedWorkspace(workspaceId);
   }
+
+
+  @Put(':workspaceId/activate')
+  @ApiOperation({ summary: 'Activate a workspace' })
+  @ApiResponse({ status: 200, description: 'Workspace activated successfully' })
+  async activateWorkspace(@Param('workspaceId') workspaceId: string): Promise<void> {
+    await this.workspacesService.activateWorkspace(workspaceId);
+  }
+
+  @Put(':workspaceId/deactivate')
+  @ApiOperation({ summary: 'Deactivate a workspace and all its agents' })
+  @ApiResponse({ status: 200, description: 'Workspace deactivated successfully' })
+  async deactivateWorkspace(@Param('workspaceId') workspaceId: string): Promise<void> {
+    await this.workspacesService.deactivateWorkspace(workspaceId);
+  }  
 }
