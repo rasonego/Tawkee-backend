@@ -1609,28 +1609,31 @@ export class StripeService {
           if (!existing) return;
 
           const retryCount = (existing.paymentRetryCount ?? 0) + 1;
-
-          await this.prisma.subscription.update({
-            where: { id: existing.id },
-            data: {
-              status: 'PAST_DUE',
-              paymentRetryCount: retryCount,
-              lastPaymentFailedAt: new Date(),
-            },
-          });
+          
+          if (retryCount <= 3) {
+            await this.prisma.subscription.update({
+              where: { id: existing.id },
+              data: {
+                status: 'PAST_DUE',
+                paymentRetryCount: retryCount,
+                lastPaymentFailedAt: new Date(),
+              },
+            });
+          }
 
           const owner = existing.workspace?.user;
-          if (owner?.email) {
+          if (retryCount == 1 && owner?.email) {
 
             const invoicerRetrieved = await this.stripe.invoices.retrieve(event.data.object.id, {
               expand: ['payment_intent'],
             }) as ExtendedInvoice;
 
             const portalUrl = await this.createCustomerPortal(existing.workspaceId);
-            const failureMessage = undefined;
+            const failureMessage =
               invoicerRetrieved.payment_intent &&
-              typeof invoicerRetrieved.payment_intent !== 'string' &&
-              invoicerRetrieved.payment_intent.last_payment_error?.message;
+              typeof invoicerRetrieved.payment_intent !== 'string'
+                ? invoicerRetrieved.payment_intent.last_payment_error?.message
+                : undefined;
 
             const reason = failureMessage || 'Unknown reason';
 
