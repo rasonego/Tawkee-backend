@@ -16,7 +16,7 @@ export class EmailService {
     }
     this.resend = new Resend(apiKey);
     this.sender =
-      this.configService.get<string>('EMAIL_SENDER') || 'noreply@tawkee.io';
+      this.configService.get<string>('EMAIL_SENDER') || 'no-reply@tawkee.ai';
     this.frontendUrl =
       this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
   }
@@ -30,7 +30,7 @@ export class EmailService {
       const verificationUrl = `${this.frontendUrl}/verify-email?token=${verificationToken}`;
 
       const { data, error } = await this.resend.emails.send({
-        from: this.sender,
+        from: `Tawkee <${this.sender}>`,
         to,
         subject: 'Verify Your Email Address',
         html: `
@@ -46,7 +46,7 @@ export class EmailService {
             <p>If you did not register for a Tawkee account, please ignore this email.</p>
             <p>Thank you,<br>The Tawkee Team</p>
           </div>
-        `,
+        `
       });
 
       if (error) {
@@ -73,7 +73,7 @@ export class EmailService {
       const resetUrl = `${this.frontendUrl}/reset-password?token=${resetToken}`;
 
       const { data, error } = await this.resend.emails.send({
-        from: this.sender,
+        from: `Tawkee <${this.sender}>`,
         to,
         subject: 'Reset Your Password',
         html: `
@@ -89,7 +89,7 @@ export class EmailService {
             <p>If you did not request a password reset, please ignore this email.</p>
             <p>Thank you,<br>The Tawkee Team</p>
           </div>
-        `,
+        `
       });
 
       if (error) {
@@ -105,35 +105,6 @@ export class EmailService {
       return true;
     } catch (error) {
       this.logger.error(`Error sending password reset email: ${error.message}`);
-      return false;
-    }
-  }
-
-  async sendTestEmail(to: string): Promise<boolean> {
-    try {
-      const { data, error } = await this.resend.emails.send({
-        from: this.sender,
-        to,
-        subject: 'Test Email from Tawkee',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
-            <h2 style="color: #333;">Test Email</h2>
-            <p>This is a test email from Tawkee.</p>
-            <p>If you're seeing this, email sending is configured correctly!</p>
-            <p>Thank you,<br>The Tawkee Team</p>
-          </div>
-        `,
-      });
-
-      if (error) {
-        this.logger.error(`Failed to send test email: ${error.message}`);
-        return false;
-      }
-
-      this.logger.log(`Test email sent to ${to} with ID: ${data?.id}`);
-      return true;
-    } catch (error) {
-      this.logger.error(`Error sending test email: ${error.message}`);
       return false;
     }
   }
