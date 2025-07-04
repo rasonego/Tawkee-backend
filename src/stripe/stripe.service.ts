@@ -15,9 +15,11 @@ const PRICE_PER_CREDIT_CENTS = 4;
 
 interface ExtendedInvoice extends Stripe.Invoice {
   subscription?: string;
-  payment_intent?: {
-    last_payment_error?: {
-      message?: string
+  latest_charge?: {
+    payment_intent?: {
+      last_payment_error?: {
+        message?: string;
+      }
     }
   }
 }
@@ -1552,7 +1554,8 @@ export class StripeService {
       }
 
       case 'invoice.payment_failed': {
-        const invoice = event.data.object as Stripe.Invoice;
+        const invoice = event.data.object as ExtendedInvoice;
+
         if (invoice.parent?.type === 'subscription_details') {
           const subscriptionId = invoice.parent.subscription_details.subscription;
           this.logger.warn(
@@ -1609,7 +1612,7 @@ export class StripeService {
           if (!existing) return;
 
           const retryCount = (existing.paymentRetryCount ?? 0) + 1;
-          
+
           if (retryCount <= 3) {
             await this.prisma.subscription.update({
               where: { id: existing.id },
@@ -1622,20 +1625,21 @@ export class StripeService {
           }
 
           const owner = existing.workspace?.user;
-          if (retryCount == 1 && owner?.email) {
-
-            const invoicerRetrieved = await this.stripe.invoices.retrieve(event.data.object.id, {
-              expand: ['payment_intent'],
-            }) as ExtendedInvoice;
-
+          if (retryCount === 1 && owner?.email) {
             const portalUrl = await this.createCustomerPortal(existing.workspaceId);
-            const failureMessage =
-              invoicerRetrieved.payment_intent &&
-              typeof invoicerRetrieved.payment_intent !== 'string'
-                ? invoicerRetrieved.payment_intent.last_payment_error?.message
-                : undefined;
 
-            const reason = failureMessage || 'Unknown reason';
+            const charge = invoice.latest_charge && typeof invoice.latest_charge !== 'string'
+              ? invoice.latest_charge
+              : undefined;
+
+            const paymentIntent = charge?.payment_intent && typeof charge.payment_intent !== 'string'
+              ? charge.payment_intent
+              : undefined;
+
+            const error = paymentIntent?.last_payment_error;
+
+            const failureMessage = error?.message || 'Your payment could not be processed.';
+            const reason = failureMessage;
 
             await this.emailService.sendPaymentFailureEmail(
               owner.email,
@@ -1662,8 +1666,10 @@ export class StripeService {
                 : undefined,
           });
         }
+
         break;
       }
+
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
