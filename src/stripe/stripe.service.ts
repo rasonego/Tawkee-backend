@@ -1695,7 +1695,25 @@ export class StripeService {
             where: { id: subscriptionRecord.planId }
           });
 
+          
           if (subscriptionRecord) {
+            const subscriptionLine = invoice.lines?.data?.find(
+              (line) => line.parent?.type === 'subscription_item_details'
+            );
+
+            await this.prisma.subscription.update({
+              where: { id: subscriptionRecord.id },
+              data: {
+                status: 'ACTIVE',
+                paymentRetryCount: 0,
+                lastPaymentFailedAt: null,
+                ...(subscriptionLine && {
+                  currentPeriodStart: new Date(subscriptionLine.period.start * 1000),
+                  currentPeriodEnd: new Date(subscriptionLine.period.end * 1000),
+                }),
+              },
+            });
+
             await this.prisma.subscription.update({
               where: { id: subscriptionRecord.id },
               data: {
@@ -1713,7 +1731,7 @@ export class StripeService {
                 `Error to reactivate workspace ${workspace.id}: ${error.message}`
               );
             }
-            
+          
             // 🔄 Atualiza frontend via websocket
             const stripePrice = plan?.stripePriceId
               ? await this.getPriceDetailsById(plan.stripePriceId)
