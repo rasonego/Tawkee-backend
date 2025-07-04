@@ -108,4 +108,44 @@ export class EmailService {
       return false;
     }
   }
+
+  async sendPaymentFailureEmail(
+    to: string,
+    name: string,
+    failureReason: string,
+    manageUrl: string
+  ): Promise<boolean> {
+    try {
+      const { data, error } = await this.resend.emails.send({
+        from: `Tawkee <${this.sender}>`,
+        to,
+        subject: '⚠️ Payment Failed – Action Required',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+            <h2 style="color: #c0392b;">Payment Failed</h2>
+            <p>Hi ${name},</p>
+            <p>We attempted to process your subscription payment, but unfortunately it was declined.</p>
+            <p><strong>Reason:</strong> ${failureReason}</p>
+            <p>Please update your payment method or retry the payment to avoid service interruption.</p>
+            <div style="text-align: center; margin: 30px 20px;">
+              <a href="${manageUrl}" style="background-color: #e74c3c; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Update Payment</a>
+            </div>
+            <p>If you believe this was a mistake or need help, feel free to contact us.</p>
+            <p>Thanks,<br>The Tawkee Team</p>
+          </div>
+        `,
+      });
+
+      if (error) {
+        this.logger.error(`Failed to send payment failure email: ${error.message}`);
+        return false;
+      }
+
+      this.logger.log(`Payment failure email sent to ${to} with ID: ${data?.id}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error sending payment failure email: ${error.message}`);
+      return false;
+    }
+  }
 }

@@ -9,11 +9,17 @@ import { UpdatePlanFromFormDto } from './dto/update-plan-from-form.dto';
 import { UpdateSubscriptionOverridesDto } from './dto/update-subscription-overrides.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { WorkspacesService } from 'src/workspaces/workspaces.service';
+import { EmailService } from 'src/email/email.service';
 
 const PRICE_PER_CREDIT_CENTS = 4;
 
 interface ExtendedInvoice extends Stripe.Invoice {
   subscription?: string;
+  payment_intent?: {
+    last_payment_error?: {
+      message?: string
+    }
+  }
 }
 
 @Injectable()
@@ -30,7 +36,8 @@ export class StripeService {
 
     @Inject(forwardRef(() => WorkspacesService))    
     private workspaceService: WorkspacesService,
-    private websocketService: WebsocketService
+    private websocketService: WebsocketService,
+    private emailService: EmailService
   ) {
     this.stripe = new Stripe(
       this.configService.get<string>('STRIPE_SECRET_KEY'),
@@ -1591,6 +1598,11 @@ export class StripeService {
                   trialDays: true,
                 },
               },
+              workspace: {
+                select: {
+                  user: true
+                }
+              }
             },
           });
 
@@ -1606,6 +1618,29 @@ export class StripeService {
               lastPaymentFailedAt: new Date(),
             },
           });
+
+          const owner = existing.workspace?.user;
+          if (owner?.email) {
+
+            const invoicerRetrieved = await this.stripe.invoices.retrieve(event.data.object.id, {
+              expand: ['payment_intent'],
+            }) as ExtendedInvoice;
+
+            const portalUrl = await this.createCustomerPortal(existing.workspaceId);
+            const failureMessage = undefined;
+              invoicerRetrieved.payment_intent &&
+              typeof invoicerRetrieved.payment_intent !== 'string' &&
+              invoicerRetrieved.payment_intent.last_payment_error?.message;
+
+            const reason = failureMessage || 'Unknown reason';
+
+            await this.emailService.sendPaymentFailureEmail(
+              owner.email,
+              owner.name ?? 'User',
+              reason,
+              portalUrl
+            );
+          }
 
           const { workspaceId, plan, ...remainingData } = existing;
 
@@ -1629,6 +1664,64 @@ export class StripeService {
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
+
+        const customerId = invoice.customer as string;
+
+        const workspace = await this.prisma.workspace.findFirst({
+          where: { stripeCustomerId: customerId }
+        });
+
+        if (!workspace) {
+          this.logger.warn(`Workspace not found for customer ${customerId} in invoice.payment_succeeded`);
+        } else {
+          // 📌 Reativar o workspace caso tenha sido desativado por pagamento atrasado
+          const subscriptionRecord = await this.prisma.subscription.findFirst({
+            where: {
+              stripeSubscriptionId: (invoice as ExtendedInvoice).subscription as string,
+              status: 'PAST_DUE',
+            }
+          });
+
+          const plan = await this.prisma.plan.findFirst({
+            where: { id: subscriptionRecord.planId }
+          });
+
+          if (subscriptionRecord) {
+            await this.prisma.subscription.update({
+              where: { id: subscriptionRecord.id },
+              data: {
+                status: 'ACTIVE',
+                paymentRetryCount: 0,
+                lastPaymentFailedAt: null,
+              },
+            });
+
+            try {
+              await this.workspaceService.activateWorkspace(workspace.id);
+              this.logger.log(`Workspace ${workspace.id} reactivated after payment`);
+            } catch (error) {
+              this.logger.error(
+                `Error to reactivate workspace ${workspace.id}: ${error.message}`
+              );
+            }
+            
+            // 🔄 Atualiza frontend via websocket
+            const stripePrice = plan?.stripePriceId
+              ? await this.getPriceDetailsById(plan.stripePriceId)
+              : undefined;
+
+            this.websocketService.sendToClient(
+              workspace.id,
+              'subscriptionUpdated',
+              {
+                subscription: subscriptionRecord,
+                plan: plan && stripePrice
+                  ? { ...plan, ...stripePrice }
+                  : undefined,
+              }
+            ); 
+          }           
+        }
 
         const isOneTimeRecharge = invoice.lines?.data?.some((line) =>
           line.description?.toLowerCase().includes('smart recharge')

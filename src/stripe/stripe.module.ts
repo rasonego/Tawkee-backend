@@ -5,6 +5,7 @@ import { StripeService } from './stripe.service';
 import { WebsocketModule } from 'src/websocket/websocket.module';
 import { CreditModule } from 'src/credits/credit.module';
 import { WorkspacesModule } from 'src/workspaces/workspaces.module';
+import { EmailModule } from 'src/email/email.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { WorkspacesModule } from 'src/workspaces/workspaces.module';
     forwardRef(() => CreditModule), // 👈 wrap with forwardRef
     forwardRef(() => WorkspacesModule),
     WebsocketModule,
+    EmailModule
   ],
   controllers: [StripeController],
   providers: [StripeService],
