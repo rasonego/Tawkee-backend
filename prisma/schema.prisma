@@ -542,8 +542,8 @@ model UsageRecord {
   createdAt      DateTime     @default(now())
 
   workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: SetNull) // Change to SetNull
-  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
-  agent        Agent         @relation(fields: [agentId], references: [id])
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  agent        Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
 
 model ExtraCreditPurchase {
