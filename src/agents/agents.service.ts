@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OverrideValue, WorkspacesService } from '../workspaces/workspaces.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
@@ -8,14 +8,64 @@ import { EnhancedAgentDto } from './dto/enhanced-agent.dto';
 import { GroupingTime, AIModel, Subscription, Plan, Prisma } from '@prisma/client';
 import { AvailableTimesDto } from 'src/intentions/google-calendar/schedule-validation/dto/schedule-validation.dto';
 import { WahaApiService } from 'src/waha-api/waha-api.service';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { subDays } from 'date-fns';
 
 @Injectable()
 export class AgentsService {
+  private readonly logger = new Logger(AgentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly workspacesService: WorkspacesService,
     private readonly wahaApiService: WahaApiService
   ) {}
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async permanentlyDeleteStaleAgentsTask() {
+    this.logger.log('Running daily task to permanently delete agents soft-deleted over 60 days ago...');
+
+    const cutoffDate = subDays(new Date(), 60);
+
+    const agentsToDelete = await this.prisma.agent.findMany({
+      where: {
+        isDeleted: true,
+        updatedAt: {
+          lte: cutoffDate,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (agentsToDelete.length === 0) {
+      this.logger.log('No soft-deleted agents older than 60 days found.');
+      return;
+    }
+
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const { id } of agentsToDelete) {
+      try {
+        const result = await this.remove(id, true);
+        if (result.deletedPermanently) {
+          successCount++;
+          this.logger.log(`Permanently deleted agent ${id}`);
+        } else {
+          this.logger.warn(`Agent ${id} was not deleted permanently.`);
+        }
+      } catch (error) {
+        failureCount++;
+        this.logger.error(`Failed to permanently delete agent ${id}: ${error.message}`);
+      }
+    }
+
+    this.logger.log(
+      `Finished permanent deletion of agents. Success: ${successCount}, Failures: ${failureCount}`
+    );
+  }
 
   async findAll(workspaceId: string, paginationDto: PaginationDto, asAdmin: boolean = false) {
     // Ensure the workspace exists
@@ -820,7 +870,7 @@ export class AgentsService {
           // Mark as deleted       
           await this.prisma.agent.update({
             where: { id },
-            data: { isDeleted: true, isActive: false },
+            data: { isDeleted: true, isActive: false, updatedAt: new Date() },
           });
 
           const configsOfChannels = await this.prisma.channel.findMany({
@@ -855,7 +905,7 @@ export class AgentsService {
         // Mark as deleted       
         await this.prisma.agent.update({
           where: { id },
-          data: { isDeleted: true, isActive: false },
+          data: { isDeleted: true, isActive: false, updatedAt: new Date() },
         });
 
         const configsOfChannels = await this.prisma.channel.findMany({
@@ -910,7 +960,7 @@ export class AgentsService {
     try {
       await this.prisma.agent.update({
         where: { id },
-        data: { isDeleted: false },
+        data: { isDeleted: false, updatedAt: new Date() },
       });
 
       const configsOfChannels = await this.prisma.channel.findMany({
