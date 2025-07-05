@@ -50,7 +50,7 @@ export class StripeService {
   }
 
 
-  @Cron(CronExpression.EVERY_10_MINUTES)
+  @Cron(CronExpression.EVERY_6_HOURS)
   async deactivateUnpaidWorkspacesTask() {
     this.logger.log('Running scheduled task to check for unpaid workspaces...');
   
@@ -83,7 +83,7 @@ export class StripeService {
     );
   }
 
-  @Cron(CronExpression.EVERY_10_MINUTES)
+  @Cron(CronExpression.EVERY_6_HOURS)
   async deactivateExpiredTrialWorkspacesTask() {
     this.logger.log('Running scheduled task to check for expired trial workspaces...');
 

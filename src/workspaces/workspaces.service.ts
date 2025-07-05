@@ -95,6 +95,7 @@ export class WorkspacesService {
       select: {
         id: true,
         name: true,
+        isActive: true,
         user: {
           select: {
             email: true,
@@ -106,6 +107,7 @@ export class WorkspacesService {
     return workspaces.map(ws => ({
       id: ws.id,
       name: ws.name,
+      isActive: ws.isActive,
       email: ws.user?.email ?? null,
     }));
   }

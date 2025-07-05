@@ -23,6 +23,12 @@ export class UserResponseDto {
   workspaceId: string;
 
   @ApiProperty({
+    description: 'Workspace Status',
+    example: true,
+  })
+  workspaceIsActive: boolean;
+
+  @ApiProperty({
     description: 'User first name',
     example: 'John',
     required: false,

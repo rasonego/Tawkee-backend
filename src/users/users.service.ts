@@ -211,6 +211,7 @@ export class UsersService {
             email: user.email,
             name: user.name,
             workspaceId: user.workspaceId,
+            workspaceIsActive: workspace.isActive,
             provider: user.provider,
             firstName: user.firstName || undefined,
             lastName: user.lastName || undefined,
@@ -284,7 +285,11 @@ export class UsersService {
   ): Promise<{ user: UserResponseDto; token: string }> {
     let user = await this.prisma.user.findUnique({
       where: { email: loginUserDto.email },
-      include: { workspace: true },
+      include: { workspace: {
+        select: {
+          isActive: true
+        }
+      } },
     });
 
     if (!user || !user.password) {
@@ -424,6 +429,7 @@ export class UsersService {
         email: user.email,
         name: user.name,
         workspaceId: user.workspaceId,
+        workspaceIsActive: user.workspace.isActive,
         provider: user.provider,
         firstName: user.firstName || undefined,
         lastName: user.lastName || undefined,
@@ -482,7 +488,13 @@ export class UsersService {
   async findOne(id: string): Promise<UserResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      include: { workspace: true },
+      include: { 
+        workspace: {
+          select: {
+            isActive: true
+          }
+        }
+      },
     });
 
     if (!user) throw new BadRequestException('User not found');
@@ -578,6 +590,7 @@ export class UsersService {
       email: user.email,
       name: user.name,
       workspaceId: user.workspaceId,
+      workspaceIsActive: user.workspace.isActive,
       provider: user.provider || undefined,
       firstName: user.firstName || undefined,
       lastName: user.lastName || undefined,

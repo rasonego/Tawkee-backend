@@ -215,8 +215,7 @@ export class InteractionsService {
     await this.prisma.interaction.update({
       where: { id: interactionId },
       data: {
-        status: 'RESOLVED',
-        resolvedAt: new Date(),
+        status: 'RESOLVED'
       },
     });
 

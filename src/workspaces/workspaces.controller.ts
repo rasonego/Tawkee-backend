@@ -44,7 +44,7 @@ export class WorkspacesController {
   }
 
   @Get('basic')
-  @ApiOperation({ summary: 'List all workspaces (id, name, email) without pagination' })
+  @ApiOperation({ summary: 'List all workspaces (id, name, email, isActive) without pagination' })
   @ApiResponse({
     status: 200,
     description: 'Returns all workspace ids, names, and user emails without pagination',

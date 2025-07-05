@@ -25,6 +25,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { ApiPaginationQueries } from '../common/decorators/api-pagination.decorator';
 import { PaginatedAgentsResponseDto } from './dto/paginated-agents-response.dto';
 import { EnhancedAgentDto } from './dto/enhanced-agent.dto';
+import { WorkspaceIsActiveGuard } from '../common/guards/workspace-is-active';
 
 @ApiTags('Agents')
 @ApiBearerAuth()
@@ -227,6 +228,7 @@ export class AgentsController {
   }
 
   @Put('agent/:agentId/active')
+  @UseGuards(WorkspaceIsActiveGuard)
   @ApiOperation({ summary: 'Activate an agent' })
   @ApiResponse({
     status: 200,
