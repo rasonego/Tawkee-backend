@@ -83,6 +83,56 @@ export class StripeService {
     );
   }
 
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async deactivateExpiredTrialWorkspacesTask() {
+    this.logger.log('Running scheduled task to check for expired trial workspaces...');
+
+    const now = new Date();
+
+    const expiredTrials = await this.prisma.subscription.findMany({
+      where: {
+        status: 'TRIAL',
+        trialEnd: {
+          lte: now,
+        }
+      },
+      select: {
+        id: true,
+        workspaceId: true,
+      },
+    });
+
+    const expiredTrialIds = expiredTrials.map(sub => sub.id);
+
+    if (expiredTrialIds.length > 0) {
+      await this.prisma.subscription.updateMany({
+        where: {
+          id: {
+            in: expiredTrialIds,
+          },
+        },
+        data: {
+          status: 'INCOMPLETE',
+        },
+      });
+    }
+
+    for (const sub of expiredTrials) {
+      try {
+        await this.workspaceService.deactivateWorkspace(sub.workspaceId);
+        this.logger.log(`Deactivated expired trial workspace ${sub.workspaceId}`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to deactivate trial workspace ${sub.workspaceId}: ${error.message}`
+        );
+      }
+    }
+
+    this.logger.log(
+      `Finished checking expired trial workspaces: ${expiredTrials.length} deactivated`
+    );
+  }
+
   async getStripeProducts(): Promise<
     {
       product: Stripe.Product;
@@ -295,10 +345,7 @@ export class StripeService {
 
     const existingSub = await this.prisma.subscription.findUnique({
       where: {
-        id: subscriptionId,
-        status: {
-          in: ['ACTIVE', 'TRIAL'],
-        },
+        id: subscriptionId
       },
     });
 

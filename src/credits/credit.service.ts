@@ -43,7 +43,7 @@ export class CreditService {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         workspaceId,
-        status: { in: ['ACTIVE', 'TRIAL'] },
+        status: { in: ['ACTIVE', 'TRIAL', 'CANCELED'] },
       },
       include: { plan: true },
       orderBy: { createdAt: 'desc' },
@@ -117,7 +117,7 @@ export class CreditService {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         workspaceId,
-        status: { in: ['ACTIVE', 'TRIAL'] },
+        status: { in: ['ACTIVE', 'TRIAL', 'CANCELED'] },
       },
       include: { plan: true },
       orderBy: { createdAt: 'desc' },
@@ -220,7 +220,7 @@ export class CreditService {
         workspace: {
           include: {
             subscriptions: {
-              where: { status: { in: ['ACTIVE', 'TRIAL'] } },
+              where: { status: { in: ['ACTIVE', 'TRIAL', 'CANCELED'] } },
               include: { plan: true },
               orderBy: { createdAt: 'desc' },
               take: 1,
@@ -282,7 +282,6 @@ export class CreditService {
         workspace: {
           include: {
             subscriptions: {
-              where: { status: { in: ['ACTIVE', 'TRIAL'] } },
               include: { plan: true },
               orderBy: { createdAt: 'desc' },
               take: 1,

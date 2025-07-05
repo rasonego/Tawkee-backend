@@ -332,8 +332,7 @@ export class UsersService {
 
     const subscription = await this.prisma.subscription.findFirst({
       where: {
-        workspaceId: user.workspaceId,
-        status: { in: ['ACTIVE', 'TRIAL'] },
+        workspaceId: user.workspaceId
       },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -494,8 +493,7 @@ export class UsersService {
 
     const subscription = await this.prisma.subscription.findFirst({
       where: {
-        workspaceId: user.workspaceId,
-        status: { in: ['ACTIVE', 'TRIAL'] },
+        workspaceId: user.workspaceId
       },
       orderBy: { createdAt: 'desc' },
       select: {

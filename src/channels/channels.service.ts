@@ -443,11 +443,7 @@ export class ChannelsService {
             );
 
             try {
-              await this.wahaApiService.deleteInstance({
-                instanceName,
-                serverUrl: evolutionApi.serverUrl,
-                apiKey: evolutionApi.apiKey,
-              });
+              await this.wahaApiService.deleteInstance(instanceName);
 
               this.logger.log(
                 `Waha API instance ${instanceName} deleted successfully`

@@ -599,17 +599,90 @@ export class WahaApiService {
   }
 
   /**
+   * Start an Waha API instance
+   */
+  async startInstance(instanceName: string): Promise<any> {
+    try {
+
+      this.logger.log(`Starting instance ${instanceName} from Waha API`);
+
+      const { serverUrl, apiKey } = this.getWahaConfig();
+
+      // According to Waha API docs, use the instance name here (not instance ID)
+      const response = await axios.post(
+        `${serverUrl}/sessions/${instanceName}/start`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+        }
+      );
+
+      if (response.status === 200 && response.data.success) {
+        this.logger.log(`Instance ${instanceName} started successfully`);
+        return response.data;
+      } else {
+        throw new Error(
+          `Failed to start instance: ${JSON.stringify(response.data)}`
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error starting instance: ${error.message}`,
+        error.stack
+      );
+      throw error;
+    }
+  }  
+
+  /**
+   * Stop an Waha API instance
+   */
+  async stopInstance(instanceName: string): Promise<any> {
+    try {
+
+      this.logger.log(`Stopping instance ${instanceName} from Waha API`);
+
+      const { serverUrl, apiKey } = this.getWahaConfig();
+
+      // According to Waha API docs, use the instance name here (not instance ID)
+      const response = await axios.post(
+        `${serverUrl}/sessions/${instanceName}/stop`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+        }
+      );
+
+      if (response.status === 200 && response.data.success) {
+        this.logger.log(`Instance ${instanceName} stopped successfully`);
+        return response.data;
+      } else {
+        throw new Error(
+          `Failed to stop instance: ${JSON.stringify(response.data)}`
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error stopping instance: ${error.message}`,
+        error.stack
+      );
+      throw error;
+    }
+  }  
+
+  /**
    * Delete an Waha API instance
    */
-  async deleteInstance(options: {
-    instanceName: string;
-    serverUrl: string;
-    apiKey: string;
-  }): Promise<any> {
+  async deleteInstance(instanceName: string): Promise<any> {
     try {
-      const { instanceName, serverUrl, apiKey } = options;
 
       this.logger.log(`Deleting instance ${instanceName} from Waha API`);
+
+      const { serverUrl, apiKey } = this.getWahaConfig();
 
       // According to Waha API docs, use the instance name here (not instance ID)
       const response = await axios.delete(
