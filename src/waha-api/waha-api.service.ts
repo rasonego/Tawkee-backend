@@ -445,7 +445,6 @@ export class WahaApiService {
           },
         },
         {
-          // Maybe will be required in production to make request with auth
           headers: {
             'Content-Type': 'application/json',
             'x-api-key': apiKey,
@@ -611,6 +610,7 @@ export class WahaApiService {
       // According to Waha API docs, use the instance name here (not instance ID)
       const response = await axios.post(
         `${serverUrl}/sessions/${instanceName}/start`,
+        {},
         {
           headers: {
             'Content-Type': 'application/json',
@@ -619,14 +619,9 @@ export class WahaApiService {
         }
       );
 
-      if (response.status === 200 && response.data.success) {
-        this.logger.log(`Instance ${instanceName} started successfully`);
-        return response.data;
-      } else {
-        throw new Error(
-          `Failed to start instance: ${JSON.stringify(response.data)}`
-        );
-      }
+      this.logger.log(`Instance ${instanceName} started successfully`);
+      return response.data;
+
     } catch (error) {
       this.logger.error(
         `Error starting instance: ${error.message}`,
@@ -646,9 +641,12 @@ export class WahaApiService {
 
       const { serverUrl, apiKey } = this.getWahaConfig();
 
+      await this.logoutInstance({instanceName, serverUrl, apiKey });
+
       // According to Waha API docs, use the instance name here (not instance ID)
       const response = await axios.post(
         `${serverUrl}/sessions/${instanceName}/stop`,
+        {},
         {
           headers: {
             'Content-Type': 'application/json',
@@ -656,15 +654,10 @@ export class WahaApiService {
           },
         }
       );
+      
+      this.logger.log(`Instance ${instanceName} stopped successfully`);
+      return response.data;
 
-      if (response.status === 200 && response.data.success) {
-        this.logger.log(`Instance ${instanceName} stopped successfully`);
-        return response.data;
-      } else {
-        throw new Error(
-          `Failed to stop instance: ${JSON.stringify(response.data)}`
-        );
-      }
     } catch (error) {
       this.logger.error(
         `Error stopping instance: ${error.message}`,
@@ -695,14 +688,9 @@ export class WahaApiService {
         }
       );
 
-      if (response.status === 200 && response.data.success) {
-        this.logger.log(`Instance ${instanceName} deleted successfully`);
-        return response.data;
-      } else {
-        throw new Error(
-          `Failed to delete instance: ${JSON.stringify(response.data)}`
-        );
-      }
+      this.logger.log(`Instance ${instanceName} deleted successfully`);
+      return response.data;
+
     } catch (error) {
       this.logger.error(
         `Error deleting instance: ${error.message}`,
