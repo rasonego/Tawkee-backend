@@ -470,6 +470,48 @@ export class WahaApiService {
   }
 
   /**
+   * Get instance info
+   */
+  async getInstance(
+    instanceName: string = 'default',
+    serverUrl: string,
+    apiKey: string
+  ): Promise<any> {
+    try {
+      this.logger.log(
+        `Getting ${instanceName} info`
+      );
+
+      // According to Waha API docs, use the instance name here (not instance ID)
+      const response = await axios.get(
+        `${serverUrl}/sessions/${instanceName}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+        }
+      );
+
+      if (response.status === 200) {
+        this.logger.log(
+          `Instance's ${instanceName} info received: ${JSON.stringify(response.data)}`
+        );
+
+        // The Waha API can return various response formats
+        return response.data;
+      } else {
+        throw new Error(
+          `Failed to instance info: ${JSON.stringify(response.data)}`
+        );
+      }
+    } catch (error) {
+      this.logger.error(`Error getting instance info: ${error.message}`, error.stack);
+      throw error;
+    }
+  }  
+
+  /**
    * Get QR code for instance connection
    */
   async getInstanceQR(

@@ -8,6 +8,15 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 
+// src/auth/types/jwt-payload.ts
+export interface JwtPayload {
+  userId: string;
+  email?: string;
+  role?: string;
+  sub?: string;
+}
+
+
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -49,7 +58,7 @@ export class AuthGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync(token);
+      const payload: JwtPayload = await this.jwtService.verifyAsync(token);
 
       // Make sure payload contains the required userId
       if (!payload || !payload.userId) {

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { ChannelDto } from './dto/channel.dto';
@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { WahaApiService } from '../waha-api/waha-api.service';
 import { ConfigService } from '@nestjs/config';
 import { ChannelQrCodeDto } from './dto/channel-qr-code.dto';
+import { WebsocketService } from 'src/websocket/websocket.service';
 
 @Injectable()
 export class ChannelsService {
@@ -16,7 +17,8 @@ export class ChannelsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wahaApiService: WahaApiService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly websocketService: WebsocketService
   ) {}
 
   async findAll(
@@ -201,6 +203,17 @@ export class ChannelsService {
   async refreshWhatsAppQrCode(channelId: string): Promise<ChannelQrCodeDto> {
     const channel = await this.prisma.channel.findUnique({
       where: { id: channelId },
+      select: {
+        id: true,
+        type: true,
+        config: true,
+        agent: {
+          select: {
+            id: true,
+            workspaceId: true
+          }
+        }
+      }
     });
 
     if (!channel) {
@@ -221,13 +234,60 @@ export class ChannelsService {
     const { wahaApi } = config;
 
     try {
+      const wahaApiUrl = process.env.WAHA_API_URL;
+      const wahaApiKey = process.env.WAHA_API_KEY;
+
+      // Check session status first, and only attempt to fetch QR Code if it's SCAN_QR_CODE
+      const instanceInfo = await this.wahaApiService.getInstance(
+        wahaApi.instanceName, wahaApiUrl, wahaApiKey
+      );
+
+      if (instanceInfo.status === 'WORKING') {
+        // Update channel status connection right away
+
+        await this.prisma.channel.update({
+          where: { id: channelId },
+          data: {
+            connected: true,
+            // Store the connection details in the config JSON
+            config: {
+              ...config,
+              wahaApi: {
+                ...wahaApi,
+                status: 'WORKING', // Update the status in wahaApi config
+              },
+              connectionStatus: {
+                state: 'WORKING',
+                updatedAt: new Date().toISOString(),
+              },
+            },
+          },
+        });
+
+        this.logger.log(
+          `Updated channel ${channelId} connection status to: connected'}`
+        );
+
+        this.websocketService.sendToClient(
+          channel.agent.workspaceId,
+          'channelConnectionStatusUpdate',
+          {
+            agentId: channel.agent.id,
+            channelId: channel.id,
+            connectionStatus: 'WORKING',
+          }
+        );
+
+        return;
+        
+      } else if (instanceInfo.status !== 'SCAN_QR_CODE') {
+        throw new UnauthorizedException(`Channel is in status ${instanceInfo.status} and is not expecting connections.`);
+      }
+
       // Now fetch a fresh QR code from Waha API
       this.logger.log(
         `Refreshing QR code for instance ${wahaApi.instanceName}`
       );
-
-      const wahaApiUrl = process.env.WAHA_API_URL;
-      const wahaApiKey = process.env.WAHA_API_KEY;
 
       const qrResult = await this.wahaApiService.getInstanceQR(
         channel.id,

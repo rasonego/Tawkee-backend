@@ -5,7 +5,7 @@ import { InteractionsService } from '../interactions/interactions.service';
 import { WahaApiService } from '../waha-api/waha-api.service';
 import { MediaService } from '../media/media.service';
 import { WebsocketService } from '../websocket/websocket.service';
-import { Chat, Message } from '@prisma/client';
+import { Chat, Interaction, Message } from '@prisma/client';
 import { ConversationDto } from 'src/conversations/dto/conversation.dto';
 import { CreditService } from 'src/credits/credit.service';
 
@@ -488,6 +488,7 @@ export class WebhooksService {
         const phoneNumber = remoteJid.split('@')[0];
 
         let chat: Chat;
+        let interaction: Partial<Interaction>;
         try {
           this.logger.log(
             `Looking for existing chat with phone: ${phoneNumber} and agent: ${webhookEvent.channel.agentId}`
@@ -521,23 +522,10 @@ export class WebhooksService {
             );
             chat = await this.prisma.chat.create({ data: chatData });
             this.logger.log(`Chat created successfully with ID: ${chat.id}`);
-            this.logger.log(
-              `Creating initial interaction for chat: ${chat.id}`
-            );
-            await this.prisma.interaction.create({
-              data: {
-                workspaceId: webhookEvent.channel.agent.workspaceId,
-                agentId: webhookEvent.channel.agentId,
-                chatId: chat.id,
-                status: 'WAITING',
-              },
-            });
-            this.logger.log(
-              `Interaction created successfully for chat: ${chat.id}`
-            );
+
           } else {
             this.logger.log(`Found existing chat with ID: ${chat.id}`);
-          }
+           }
         } catch (error) {
           this.logger.error(
             `Error in chat creation process: ${error.message}`,
@@ -554,26 +542,33 @@ export class WebhooksService {
           throw new Error(`Failed to create or find chat: ${error.message}`);
         }
 
-        let latestInteraction = await this.prisma.interaction.findFirst({
-          where: {
-            chatId: chat.id,
-            status: { not: 'RESOLVED' },
-          },
-          orderBy: { startAt: 'desc' },
-          select: {
-            id: true,
-          },
-        });
-
-        if (!latestInteraction) {
-          latestInteraction = await this.prisma.interaction.create({
-            data: {
-              workspaceId: webhookEvent.channel.agent.workspaceId,
-              agentId: webhookEvent.channel.agentId,
+        try {
+          interaction = await this.prisma.interaction.findFirst({
+            where: {
               chatId: chat.id,
-              status: 'WAITING',
+              status: { not: 'RESOLVED' },
+            },
+            orderBy: { startAt: 'desc' },
+            select: {
+              id: true,
             },
           });
+
+          if (!interaction) {
+            interaction = await this.prisma.interaction.create({
+              data: {
+                workspaceId: webhookEvent.channel.agent.workspaceId,
+                agentId: webhookEvent.channel.agentId,
+                chatId: chat.id,
+                status: 'WAITING',
+              },
+            });
+            this.logger.log(
+              `Interaction ${interaction.id} created successfully for chat: ${chat.id}`
+            );
+          }
+        } catch (error) {
+          throw new Error(`Failed to create or find interaction: ${error.message}`);
         }
 
         let message: Message;
@@ -595,7 +590,7 @@ export class WebhooksService {
             whatsappMessageId: webhookEvent.messageId,
             whatsappTimestamp: webhookEvent.messageTimestamp,
             chatId: chat.id,
-            interactionId: latestInteraction.id,
+            interactionId: interaction.id,
           };
 
           if (
@@ -652,7 +647,7 @@ export class WebhooksService {
           });
 
           await this.prisma.interaction.update({
-            where: { id: latestInteraction.id },
+            where: { id: interaction.id },
             data: { status: 'WAITING' },
           });
 
@@ -697,7 +692,7 @@ export class WebhooksService {
               role: 'system',
               type: 'notification',
               chatId: chat.id,
-              interactionId: latestInteraction.id,
+              interactionId: interaction.id,
               time: Date.now(),
             },
           });
@@ -737,9 +732,7 @@ export class WebhooksService {
             }
           );
           return;
-        }
-
-        if (insufficientCredits) {
+        } else if (insufficientCredits) {
           const creditsAvailable =
             (creditCheck?.planCreditsAvailable || 0) +
             (creditCheck?.extraCreditsAvailable || 0);
@@ -749,7 +742,7 @@ export class WebhooksService {
               role: 'system',
               type: 'notification',
               chatId: chat.id,
-              interactionId: latestInteraction.id,
+              interactionId: interaction.id,
               time: Date.now(),
             },
           });
@@ -859,7 +852,7 @@ export class WebhooksService {
                   type: 'chat',
                   chatId: chat.id,
                   sentToEvolution: false,
-                  interactionId: latestInteraction.id,
+                  interactionId: interaction.id,
                 },
               });
               this.logger.log(
@@ -913,7 +906,7 @@ export class WebhooksService {
                     type: 'audio',
                     chatId: chat.id,
                     sentToEvolution: false,
-                    interactionId: latestInteraction.id,
+                    interactionId: interaction.id,
                     // audioUrl will be updated after sending
                   },
                 });
@@ -971,9 +964,13 @@ export class WebhooksService {
               }
             }
 
+            const chatMayHaveBeenUpdated = await this.prisma.chat.findUnique({
+              where: { id: chat.id}
+            });
+
             await this.prisma.interaction.update({
-              where: { id: latestInteraction.id },
-              data: { status: 'RUNNING' },
+              where: { id: interaction.id },
+              data: { status: chatMayHaveBeenUpdated.humanTalk ? 'WAITING' : 'RUNNING' },
             });
 
             // Update chat status and send websocket updates after all messages (text and audio) are processed
@@ -1051,6 +1048,10 @@ export class WebhooksService {
               },
             });
           }
+        } else {
+          this.logger.log(
+            `Chat ${chat.id} is in human talk mode, skipping agent response generation`
+          );          
         }
       }
     } catch (error) {

@@ -1104,13 +1104,22 @@ export class OpenAiService {
     latestMessage: string,
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
+    const contactLine = result?.data?.contactName
+      ? `may also be referred to as "${result?.data?.contactName}"`
+      : "the intended recipient of this message";
+    
+    const googleCalendarIntention = intention?.authentication?.type === 'GOOGLE_OAUTH';
+    const transferChatToHumanIntention = intention?.name === 'start_human_attendance';
+
     try {
       const prompt = `
-  The assistant just completed a task for ${userName}, who is a real person and potentially the same as the contactName: "${result?.data?.contactName}".
+  The assistant just completed a task for ${userName}, who is a real person and ${contactLine}.
 
-  The task executed by the agent occurred on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
+  ${googleCalendarIntention ? 'The task might have been executed using ${agent.jobName}’s resources (e.g., calendar), but the final response must be addressed to ${userName}.' : 'Do not invent a google calendar event when delivering the response.'}
 
   Generate a response confirming successful completion of: ${intention.description}. If applicable, take into account current schedule settings when delivering the response: ${JSON.stringify(scheduleSettings, null, 3)}, which is relative to this timezone: ${agent.settings.timezone}
+  
+  ${transferChatToHumanIntention ? 'Never specify the name of the human to transfer attendance to, as you never can affirm that for sure.' : ''}
 
   Agent Name: ${agent.name}
   Agent Type: ${agent.type}
@@ -1142,8 +1151,9 @@ export class OpenAiService {
 
   - If the user and the contact are the same, reflect that.
   - Keep tone natural, friendly and aligned with the communication guide.
-  - Avoid repeating “the user” — always prefer their name: "${userName}"
-
+  - Avoid repeating “the user” — always prefer their name: "${userName}."
+  - You are writing this message **directly to ${userName}**, not to ${agent.jobName} nor ${agent.name}.
+  
   - **Language Requirements**:
     - The user’s last message was: "${latestMessage}"
     - **You must detect and respond in the same language as the user's message.**
@@ -1153,7 +1163,7 @@ export class OpenAiService {
   Final response (directly to the user):
   `.trim();
 
-      console.log({ prompt });
+      console.log({prompt});
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4',

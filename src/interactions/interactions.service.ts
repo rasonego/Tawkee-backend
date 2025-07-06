@@ -452,6 +452,9 @@ export class InteractionsService {
       const waitingForWarning = await tx.interaction.findMany({
         where: {
           status: 'WAITING',
+          chat: {
+            humanTalk: false
+          },
           transferAt: {
             lt: waitingIdleCutoff,
           },
@@ -474,6 +477,9 @@ export class InteractionsService {
       const waitingForClosure = await tx.interaction.findMany({
         where: {
           status: 'WAITING',
+          chat: {
+            humanTalk: false
+          },
           transferAt: {
             lt: totalWaitTime, // Been waiting longer than idle time + grace period
           },

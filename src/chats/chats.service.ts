@@ -618,6 +618,110 @@ export class ChatsService {
     return { success: true };
   }
 
+  async transferAttendanceToHuman(
+    chatId: string
+  ): Promise<{ success: boolean }> {
+    // Ensure chat exists
+    const chat = await this.prisma.chat.findUnique({
+      where: { id: chatId },
+      include: { agent: true },
+    });
+
+    if (!chat) {
+      throw new NotFoundException(`Chat with ID ${chatId} not found`);
+    }
+
+    // Update chat to indicate human attendance
+    const chatUpdated = await this.prisma.chat.update({
+      where: { id: chatId },
+      data: {
+        humanTalk: true,
+        finished: false,
+        updatedAt: new Date(),
+        read: false,
+        unReadCount: { increment: 1 },
+      },
+      select: {
+        id: true,
+        agentId: true,
+        title: true,
+        name: true,
+        userName: true,
+        userPicture: true,
+        whatsappPhone: true,
+        humanTalk: true,
+        read: true,
+        finished: true,
+        unReadCount: true,
+      },
+    });
+
+    // Find latest interaction
+    const latestInteraction = await this.prisma.interaction.findFirst({
+      where: { chatId },
+      orderBy: { startAt: 'desc' },
+      select: {
+        id: true,
+      },
+    });
+
+    // Find a user to transfer the chat to
+    const user = await this.prisma.user.findFirst({
+      where: { workspaceId: chat.workspaceId },
+      select: { id: true, name: true }
+    });
+
+    if (!user) {
+      throw new NotFoundException(`Not found human to transfer chat ID ${chatId} to`);
+    }
+
+    // Mark latest interaction as RUNNING
+    await this.prisma.interaction.update({
+      where: { id: latestInteraction.id },
+      data: {
+        status: 'WAITING',
+        userId: user.id,
+        resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
+      },
+    });
+
+    // Find the agent who left the conversation
+    const agent = await this.prisma.agent.findFirst({
+      where: { id: chat.agentId },
+      select: { id: true, workspaceId: true, name: true },
+    });
+
+    // Create a new message indicating the start of human attendance
+    const systemMessage = await this.prisma.message.create({
+      data: {
+        text: `Agent ${agent.name} has transferred chat to ${user.name} and is now on hold. `,
+        role: 'system',
+        type: 'notification',
+        chatId,
+        interactionId: latestInteraction.id,
+        time: Date.now(),
+      },
+    });
+
+    const latestInteractionUpdated =
+      await this.interactionsService.findLatestInteractionByChatWithMessages(
+        chatId
+      );
+
+    // Send system message to frontend clients via websocket
+    this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
+      chat: chatUpdated,
+      latestInteraction: latestInteractionUpdated,
+      latestMessage: {
+        ...systemMessage,
+        whatsappTimestamp: systemMessage?.whatsappTimestamp?.toString(),
+        time: systemMessage?.time?.toString(),
+      },
+    });
+
+    return { success: true };
+  }
+
   async sendMessage(chatId: string, { message, media }: SendMessageDto) {
     // Ensure chat exists
     const chat = await this.prisma.chat.findUnique({

@@ -7,6 +7,7 @@ import {
   IsBoolean,
   IsArray,
   ValidateNested,
+  IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PreprocessingType, FieldType } from '@prisma/client';
@@ -96,7 +97,7 @@ export class IntentionDto {
   })
   @IsString()
   @IsNotEmpty()
-  id: string;
+  id?: string;
 
   @ApiProperty({
     description: 'Tool name (unique identifier for OpenAI function calling)',
@@ -132,6 +133,14 @@ export class IntentionDto {
   preprocessingText?: string;
 
   @ApiProperty({
+    description: 'A hint of how the AI should answer when executing this intention',
+    example: 'Reply briefly and clearly that the conversation has been handed off to a human agent and that they should wait a moment.',
+  })
+  @IsString()
+  @IsOptional()
+  outputHint?: string;
+
+  @ApiProperty({
     description: 'Intention type',
     example: 'WEBHOOK',
   })
@@ -145,7 +154,7 @@ export class IntentionDto {
   })
   @IsString()
   @IsNotEmpty()
-  httpMethod: string;
+  httpMethod?: string;
 
   @ApiProperty({
     description: 'Webhook URL',
@@ -195,7 +204,7 @@ export class IntentionDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => IntentionHeaderDto)
-  headers: IntentionHeaderDto[];
+  headers?: IntentionHeaderDto[];
 
   @ApiProperty({
     description: 'Parameters for the webhook',
@@ -204,7 +213,7 @@ export class IntentionDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => IntentionParamDto)
-  params: IntentionParamDto[];
+  params?: IntentionParamDto[];
 
   @ApiProperty({
     description: 'Preconditions to check before executing the intention',
@@ -225,4 +234,6 @@ export class IntentionDto {
   @ValidateNested({ each: true })
   @Type(() => IntentionParamDto)
   queryParams?: IntentionParamDto[];
+
+  localHandler?: (fields: Record<string, any>) => Promise<any>;
 }

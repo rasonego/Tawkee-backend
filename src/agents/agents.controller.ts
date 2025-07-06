@@ -26,6 +26,8 @@ import { ApiPaginationQueries } from '../common/decorators/api-pagination.decora
 import { PaginatedAgentsResponseDto } from './dto/paginated-agents-response.dto';
 import { EnhancedAgentDto } from './dto/enhanced-agent.dto';
 import { WorkspaceIsActiveGuard } from '../common/guards/workspace-is-active';
+import { Permission } from 'src/common/decorators/permission.decorator';
+import { CanPermformOperationGuard } from 'src/common/guards/can-perform-operation';
 
 @ApiTags('Agents')
 @ApiBearerAuth()
@@ -69,6 +71,8 @@ export class AgentsController {
   }
 
   @Post('workspace/:workspaceId/agents')
+  @Permission('CREATE', 'AGENT')
+  @UseGuards(AuthGuard, CanPermformOperationGuard)
   @ApiOperation({ summary: 'Create a new agent' })
   @ApiResponse({
     status: 200,
@@ -184,6 +188,7 @@ export class AgentsController {
   }
 
   @Put('agent/restore/:agentId')
+  @UseGuards(WorkspaceIsActiveGuard)
   @ApiOperation({ summary: 'Restore a deleted agent' })
   @ApiResponse({
     status: 200,

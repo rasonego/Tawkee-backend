@@ -5,9 +5,10 @@ import { AgentsModule } from '../agents/agents.module';
 import { AuthModule } from '../auth/auth.module';
 import { WahaApiModule } from '../waha-api/waha-api.module';
 import { ConfigModule } from '@nestjs/config';
+import { WebsocketModule } from 'src/websocket/websocket.module';
 
 @Module({
-  imports: [AuthModule, AgentsModule, WahaApiModule, ConfigModule],
+  imports: [AuthModule, AgentsModule, WahaApiModule, ConfigModule, WebsocketModule],
   controllers: [ChannelsController],
   providers: [ChannelsService],
   exports: [ChannelsService],
