@@ -136,6 +136,7 @@ model AgentSettings {
   timezone             String
   enabledHumanTransfer Boolean      @default(true)
   enabledReminder      Boolean      @default(true)
+  reminderIntervalMinutes Int       @default(10)
   splitMessages        Boolean      @default(true)
   enabledEmoji         Boolean      @default(true)
   limitSubjects        Boolean      @default(true)
@@ -330,6 +331,7 @@ model Interaction {
   status      InteractionStatus @default(RUNNING)
   startAt     DateTime          @default(now())
   transferAt  DateTime?
+  warnedAt    DateTime?
   resolvedAt  DateTime?
   userId      String?
   workspaceId String

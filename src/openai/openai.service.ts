@@ -10,6 +10,7 @@ import ffmpegStatic from 'ffmpeg-static';
 import ffmpeg from 'fluent-ffmpeg';
 import axios from 'axios';
 import { ScheduleSettings } from '@prisma/client';
+import { CreditService } from 'src/credits/credit.service';
 
 // Set the ffmpeg path
 ffmpeg.setFfmpegPath(ffmpegStatic);
@@ -29,7 +30,10 @@ export class OpenAiService {
   private readonly openai: OpenAI;
   private readonly logger = new Logger(OpenAiService.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly creditService: CreditService
+  ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
 
     if (!apiKey) {
@@ -303,7 +307,12 @@ export class OpenAiService {
     }
 
     // Generate the response from OpenAI using the appropriate model
-    return this.generateResponse(prompt, modelPreference);
+    const response = await this.generateResponse(prompt, modelPreference);
+    
+    // Log credit consumption
+    await this.creditService.logAndAggregateCredit(agent.id, {message: response});    
+
+    return response;
   }
 
   /**
@@ -1157,7 +1166,7 @@ export class OpenAiService {
   - **Language Requirements**:
     - The user’s last message was: "${latestMessage}"
     - **You must detect and respond in the same language as the user's message.**
-    - Do not default to English unless the user message was in English.
+    - **Do not default to English unless the user message was in English.**
     - Maintain natural and fluent tone in the detected language.
 
   Final response (directly to the user):

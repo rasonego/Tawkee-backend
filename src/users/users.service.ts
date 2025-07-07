@@ -13,7 +13,6 @@ import { promisify } from 'util';
 import { JwtService } from '@nestjs/jwt';
 import { VerificationService } from '../email/verification.service';
 import { ConfigService } from '@nestjs/config';
-import { CreditService } from 'src/credits/credit.service';
 import { StripeService } from 'src/stripe/stripe.service';
 import { hasExplicitValue } from 'src/workspaces/workspaces.service';
 import { UpdateUserPermissionsDto } from './dto/update-user-permission.dto';
@@ -38,8 +37,7 @@ export class UsersService {
     private readonly jwtService: JwtService,
     private readonly verificationService: VerificationService,
     private readonly configService: ConfigService,
-    private readonly stripeService: StripeService,
-    private readonly creditService: CreditService
+    private readonly stripeService: StripeService
   ) {
     this.clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');

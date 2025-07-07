@@ -648,7 +648,10 @@ export class WebhooksService {
 
           await this.prisma.interaction.update({
             where: { id: interaction.id },
-            data: { status: 'WAITING' },
+            data: { 
+              status: 'WAITING',
+              warnedAt: null
+            },
           });
 
           const latestInteractionUpdated =
@@ -878,14 +881,6 @@ export class WebhooksService {
                       whatsappMessageId: messageId,
                     },
                   });
-
-                  this.creditService.logAndAggregateCredit(
-                    webhookEvent.channel.agent.id,
-                    {
-                      messageId,
-                      content: agentResponse.message,
-                    }
-                  );
                 }
               } catch (error) {
                 this.logger.error(
@@ -946,14 +941,6 @@ export class WebhooksService {
                         fileName: 'audio.ogg',
                       },
                     });
-
-                    this.creditService.logAndAggregateCredit(
-                      webhookEvent.channel.agent.id,
-                      {
-                        messageId,
-                        content: agentResponse.message,
-                      }
-                    );
                   }
                 } catch (error) {
                   this.logger.error(

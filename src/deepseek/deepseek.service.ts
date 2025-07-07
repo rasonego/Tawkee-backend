@@ -2,13 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { CreditService } from 'src/credits/credit.service';
 
 @Injectable()
 export class DeepseekService {
   private readonly deepseek: OpenAI;
   private readonly logger = new Logger(DeepseekService.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly creditService: CreditService
+  ) {
     const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY');
 
     if (!apiKey) {
@@ -254,6 +258,12 @@ export class DeepseekService {
     // Generate the response using the main generateResponse method
     // Pass the structured prompt as the system message and the user message separately
     // (Adjusting based on typical chat completion patterns)
-    return this.generateResponse(userMessage, modelPreference, systemPrompt);
+    // Generate the response from OpenAI using the appropriate model
+    const response = await this.generateResponse(userMessage, modelPreference, systemPrompt);
+    
+    // Log credit consumption
+    await this.creditService.logAndAggregateCredit(agent.id, {message: response});    
+
+    return response;
   }
 }

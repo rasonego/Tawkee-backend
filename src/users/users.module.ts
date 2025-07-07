@@ -7,7 +7,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
 import { GoogleCalendarOAuthModule } from 'src/intentions/google-calendar/google-calendar-oauth.module';
-import { CreditModule } from 'src/credits/credit.module';
 import { StripeModule } from 'src/stripe/stripe.module';
 
 @Module({
@@ -18,7 +17,6 @@ import { StripeModule } from 'src/stripe/stripe.module';
     ConfigModule,
     EmailModule,
     StripeModule,
-    CreditModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({

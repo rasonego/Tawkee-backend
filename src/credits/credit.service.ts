@@ -66,14 +66,19 @@ export class CreditService {
       });
       
       const usedPlan = planUsage._sum.quantity ?? 0;
+      const subscriptionCreditsLimitOverrides = subscription?.creditsLimitOverrides as OverrideValue;
 
-      const creditsLimitsOverrides = subscription?.creditsLimitOverrides as OverrideValue;
+      const unlimitedCredits = subscriptionCreditsLimitOverrides?.explicitlySet
+        ? subscriptionCreditsLimitOverrides.value == 'UNLIMITED'
+        : subscription.plan.creditsLimit == null;
 
-      const totalPlan = creditsLimitsOverrides?.explicitlySet
-        ? creditsLimitsOverrides.value
-        : subscription?.plan?.creditsLimit ?? 0;
-      
-      planCreditsRemaining = Math.max(0, totalPlan - usedPlan);
+      const totalPlan = subscriptionCreditsLimitOverrides?.explicitlySet
+          ? subscriptionCreditsLimitOverrides.value
+          : subscription.plan.creditsLimit;
+     
+      planCreditsRemaining = unlimitedCredits
+        ? Infinity
+        : Math.max(0, (totalPlan as number) - usedPlan);
     }
 
     const purchasedExtra = await this.prisma.extraCreditPurchase.aggregate({
@@ -133,13 +138,13 @@ export class CreditService {
     } = subscription;
 
     const basePlanLimit = plan?.creditsLimit;
-    let effectiveLimit: number | null = basePlanLimit ?? null;
+    let effectiveLimit: number | 'UNLIMITED' | null = basePlanLimit ?? null;
 
     if (this.isOverrideValue(creditsLimitOverrides) && creditsLimitOverrides.explicitlySet) {
       effectiveLimit = creditsLimitOverrides.value;
     }
 
-    if (effectiveLimit === null || effectiveLimit === undefined) {
+    if (effectiveLimit === null || effectiveLimit === undefined || effectiveLimit === 'UNLIMITED') {
       // Unlimited plan, skip computation
       return [];
     }
@@ -274,11 +279,15 @@ export class CreditService {
     };
   }
 
-  async logAndAggregateCredit(agentId: string, metadata?: Record<string, any>) {
+  async logAndAggregateCredit(agentId: string, metadata?: Record<string, any>) {   
     const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },
       include: {
-        settings: true,
+        settings: {
+          select: {
+            preferredModel: true
+          }
+        },
         workspace: {
           include: {
             subscriptions: {
@@ -319,8 +328,20 @@ export class CreditService {
     });
 
     const usedPlanCredits = usageAggregate._sum.quantity ?? 0;
-    const totalPlanCredits = subscription.plan.creditsLimit ?? 0;
-    let remainingPlanCredits = Math.max(0, totalPlanCredits - usedPlanCredits);
+
+    const subscriptionCreditsLimitOverrides = subscription.creditsLimitOverrides as OverrideValue;
+
+    const unlimitedCredits = subscriptionCreditsLimitOverrides?.explicitlySet
+      ? subscriptionCreditsLimitOverrides.value == 'UNLIMITED'
+      : subscription.plan.creditsLimit == null;
+
+    const totalPlanCredits = subscriptionCreditsLimitOverrides?.explicitlySet
+        ? subscriptionCreditsLimitOverrides.value
+        : subscription.plan.creditsLimit;
+
+    let remainingPlanCredits = unlimitedCredits
+      ? Infinity
+      : Math.max(0, (totalPlanCredits as number) - usedPlanCredits);
 
     const extraCreditsUsed = await this.prisma.usageRecord.aggregate({
       _sum: { quantity: true },

@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WahaApiService } from '../waha-api/waha-api.service';
@@ -13,6 +15,12 @@ import { InteractionStatus } from './dto/interaction.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InteractionWithMessagesDto } from './dto/interaction-with-messages.dto';
 import { PaginatedInteractionsWithMessagesResponseDto } from './paginated-interactions-with-messages-response.dto';
+import { ConversationDto } from 'src/conversations/dto/conversation.dto';
+import { ConversationsService } from 'src/conversations/conversations.service';
+import { subMinutes } from 'date-fns';
+
+const IDLE_CLOSE_THRESHOLD_MINUTES = 1;
+const RESOLVED_IDLE_CLOSE_THRESHOLD_MINUTES = 120;
 
 @Injectable()
 export class InteractionsService {
@@ -21,31 +29,10 @@ export class InteractionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wahaApiService: WahaApiService,
-    private readonly websocketService: WebsocketService
+    private readonly websocketService: WebsocketService,
+    @Inject(forwardRef(() => ConversationsService))
+    private readonly conversationsService: ConversationsService
   ) {}
-
-  /**
-   * Scheduled task to automatically process idle interactions
-   * Runs every 5 minutes to check for interactions that need warnings or closure
-   */
-  @Cron(CronExpression.EVERY_5_MINUTES)
-  async processIdleInteractionsTask() {
-    this.logger.log('Running scheduled idle interactions processor...');
-
-    try {
-      // Default idle times: warn after 30 minutes of inactivity, close after 10 more minutes
-      const result = await this.processIdleInteractions(30, 10);
-
-      this.logger.log(
-        `Scheduled task completed: ${result.warned} interactions warned, ${result.closed} interactions closed`
-      );
-    } catch (error) {
-      this.logger.error(
-        `Error in scheduled idle interactions processor: ${error.message}`,
-        error.stack
-      );
-    }
-  }
 
   async findInteractionsByChatWithMessages(
     chatId: string,
@@ -215,7 +202,8 @@ export class InteractionsService {
     await this.prisma.interaction.update({
       where: { id: interactionId },
       data: {
-        status: 'RESOLVED'
+        status: 'RESOLVED',
+        resolvedAt: new Date()
       },
     });
 
@@ -261,7 +249,7 @@ export class InteractionsService {
       await this.findLatestInteractionByChatWithMessages(chat.id);
 
     const agent = await this.prisma.agent.findFirst({
-      where: { id: chat.id },
+      where: { id: chat.agentId },
       select: { id: true, workspaceId: true },
     });
 
@@ -271,407 +259,222 @@ export class InteractionsService {
       latestInteraction,
       latestMessage: {
         ...systemMessage,
-        whatsappTimestamp: systemMessage?.whatsappTimestamp.toString(),
-        time: systemMessage?.time.toString(),
+        whatsappTimestamp: systemMessage.whatsappTimestamp
+          ? systemMessage.whatsappTimestamp.toString()
+          : null,
+        time: systemMessage.time ? systemMessage.time.toString() : null,
       },
     });
 
     return { success: true };
   }
 
-  /**
-   * Send a warning message and set interaction to WAITING status
-   * This is used for idle interactions that will be closed soon
-   * @param interactionId ID of the interaction to warn
-   * @param warningMessage Warning message to send to the user
-   * @returns Success status
-   */
-  async warnBeforeClosing(
-    interactionId: string,
-    warningMessage: string = 'This conversation has been inactive. It will be closed soon if there is no further response.'
-  ): Promise<{ success: boolean }> {
-    // Find the interaction
-    const interaction = await this.prisma.interaction.findUnique({
-      where: { id: interactionId },
-    });
+  @Cron('* * * * *') // every minute
+  async handleIdleInteractions() {
+    const now = new Date();
 
-    if (!interaction) {
-      throw new NotFoundException(
-        `Interaction with ID ${interactionId} not found`
-      );
-    }
+    await this.warnIdleRunningInteractions(now);
+    await this.closeWarnedIdleRunningInteractions(now);
+    await this.closeWaitingIdleInteractions(now);
+  }
 
-    if (interaction.status !== 'RUNNING') {
-      throw new BadRequestException(
-        `Cannot warn an interaction with status: ${interaction.status}`
-      );
-    }
-
-    // Get the associated chat
-    const chat = await this.prisma.chat.findUnique({
-      where: { id: interaction.chatId },
-    });
-
-    if (!chat) {
-      throw new NotFoundException(
-        `Chat with ID ${interaction.chatId} not found`
-      );
-    }
-
-    // TODO fetch a natural language message from AI warning user instead of an automatic one.
-    // warningMessage will be personal and spoken in the context of the current interaction.
-
-    // Add the warning message to the database first
-    const newMessage = await this.prisma.message.create({
-      data: {
-        text: warningMessage,
-        role: 'assistant',
-        chatId: interaction.chatId,
-        interactionId: interaction.id,
-        type: 'text',
-        time: Date.now(),
-        sentToEvolution: false, // Will be updated after sending
-      },
-    });
-
-    // Send the warning message via WhatsApp if a phone number is available
-    if (chat.whatsappPhone) {
-      try {
-        this.logger.log(
-          `Sending warning message to WhatsApp number ${chat.whatsappPhone}`
-        );
-
-        const response = await this.wahaApiService.sendWhatsAppMessage(
-          chat.agentId,
-          chat.whatsappPhone,
-          warningMessage
-        );
-
-        // Update the message with the response data
-        await this.prisma.message.update({
-          where: { id: newMessage.id },
-          data: {
-            sentToEvolution: true,
-            sentAt: new Date(),
-            whatsappMessageId: response?.key?.id, // Store the WhatsApp message ID if available
-          },
-        });
-
-        this.logger.log(
-          `Warning message sent successfully to ${chat.whatsappPhone}`
-        );
-      } catch (error) {
-        this.logger.error(
-          `Failed to send warning message to external channel: ${error.message}`,
-          error.stack
-        );
-
-        // Mark the message as failed but continue with state update
-        await this.prisma.message.update({
-          where: { id: newMessage.id },
-          data: {
-            failedAt: new Date(),
-            failReason: error.message,
-          },
-        });
-      }
-    }
-
-    // Mark chat as unread
-    this.logger.log(`Updating chat ${chat.id} as unread`);
-    const updatedChat = await this.prisma.chat.update({
-      where: { id: chat.id },
-      data: {
-        read: false,
-        unReadCount: { increment: 1 },
+  private async warnIdleRunningInteractions(now: Date) {
+    // Find RUNNING interactions with enabledRemainder set on their agent and no prior warning
+    const interactions = await this.prisma.interaction.findMany({
+      where: {
+        status: 'RUNNING',
+        warnedAt: null,
+        agent: {
+          settings: {
+            enabledReminder: true,
+          }
+        },
       },
       select: {
         id: true,
-        agentId: true,
-        title: true,
-        name: true,
-        userName: true,
-        userPicture: true,
-        whatsappPhone: true,
-        humanTalk: true,
-        read: true,
-        finished: true,
-        unReadCount: true 
-      }
-    });
-
-    const latestInteraction =
-      await this.findLatestInteractionByChatWithMessages(chat.id);
-
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: chat.id },
-      select: { id: true, workspaceId: true },
-    });
-
-    // Send system message to frontend clients via websocket
-    this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
-      chat: updatedChat,
-      latestInteraction,
-      latestMessage: {
-        ...newMessage,
-        whatsappTimestamp: newMessage?.whatsappTimestamp.toString(),
-        time: newMessage?.time.toString(),
-      },
-    });
-
-    return { success: true };
-  }
-
-  /**
-   * Find idle interactions that need warnings or auto-closure
-   * @param runningIdleMinutes Minutes of inactivity for RUNNING interactions
-   * @param waitingIdleMinutes Minutes of inactivity for WAITING interactions
-   * @returns Lists of interactions that need warnings and closures
-   */
-  async findIdleInteractions(
-    waitingIdleMinutes: number = 10,
-    runningIdleMinutes: number = 30,
-    warningGracePeriodSeconds: number = 10
-  ): Promise<{
-    warningNeeded: { id: string; chatId: string }[];
-    closureNeeded: { id: string; chatId: string }[];
-  }> {
-    const now = new Date();
-
-    // Calculate cutoff times
-    const waitingIdleCutoff = new Date(
-      now.getTime() - waitingIdleMinutes * 60 * 1000
-    );
-    const runningIdleCutoff = new Date(
-      now.getTime() - runningIdleMinutes * 60 * 1000
-    );
-
-    const result = await this.prisma.$transaction(async (tx) => {
-      // Find WAITING interactions that need warnings
-      // These are chats where the agent responded but client hasn't replied
-      const waitingForWarning = await tx.interaction.findMany({
-        where: {
-          status: 'WAITING',
-          chat: {
-            humanTalk: false
-          },
-          transferAt: {
-            lt: waitingIdleCutoff,
-          },
+        chat: {
+          select: {
+              id: true,
+              contextId: true,
+              agentId: true,
+              title: true,
+              name: true,
+              userName: true,
+              userPicture: true,
+              whatsappPhone: true,
+              humanTalk: true,
+              read: true,
+              finished: true,
+              unReadCount: true,            
+              updatedAt: true
+          }
         },
-        select: {
-          id: true,
-          chatId: true,
-          transferAt: true,
-        },
-      });
-
-      // Find interactions that need to be closed
-      // Use a separate query to find WAITING interactions that were "warned"
-      // (by checking if transferAt is older than grace period + idle time)
-      const totalWaitTime = new Date(
-        now.getTime() -
-          (waitingIdleMinutes * 60 + warningGracePeriodSeconds) * 1000
-      );
-
-      const waitingForClosure = await tx.interaction.findMany({
-        where: {
-          status: 'WAITING',
-          chat: {
-            humanTalk: false
-          },
-          transferAt: {
-            lt: totalWaitTime, // Been waiting longer than idle time + grace period
-          },
-        },
-        select: {
-          id: true,
-          chatId: true,
-        },
-      });
-
-      // Find RUNNING interactions that have been idle too long
-      // These should be closed immediately (no warning needed for running state)
-      const runningInteractions = await tx.interaction.findMany({
-        where: {
-          status: 'RUNNING',
-        },
-        select: {
-          id: true,
-          chatId: true,
-          chat: {
-            select: {
-              messages: {
-                orderBy: {
-                  createdAt: 'desc',
-                },
-                take: 1,
-                select: {
-                  createdAt: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      // Filter running interactions based on most recent message time
-      const runningForClosure = runningInteractions
-        .filter((interaction) => {
-          const messages = interaction.chat?.messages || [];
-          // Close if no messages or most recent message is older than cutoff
-          return (
-            messages.length === 0 ||
-            (messages[0]?.createdAt &&
-              messages[0].createdAt < runningIdleCutoff)
-          );
-        })
-        .map((interaction) => ({
-          id: interaction.id,
-          chatId: interaction.chatId,
-        }));
-
-      // Separate warning needed vs closure needed
-      const warningNeeded = waitingForWarning
-        .filter(
-          (interaction) =>
-            // Only warn interactions that haven't exceeded the total wait time yet
-            interaction.transferAt >= totalWaitTime
-        )
-        .map((interaction) => ({
-          id: interaction.id,
-          chatId: interaction.chatId,
-        }));
-
-      const closureNeeded = [...waitingForClosure, ...runningForClosure];
-
-      return {
-        warningNeeded,
-        closureNeeded,
-      };
-    });
-
-    return result;
-  }
-
-  /**
-   * Process idle interactions - warn those that need warnings and close those that need closures
-   * @param runningIdleMinutes Minutes of inactivity for RUNNING interactions
-   * @param waitingIdleMinutes Minutes of inactivity for WAITING interactions
-   * @returns Stats about the processed interactions
-   */
-  async processIdleInteractions(
-    runningIdleMinutes: number = 30,
-    waitingIdleMinutes: number = 10
-  ): Promise<{
-    warned: number;
-    closed: number;
-  }> {
-    const { warningNeeded, closureNeeded } = await this.findIdleInteractions(
-      runningIdleMinutes,
-      waitingIdleMinutes
-    );
-
-    let warned = 0;
-    let closed = 0;
-
-    // Process warnings
-    for (const interaction of warningNeeded) {
-      try {
-        await this.warnBeforeClosing(
-          interaction.id,
-          `This conversation has been inactive for ${runningIdleMinutes} minutes. If there's no response in the next ${waitingIdleMinutes} minutes, it will be automatically closed.`
-        );
-        warned++;
-      } catch (error) {
-        // Log the error but continue processing other interactions
-        console.error(`Error warning interaction ${interaction.id}:`, error);
-      }
-    }
-
-    // Process closures
-    for (const interaction of closureNeeded) {
-      try {
-        await this.resolveInteraction(
-          interaction.id,
-          `Automatically closed due to ${runningIdleMinutes + waitingIdleMinutes} minutes of inactivity`
-        );
-
-        // Get chat info to send a closure message to the user
-        const chat = await this.prisma.chat.findUnique({
-          where: { id: interaction.chatId },
-        });
-
-        if (chat) {
-          const closureMessage = `This conversation has been automatically closed due to inactivity. Feel free to start a new conversation if you need further assistance.`;
-
-          // First create the message in the database
-          const newMessage = await this.prisma.message.create({
-            data: {
-              text: closureMessage,
-              role: 'assistant',
-              chatId: interaction.chatId,
-              interactionId: interaction.id,
-              type: 'text',
-              time: Date.now(),
-              sentToEvolution: false,
-            },
-          });
-
-          // Now send it to the external channel if applicable
-          if (chat.whatsappPhone) {
-            try {
-              this.logger.log(
-                `Sending auto-closure message to WhatsApp number ${chat.whatsappPhone}`
-              );
-
-              const response = await this.wahaApiService.sendWhatsAppMessage(
-                chat.agentId,
-                chat.whatsappPhone,
-                closureMessage
-              );
-
-              // Update the message with the response data
-              await this.prisma.message.update({
-                where: { id: newMessage.id },
-                data: {
-                  sentToEvolution: true,
-                  sentAt: new Date(),
-                  whatsappMessageId: response?.key?.id,
-                },
-              });
-
-              this.logger.log(
-                `Auto-closure message sent successfully to ${chat.whatsappPhone}`
-              );
-            } catch (error) {
-              this.logger.error(
-                `Failed to send auto-closure message: ${error.message}`,
-                error.stack
-              );
-
-              // Mark the message as failed
-              await this.prisma.message.update({
-                where: { id: newMessage.id },
-                data: {
-                  failedAt: new Date(),
-                  failReason: error.message,
-                },
-              });
+        agent: {
+          select: {
+            id: true,
+            workspaceId: true,
+            settings: {
+              select: {
+                reminderIntervalMinutes: true
+              }
             }
           }
         }
+      },
+    });
 
-        closed++;
-      } catch (error) {
-        // Log the error but continue processing other interactions
-        this.logger.error(
-          `Error closing interaction ${interaction.id}:`,
-          error
+    for (let interaction of interactions) {
+      const { chat, agent } = interaction;
+
+      // Skip if remainderIntervalMinutes not defined or invalid
+      if (!agent.settings.reminderIntervalMinutes || agent.settings.reminderIntervalMinutes <= 0) continue;
+
+      const idleThreshold = subMinutes(now, agent.settings.reminderIntervalMinutes);
+
+      // Check chat idle time
+      if (chat.updatedAt >= idleThreshold) continue;
+
+      const prompt = `
+        Given the messages from this ongoing chat between a user and you (AI agent), generate a short and 
+        natural-sounding warning message.
+        
+        The message should be polite and context-aware. It should inform the user that the conversation may
+        end soon due to inactivity, and gently encourage them to reply if they still need help.
+        Make sure the tone remains helpful and supportive.
+        
+        Only return the warning message text and never call any intentions.
+      `
+
+      const agentResponse = await this.conversationsService.converse(
+        agent.id, 
+        {
+          contextId: chat.contextId,
+          prompt,
+          chatName: chat.name || chat.userName,
+          respondViaAudio: false,
+        } as ConversationDto
+      );
+
+      const message = await this.prisma.message.create({
+        data: {
+          text: agentResponse.message,
+          role: 'assistant',
+          type: 'chat',
+          chatId: chat.id,
+          interactionId: interaction.id,
+          time: Date.now(),
+        },
+      });
+
+      await this.prisma.interaction.update({
+        where: { id: interaction.id },
+        data: {
+          warnedAt: now,
+        },
+      });
+
+      if (chat?.whatsappPhone) {
+        await this.wahaApiService.sendWhatsAppMessage(
+          agent.id,
+          chat.whatsappPhone,
+          agentResponse.message
         );
-      }
-    }
 
-    return { warned, closed };
+        const interactionUpdated = await this.findLatestInteractionByChatWithMessages(chat.id);
+
+        // Send system message to frontend clients via websocket
+        this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
+          chat,
+          latestInteraction: interactionUpdated,
+          latestMessage: {
+            ...message,
+            whatsappTimestamp: message?.whatsappTimestamp?.toString(),
+            time: message?.time?.toString(),
+          },
+        });
+      }
+
+      this.logger.log(`Sent idle warning to interaction ${interaction.id}`);
+    }
   }
+
+  private async closeWarnedIdleRunningInteractions(now: Date) {
+    const closeThreshold = subMinutes(now, IDLE_CLOSE_THRESHOLD_MINUTES);
+
+    const interactions = await this.prisma.interaction.findMany({
+      where: {
+        status: 'RUNNING',
+        warnedAt: { not: null, lt: closeThreshold },
+        chat: {
+          updatedAt: { lt: closeThreshold },
+        },
+      },
+      select: {
+        id: true,
+        agent: true,
+        chat: true,
+      }
+    });
+
+    for (const interaction of interactions) {
+      await this.resolveInteraction(
+        interaction.id,
+        `Interaction closed due to ${IDLE_CLOSE_THRESHOLD_MINUTES} minutes of inactivity.`
+      );
+      // const message = await this.prisma.message.create({
+      //   data: {
+      //     text: `Interaction closed due to ${IDLE_CLOSE_THRESHOLD_MINUTES} minutes of inactivity.`,
+      //     role: 'system',
+      //     type: 'chat',
+      //     chatId: interaction.chat.id,
+      //     interactionId: interaction.id,
+      //     time: Date.now(),
+      //   },
+      // });
+
+      // await this.prisma.interaction.update({
+      //   where: { id: interaction.id },
+      //   data: {
+      //     status: 'RESOLVED',
+      //     resolvedAt: now,
+      //   },
+      // });
+
+      // const interactionUpdated = await this.findLatestInteractionByChatWithMessages(interaction.chat.id);
+
+      // // Send system message to frontend clients via websocket
+      // this.websocketService.sendToClient(interaction.agent.workspaceId, 'messageChatUpdate', {
+      //   chat: interaction.chat,
+      //   latestInteraction: interactionUpdated,
+      //   latestMessage: {
+      //     ...message,
+      //     whatsappTimestamp: message?.whatsappTimestamp?.toString(),
+      //     time: message?.time?.toString(),
+      //   },
+      // });
+
+      this.logger.log(`Auto-closed idle warned interaction ${interaction.id}`);
+    }
+  }
+
+  private async closeWaitingIdleInteractions(now: Date) {
+    const resolvedThreshold = subMinutes(now, RESOLVED_IDLE_CLOSE_THRESHOLD_MINUTES);
+
+    const interactions = await this.prisma.interaction.findMany({
+      where: {
+        status: 'WAITING',
+        chat: {
+          humanTalk: false,
+          updatedAt: { lt: resolvedThreshold },
+        },
+      },
+    });
+
+    for (const interaction of interactions) {
+      await this.resolveInteraction(
+        interaction.id,
+        `Interaction closed due to ${RESOLVED_IDLE_CLOSE_THRESHOLD_MINUTES} minutes of inactivity.`
+      );
+    }
+  } 
 }

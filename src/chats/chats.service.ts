@@ -252,7 +252,8 @@ export class ChatsService {
         where: { id: mostRecentInteraction.id },
         data: {
           status: newStatus,
-          resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
+          warnedAt: null,
+          resolvedAt: null // Clear resolvedAt since we're reopening the interaction
         },
       });
     }
@@ -464,6 +465,7 @@ export class ChatsService {
       data: {
         status: 'RUNNING',
         userId,
+        warnedAt: null,
         resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
       },
     });
@@ -571,6 +573,7 @@ export class ChatsService {
       where: { id: latestInteraction.id },
       data: {
         status: newStatus,
+        warnedAt: null,
         resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
       },
     });
@@ -681,6 +684,7 @@ export class ChatsService {
       data: {
         status: 'WAITING',
         userId: user.id,
+        warnedAt: null,
         resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
       },
     });

@@ -5,7 +5,7 @@ import { PaginatedWorkspaceResponseDto, WorkspaceDto } from './dto/workspace.dto
 import { AIModel, SubscriptionStatus } from '@prisma/client';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 
-export type OverrideValue = { value: number | null; explicitlySet: boolean };
+export type OverrideValue = { value: number | 'UNLIMITED' | null; explicitlySet: boolean };
 
 export function hasExplicitValue(override: unknown): override is OverrideValue {
   return (
@@ -204,8 +204,6 @@ export class WorkspacesService {
     const prevEnd = new Date(comparisonEndDate);
 
     const workspaceFilter = workspaceId ? { workspaceId } : {};
-
-    console.log({ workspaceId });
 
     // Resolved interactions (current period)
     const resolved = await this.prisma.interaction.findMany({
