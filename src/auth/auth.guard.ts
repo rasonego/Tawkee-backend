@@ -16,7 +16,6 @@ export interface JwtPayload {
   sub?: string;
 }
 
-
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -54,7 +53,9 @@ export class AuthGuard implements CanActivate {
     }
 
     if (isBlacklisted) {
-      throw new UnauthorizedException('Your session has been expired. Please log in again.');
+      throw new UnauthorizedException(
+        'Your session has been expired. Please log in again.'
+      );
     }
 
     try {

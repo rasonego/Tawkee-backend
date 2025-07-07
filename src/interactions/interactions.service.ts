@@ -99,13 +99,13 @@ export class InteractionsService {
         transferAt: interaction.transferAt || null,
         resolvedAt: interaction.resolvedAt || null,
         userId: interaction.userId || null,
-        messages: interaction.messages.map(message => ({
+        messages: interaction.messages.map((message) => ({
           ...message,
           whatsappTimestamp: message.whatsappTimestamp
             ? message.whatsappTimestamp.toString()
             : null,
           time: message.time ? message.time.toString() : null,
-        }))
+        })),
       })
     );
 
@@ -156,7 +156,7 @@ export class InteractionsService {
       messages: latestInteraction.messages.map((message) => ({
         ...message,
         whatsappTimestamp: message?.whatsappTimestamp?.toString() || null,
-        time: message?.time?.toString() || null
+        time: message?.time?.toString() || null,
       })),
     };
   }
@@ -203,7 +203,7 @@ export class InteractionsService {
       where: { id: interactionId },
       data: {
         status: 'RESOLVED',
-        resolvedAt: new Date()
+        resolvedAt: new Date(),
       },
     });
 
@@ -241,8 +241,8 @@ export class InteractionsService {
         humanTalk: true,
         read: true,
         finished: true,
-        unReadCount: true 
-      }
+        unReadCount: true,
+      },
     });
 
     const latestInteraction =
@@ -269,7 +269,7 @@ export class InteractionsService {
     return { success: true };
   }
 
-  @Cron('* * * * *') // every minute
+  @Cron(CronExpression.EVERY_5_MINUTES)
   async handleIdleInteractions() {
     const now = new Date();
 
@@ -287,27 +287,27 @@ export class InteractionsService {
         agent: {
           settings: {
             enabledReminder: true,
-          }
+          },
         },
       },
       select: {
         id: true,
         chat: {
           select: {
-              id: true,
-              contextId: true,
-              agentId: true,
-              title: true,
-              name: true,
-              userName: true,
-              userPicture: true,
-              whatsappPhone: true,
-              humanTalk: true,
-              read: true,
-              finished: true,
-              unReadCount: true,            
-              updatedAt: true
-          }
+            id: true,
+            contextId: true,
+            agentId: true,
+            title: true,
+            name: true,
+            userName: true,
+            userPicture: true,
+            whatsappPhone: true,
+            humanTalk: true,
+            read: true,
+            finished: true,
+            unReadCount: true,
+            updatedAt: true,
+          },
         },
         agent: {
           select: {
@@ -315,23 +315,30 @@ export class InteractionsService {
             workspaceId: true,
             settings: {
               select: {
-                reminderIntervalMinutes: true
-              }
-            }
-          }
-        }
+                reminderIntervalMinutes: true,
+              },
+            },
+          },
+        },
       },
     });
 
     let interactionsToStopTyping = [];
     // Send start typing indicators
-    for (let interaction of interactions) {
-      const { chat, agent } = interaction;     
+    for (const interaction of interactions) {
+      const { chat, agent } = interaction;
 
       // Skip if remainderIntervalMinutes not defined or invalid
-      if (!agent.settings.reminderIntervalMinutes || agent.settings.reminderIntervalMinutes <= 0) continue;
+      if (
+        !agent.settings.reminderIntervalMinutes ||
+        agent.settings.reminderIntervalMinutes <= 0
+      )
+        continue;
 
-      const idleThreshold = subMinutes(now, agent.settings.reminderIntervalMinutes);
+      const idleThreshold = subMinutes(
+        now,
+        agent.settings.reminderIntervalMinutes
+      );
 
       // Check chat idle time
       if (chat.updatedAt >= idleThreshold) continue;
@@ -339,15 +346,12 @@ export class InteractionsService {
       if (chat?.whatsappPhone) {
         interactionsToStopTyping = [...interactionsToStopTyping, interaction];
 
-        await this.wahaApiService.startTyping(
-          agent.id,
-          chat.whatsappPhone
-        );
+        await this.wahaApiService.startTyping(agent.id, chat.whatsappPhone);
       }
     }
 
     // Actually deliver messages
-    for (let interaction of interactionsToStopTyping) {
+    for (const interaction of interactionsToStopTyping) {
       const { chat, agent } = interaction;
 
       const prompt = `
@@ -359,17 +363,14 @@ export class InteractionsService {
         Make sure the tone remains helpful and supportive.
         
         Only return the warning message text and never call any intentions.
-      `
+      `;
 
-      const agentResponse = await this.conversationsService.converse(
-        agent.id, 
-        {
-          contextId: chat.contextId,
-          prompt,
-          chatName: chat.name || chat.userName,
-          respondViaAudio: false,
-        } as ConversationDto
-      );
+      const agentResponse = await this.conversationsService.converse(agent.id, {
+        contextId: chat.contextId,
+        prompt,
+        chatName: chat.name || chat.userName,
+        respondViaAudio: false,
+      } as ConversationDto);
 
       const message = await this.prisma.message.create({
         data: {
@@ -396,32 +397,34 @@ export class InteractionsService {
           agentResponse.message
         );
 
-        const interactionUpdated = await this.findLatestInteractionByChatWithMessages(chat.id);
+        const interactionUpdated =
+          await this.findLatestInteractionByChatWithMessages(chat.id);
 
         // Send system message to frontend clients via websocket
-        this.websocketService.sendToClient(agent.workspaceId, 'messageChatUpdate', {
-          chat,
-          latestInteraction: interactionUpdated,
-          latestMessage: {
-            ...message,
-            whatsappTimestamp: message?.whatsappTimestamp?.toString(),
-            time: message?.time?.toString(),
-          },
-        });
+        this.websocketService.sendToClient(
+          agent.workspaceId,
+          'messageChatUpdate',
+          {
+            chat,
+            latestInteraction: interactionUpdated,
+            latestMessage: {
+              ...message,
+              whatsappTimestamp: message?.whatsappTimestamp?.toString(),
+              time: message?.time?.toString(),
+            },
+          }
+        );
       }
 
       this.logger.log(`Sent idle warning to interaction ${interaction.id}`);
     }
 
     // Send stop typing indicators
-    for (let interaction of interactionsToStopTyping) {
+    for (const interaction of interactionsToStopTyping) {
       const { chat, agent } = interaction;
 
       if (chat?.whatsappPhone) {
-        await this.wahaApiService.stopTyping(
-          agent.id,
-          chat.whatsappPhone
-        );
+        await this.wahaApiService.stopTyping(agent.id, chat.whatsappPhone);
       }
     }
   }
@@ -441,7 +444,7 @@ export class InteractionsService {
         id: true,
         agent: true,
         chat: true,
-      }
+      },
     });
 
     for (const interaction of interactions) {
@@ -486,7 +489,10 @@ export class InteractionsService {
   }
 
   private async closeWaitingIdleInteractions(now: Date) {
-    const resolvedThreshold = subMinutes(now, RESOLVED_IDLE_CLOSE_THRESHOLD_MINUTES);
+    const resolvedThreshold = subMinutes(
+      now,
+      RESOLVED_IDLE_CLOSE_THRESHOLD_MINUTES
+    );
 
     const interactions = await this.prisma.interaction.findMany({
       where: {
@@ -504,5 +510,5 @@ export class InteractionsService {
         `Interaction closed due to ${RESOLVED_IDLE_CLOSE_THRESHOLD_MINUTES} minutes of inactivity.`
       );
     }
-  } 
+  }
 }

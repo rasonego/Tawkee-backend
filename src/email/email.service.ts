@@ -46,7 +46,7 @@ export class EmailService {
             <p>If you did not register for a Tawkee account, please ignore this email.</p>
             <p>Thank you,<br>The Tawkee Team</p>
           </div>
-        `
+        `,
       });
 
       if (error) {
@@ -89,7 +89,7 @@ export class EmailService {
             <p>If you did not request a password reset, please ignore this email.</p>
             <p>Thank you,<br>The Tawkee Team</p>
           </div>
-        `
+        `,
       });
 
       if (error) {
@@ -137,14 +137,20 @@ export class EmailService {
       });
 
       if (error) {
-        this.logger.error(`Failed to send payment failure email: ${error.message}`);
+        this.logger.error(
+          `Failed to send payment failure email: ${error.message}`
+        );
         return false;
       }
 
-      this.logger.log(`Payment failure email sent to ${to} with ID: ${data?.id}`);
+      this.logger.log(
+        `Payment failure email sent to ${to} with ID: ${data?.id}`
+      );
       return true;
     } catch (error) {
-      this.logger.error(`Error sending payment failure email: ${error.message}`);
+      this.logger.error(
+        `Error sending payment failure email: ${error.message}`
+      );
       return false;
     }
   }

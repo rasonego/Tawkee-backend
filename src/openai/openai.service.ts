@@ -308,9 +308,11 @@ export class OpenAiService {
 
     // Generate the response from OpenAI using the appropriate model
     const response = await this.generateResponse(prompt, modelPreference);
-    
+
     // Log credit consumption
-    await this.creditService.logAndAggregateCredit(agent.id, {message: response});    
+    await this.creditService.logAndAggregateCredit(agent.id, {
+      message: response,
+    });
 
     return response;
   }
@@ -1115,10 +1117,12 @@ export class OpenAiService {
   ): Promise<string> {
     const contactLine = result?.data?.contactName
       ? `may also be referred to as "${result?.data?.contactName}"`
-      : "the intended recipient of this message";
-    
-    const googleCalendarIntention = intention?.authentication?.type === 'GOOGLE_OAUTH';
-    const transferChatToHumanIntention = intention?.name === 'start_human_attendance';
+      : 'the intended recipient of this message';
+
+    const googleCalendarIntention =
+      intention?.authentication?.type === 'GOOGLE_OAUTH';
+    const transferChatToHumanIntention =
+      intention?.name === 'start_human_attendance';
 
     try {
       let prompt = `

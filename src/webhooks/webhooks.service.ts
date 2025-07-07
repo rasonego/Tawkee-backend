@@ -5,17 +5,22 @@ import { InteractionsService } from '../interactions/interactions.service';
 import { WahaApiService } from '../waha-api/waha-api.service';
 import { MediaService } from '../media/media.service';
 import { WebsocketService } from '../websocket/websocket.service';
-import { Chat, Interaction, Message, ResponseDelayOptions } from '@prisma/client';
+import {
+  Chat,
+  Interaction,
+  Message,
+  ResponseDelayOptions,
+} from '@prisma/client';
 import { ConversationDto } from 'src/conversations/dto/conversation.dto';
 import { CreditService } from 'src/credits/credit.service';
 
 export const responseDelayMapToSeconds: Record<ResponseDelayOptions, number> = {
-  'IMMEDIATELY': 0,
-  'FIVE_SECONDS': 5,
-  'TEN_SECONDS': 10,
-  'THIRTY_SECONDS': 30,
-  'ONE_MINUTE': 60
-}
+  IMMEDIATELY: 0,
+  FIVE_SECONDS: 5,
+  TEN_SECONDS: 10,
+  THIRTY_SECONDS: 30,
+  ONE_MINUTE: 60,
+};
 
 @Injectable()
 export class WebhooksService {
@@ -530,10 +535,9 @@ export class WebhooksService {
             );
             chat = await this.prisma.chat.create({ data: chatData });
             this.logger.log(`Chat created successfully with ID: ${chat.id}`);
-
           } else {
             this.logger.log(`Found existing chat with ID: ${chat.id}`);
-           }
+          }
         } catch (error) {
           this.logger.error(
             `Error in chat creation process: ${error.message}`,
@@ -576,7 +580,9 @@ export class WebhooksService {
             );
           }
         } catch (error) {
-          throw new Error(`Failed to create or find interaction: ${error.message}`);
+          throw new Error(
+            `Failed to create or find interaction: ${error.message}`
+          );
         }
 
         let message: Message;
@@ -656,9 +662,9 @@ export class WebhooksService {
 
           await this.prisma.interaction.update({
             where: { id: interaction.id },
-            data: { 
+            data: {
               status: 'WAITING',
-              warnedAt: null
+              warnedAt: null,
             },
           });
 
@@ -863,7 +869,9 @@ export class WebhooksService {
 
                 const message = agentResponse.message;
 
-                this.logger.log(`Preparing to send message to ${phone}: "${message}"`);
+                this.logger.log(
+                  `Preparing to send message to ${phone}: "${message}"`
+                );
 
                 if (!splitMessages) {
                   const botMessage = await this.prisma.message.create({
@@ -880,21 +888,31 @@ export class WebhooksService {
                     `Bot text message created with ID: ${botMessage.id}`
                   );
 
-                  this.logger.log(`Sending start typing event to ${phone}: "${message}"`);
+                  this.logger.log(
+                    `Sending start typing event to ${phone}: "${message}"`
+                  );
                   await this.wahaApiService.startTyping(agent.id, phone);
 
-                  if (responseDelaySeconds !== ResponseDelayOptions.IMMEDIATELY) {
+                  if (
+                    responseDelaySeconds !== ResponseDelayOptions.IMMEDIATELY
+                  ) {
                     await new Promise((resolve) =>
-                      setTimeout(resolve, responseDelayMapToSeconds[responseDelaySeconds] * 1000)
+                      setTimeout(
+                        resolve,
+                        responseDelayMapToSeconds[responseDelaySeconds] * 1000
+                      )
                     );
                   }
 
-                  this.logger.log(`Sending text response to ${phone}: "${message}"`);
-                  const responseData = await this.wahaApiService.sendWhatsAppMessage(
-                    agent.id,
-                    phone,
-                    message
+                  this.logger.log(
+                    `Sending text response to ${phone}: "${message}"`
                   );
+                  const responseData =
+                    await this.wahaApiService.sendWhatsAppMessage(
+                      agent.id,
+                      phone,
+                      message
+                    );
 
                   if (responseData) {
                     const messageId: string = responseData.id.id;
@@ -907,13 +925,18 @@ export class WebhooksService {
                     });
                   }
 
-                  const chatMayHaveBeenUpdated = await this.prisma.chat.findUnique({
-                    where: { id: chat.id}
-                  });
+                  const chatMayHaveBeenUpdated =
+                    await this.prisma.chat.findUnique({
+                      where: { id: chat.id },
+                    });
 
                   await this.prisma.interaction.update({
                     where: { id: interaction.id },
-                    data: { status: chatMayHaveBeenUpdated.humanTalk ? 'WAITING' : 'RUNNING' },
+                    data: {
+                      status: chatMayHaveBeenUpdated.humanTalk
+                        ? 'WAITING'
+                        : 'RUNNING',
+                    },
                   });
 
                   // Update chat status and send websocket updates after all messages (text and audio) are processed
@@ -940,10 +963,12 @@ export class WebhooksService {
                   });
 
                   // Fetch the latest message (could be text or audio) to send in websocket update
-                  const latestMessageSent = await this.prisma.message.findFirst({
-                    where: { chatId: chat.id, role: 'assistant' },
-                    orderBy: { createdAt: 'desc' },
-                  });
+                  const latestMessageSent = await this.prisma.message.findFirst(
+                    {
+                      where: { chatId: chat.id, role: 'assistant' },
+                      orderBy: { createdAt: 'desc' },
+                    }
+                  );
 
                   const updatedChat = await this.prisma.chat.findUnique({
                     where: { id: chat.id },
@@ -977,7 +1002,9 @@ export class WebhooksService {
                     }
                   );
 
-                  this.logger.log(`Sending stop typing event to ${phone}: "${message}"`);
+                  this.logger.log(
+                    `Sending stop typing event to ${phone}: "${message}"`
+                  );
                   await this.wahaApiService.stopTyping(agent.id, phone);
                 } else {
                   const sentences = message.split('|').filter(Boolean); // avoid empty strings
@@ -997,19 +1024,26 @@ export class WebhooksService {
                       `Bot text message created with ID: ${botMessage.id}`
                     );
 
-                    this.logger.log(`Sending start typing for sentence to ${phone}: "${sentence}"`);
+                    this.logger.log(
+                      `Sending start typing for sentence to ${phone}: "${sentence}"`
+                    );
                     await this.wahaApiService.startTyping(agent.id, phone);
 
                     // wait random 2-3 seconds
                     const delayMs = 2000 + Math.floor(Math.random() * 1000);
-                    await new Promise((resolve) => setTimeout(resolve, delayMs));
-
-                    this.logger.log(`Sending sentence to ${phone}: "${sentence}"`);
-                    const responseData = await this.wahaApiService.sendWhatsAppMessage(
-                      agent.id,
-                      phone,
-                      sentence
+                    await new Promise((resolve) =>
+                      setTimeout(resolve, delayMs)
                     );
+
+                    this.logger.log(
+                      `Sending sentence to ${phone}: "${sentence}"`
+                    );
+                    const responseData =
+                      await this.wahaApiService.sendWhatsAppMessage(
+                        agent.id,
+                        phone,
+                        sentence
+                      );
 
                     if (responseData) {
                       const messageId: string = responseData.id.id;
@@ -1022,13 +1056,18 @@ export class WebhooksService {
                       });
                     }
 
-                    const chatMayHaveBeenUpdated = await this.prisma.chat.findUnique({
-                      where: { id: chat.id}
-                    });
+                    const chatMayHaveBeenUpdated =
+                      await this.prisma.chat.findUnique({
+                        where: { id: chat.id },
+                      });
 
                     await this.prisma.interaction.update({
                       where: { id: interaction.id },
-                      data: { status: chatMayHaveBeenUpdated.humanTalk ? 'WAITING' : 'RUNNING' },
+                      data: {
+                        status: chatMayHaveBeenUpdated.humanTalk
+                          ? 'WAITING'
+                          : 'RUNNING',
+                      },
                     });
 
                     // Update chat status and send websocket updates after all messages (text and audio) are processed
@@ -1049,16 +1088,18 @@ export class WebhooksService {
                       await this.interactionsService.findLatestInteractionByChatWithMessages(
                         chat.id
                       );
-                    const agentAfterResponse = await this.prisma.agent.findFirst({
-                      where: { id: chat.agentId },
-                      select: { id: true, workspaceId: true },
-                    });
+                    const agentAfterResponse =
+                      await this.prisma.agent.findFirst({
+                        where: { id: chat.agentId },
+                        select: { id: true, workspaceId: true },
+                      });
 
                     // Fetch the latest message (could be text or audio) to send in websocket update
-                    const latestMessageSent = await this.prisma.message.findFirst({
-                      where: { chatId: chat.id, role: 'assistant' },
-                      orderBy: { createdAt: 'desc' },
-                    });
+                    const latestMessageSent =
+                      await this.prisma.message.findFirst({
+                        where: { chatId: chat.id, role: 'assistant' },
+                        orderBy: { createdAt: 'desc' },
+                      });
 
                     const updatedChat = await this.prisma.chat.findUnique({
                       where: { id: chat.id },
@@ -1093,7 +1134,9 @@ export class WebhooksService {
                     );
                   }
 
-                  this.logger.log(`Sending final stop typing event to ${phone}`);
+                  this.logger.log(
+                    `Sending final stop typing event to ${phone}`
+                  );
                   await this.wahaApiService.stopTyping(agent.id, phone);
                 }
               } catch (error) {
@@ -1102,7 +1145,6 @@ export class WebhooksService {
                   error.stack
                 );
               }
-
             }
 
             // Handle audio messages
@@ -1253,7 +1295,7 @@ export class WebhooksService {
         } else {
           this.logger.log(
             `Chat ${chat.id} is in human talk mode, skipping agent response generation`
-          );          
+          );
         }
       }
     } catch (error) {
@@ -1755,13 +1797,11 @@ export class WebhooksService {
         } else if (messageType === 'audio') {
           // Handle audio message (typically no text)
           const { apiKey } = this.wahaApiService.getWahaConfig();
-          const textContent =
-            await this.mediaService.extractTextFromMedia(
-              dataObject.media.url,
-              JSON.parse(dataObject.media.mimetype as string)
-                ?.mimetype,
-              apiKey
-            );
+          const textContent = await this.mediaService.extractTextFromMedia(
+            dataObject.media.url,
+            JSON.parse(dataObject.media.mimetype as string)?.mimetype,
+            apiKey
+          );
           messageContent = textContent || '(Audio message)';
         } else {
           // Unknown message type

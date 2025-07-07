@@ -196,4 +196,6 @@ export class GlobalDashboardMetricsDto {
 }
 
 // Union type for the method return
-export type DashboardMetricsDto = WorkspaceDashboardMetricsDto | GlobalDashboardMetricsDto;
+export type DashboardMetricsDto =
+  | WorkspaceDashboardMetricsDto
+  | GlobalDashboardMetricsDto;

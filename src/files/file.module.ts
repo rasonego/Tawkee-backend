@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { join, resolve } from 'path';
+import { resolve } from 'path';
 import { FileService } from './file.service';
 import { FileController } from './file.controller';
 
@@ -12,7 +12,8 @@ import { FileController } from './file.controller';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const uploadsFolder = configService.get<string>('UPLOADS_FOLDER') || './uploads';
+        const uploadsFolder =
+          configService.get<string>('UPLOADS_FOLDER') || './uploads';
         return [
           {
             rootPath: resolve(uploadsFolder),

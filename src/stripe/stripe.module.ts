@@ -13,7 +13,7 @@ import { EmailModule } from 'src/email/email.module';
     forwardRef(() => CreditModule), // 👈 wrap with forwardRef
     forwardRef(() => WorkspacesModule),
     WebsocketModule,
-    EmailModule
+    EmailModule,
   ],
   controllers: [StripeController],
   providers: [StripeService],

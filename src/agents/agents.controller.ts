@@ -208,7 +208,7 @@ export class AgentsController {
     @Param('agentId') agentId: string
   ): Promise<{ success: boolean }> {
     return this.agentsService.restore(agentId);
-  }  
+  }
 
   @Put('agent/:agentId/inactive')
   @ApiOperation({ summary: 'Deactivate an agent' })

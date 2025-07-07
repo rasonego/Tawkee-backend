@@ -253,7 +253,7 @@ export class ChatsService {
         data: {
           status: newStatus,
           warnedAt: null,
-          resolvedAt: null // Clear resolvedAt since we're reopening the interaction
+          resolvedAt: null, // Clear resolvedAt since we're reopening the interaction
         },
       });
     }
@@ -671,11 +671,13 @@ export class ChatsService {
     // Find a user to transfer the chat to
     const user = await this.prisma.user.findFirst({
       where: { workspaceId: chat.workspaceId },
-      select: { id: true, name: true }
+      select: { id: true, name: true },
     });
 
     if (!user) {
-      throw new NotFoundException(`Not found human to transfer chat ID ${chatId} to`);
+      throw new NotFoundException(
+        `Not found human to transfer chat ID ${chatId} to`
+      );
     }
 
     // Mark latest interaction as RUNNING

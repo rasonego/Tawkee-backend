@@ -402,7 +402,10 @@ export class UsersController {
   @UseGuards(AuthGuard) // Protect this route with an AuthGuard
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update user permissions' })
-  @ApiParam({ name: 'userId', description: 'ID of the user to update permissions' })
+  @ApiParam({
+    name: 'userId',
+    description: 'ID of the user to update permissions',
+  })
   @ApiResponse({
     status: 200,
     description: 'User permissions updated successfully.',
@@ -416,18 +419,25 @@ export class UsersController {
     @Body() updateUserPermissionsDto: UpdateUserPermissionsDto
   ): Promise<{ success: boolean; message: string }> {
     try {
-      const result = await this.usersService.updatePermissions(userId, updateUserPermissionsDto);
+      const result = await this.usersService.updatePermissions(
+        userId,
+        updateUserPermissionsDto
+      );
 
       if (result.success) {
-        return { success: true, message: 'User permissions updated successfully!' };
+        return {
+          success: true,
+          message: 'User permissions updated successfully!',
+        };
       } else {
         throw new BadRequestException('Failed to update user permissions');
       }
     } catch (error) {
       return {
         success: false,
-        message: error.message || 'An error occurred while updating user permissions',
+        message:
+          error.message || 'An error occurred while updating user permissions',
       };
     }
-  } 
+  }
 }

@@ -261,10 +261,16 @@ export class DeepseekService {
     // Pass the structured prompt as the system message and the user message separately
     // (Adjusting based on typical chat completion patterns)
     // Generate the response from OpenAI using the appropriate model
-    const response = await this.generateResponse(userMessage, modelPreference, systemPrompt);
-    
+    const response = await this.generateResponse(
+      userMessage,
+      modelPreference,
+      systemPrompt
+    );
+
     // Log credit consumption
-    await this.creditService.logAndAggregateCredit(agent.id, {message: response});    
+    await this.creditService.logAndAggregateCredit(agent.id, {
+      message: response,
+    });
 
     return response;
   }

@@ -4,7 +4,14 @@ import { WebsocketService } from '../websocket/websocket.service';
 import { StripeService } from '../stripe/stripe.service';
 import { v4 as uuidv4 } from 'uuid';
 import { RequestType } from '@prisma/client';
-import { eachDayOfInterval, endOfDay, isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
+import {
+  eachDayOfInterval,
+  endOfDay,
+  isAfter,
+  isBefore,
+  parseISO,
+  startOfDay,
+} from 'date-fns';
 import { OverrideValue } from 'src/workspaces/workspaces.service';
 
 const modelCreditMap: Record<string, number> = {
@@ -64,18 +71,19 @@ export class CreditService {
           },
         },
       });
-      
+
       const usedPlan = planUsage._sum.quantity ?? 0;
-      const subscriptionCreditsLimitOverrides = subscription?.creditsLimitOverrides as OverrideValue;
+      const subscriptionCreditsLimitOverrides =
+        subscription?.creditsLimitOverrides as OverrideValue;
 
       const unlimitedCredits = subscriptionCreditsLimitOverrides?.explicitlySet
         ? subscriptionCreditsLimitOverrides.value == 'UNLIMITED'
         : subscription.plan.creditsLimit == null;
 
       const totalPlan = subscriptionCreditsLimitOverrides?.explicitlySet
-          ? subscriptionCreditsLimitOverrides.value
-          : subscription.plan.creditsLimit;
-     
+        ? subscriptionCreditsLimitOverrides.value
+        : subscription.plan.creditsLimit;
+
       planCreditsRemaining = unlimitedCredits
         ? Infinity
         : Math.max(0, (totalPlan as number) - usedPlan);
@@ -100,7 +108,7 @@ export class CreditService {
 
     return { planCreditsRemaining, extraCreditsRemaining };
   }
-  
+
   private isOverrideValue(obj: unknown): obj is OverrideValue {
     return (
       typeof obj === 'object' &&
@@ -111,13 +119,17 @@ export class CreditService {
       typeof (obj as any).explicitlySet === 'boolean'
     );
   }
-  
+
   async getDailyCreditBalanceInCurrentPeriod(
     workspaceId: string,
     startDate?: string,
     endDate?: string
   ): Promise<
-    { date: string; planCreditsRemaining: number; extraCreditsRemaining: number }[]
+    {
+      date: string;
+      planCreditsRemaining: number;
+      extraCreditsRemaining: number;
+    }[]
   > {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
@@ -152,7 +164,9 @@ export class CreditService {
       ? typedCreditsLimitOverrides.value
       : plan.creditsLimit;
 
-    const start = startOfDay(startDate ? parseISO(startDate) : currentPeriodStart);
+    const start = startOfDay(
+      startDate ? parseISO(startDate) : currentPeriodStart
+    );
     const end = endOfDay(endDate ? parseISO(endDate) : currentPeriodEnd);
 
     const clampedStart = isBefore(start, currentPeriodStart)
@@ -207,13 +221,19 @@ export class CreditService {
 
       // Sum only extra purchases available up to and including this date
       const extraCreditsAvailable = extraPurchases
-        .filter(p => startOfDay(p.createdAt) <= date)
+        .filter((p) => startOfDay(p.createdAt) <= date)
         .reduce((sum, p) => sum + p.quantity, 0);
 
       result.push({
         date: iso,
-        planCreditsRemaining: Math.max(0, (effectiveLimit as number) - cumulativePlanUsed),
-        extraCreditsRemaining: Math.max(0, extraCreditsAvailable - cumulativeExtraUsed),
+        planCreditsRemaining: Math.max(
+          0,
+          (effectiveLimit as number) - cumulativePlanUsed
+        ),
+        extraCreditsRemaining: Math.max(
+          0,
+          extraCreditsAvailable - cumulativeExtraUsed
+        ),
       });
     }
 
@@ -272,14 +292,14 @@ export class CreditService {
     };
   }
 
-  async logAndAggregateCredit(agentId: string, metadata?: Record<string, any>) {   
+  async logAndAggregateCredit(agentId: string, metadata?: Record<string, any>) {
     const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },
       include: {
         settings: {
           select: {
-            preferredModel: true
-          }
+            preferredModel: true,
+          },
         },
         workspace: {
           include: {
@@ -322,15 +342,16 @@ export class CreditService {
 
     const usedPlanCredits = usageAggregate._sum.quantity ?? 0;
 
-    const subscriptionCreditsLimitOverrides = subscription.creditsLimitOverrides as OverrideValue;
+    const subscriptionCreditsLimitOverrides =
+      subscription.creditsLimitOverrides as OverrideValue;
 
     const unlimitedCredits = subscriptionCreditsLimitOverrides?.explicitlySet
       ? subscriptionCreditsLimitOverrides.value == 'UNLIMITED'
       : subscription.plan.creditsLimit == null;
 
     const totalPlanCredits = subscriptionCreditsLimitOverrides?.explicitlySet
-        ? subscriptionCreditsLimitOverrides.value
-        : subscription.plan.creditsLimit;
+      ? subscriptionCreditsLimitOverrides.value
+      : subscription.plan.creditsLimit;
 
     let remainingPlanCredits = unlimitedCredits
       ? Infinity
@@ -351,9 +372,10 @@ export class CreditService {
 
     let remainingExtraCredits = Math.max(
       0,
-      (totalExtraCredits._sum.quantity ?? 0) - (extraCreditsUsed._sum.quantity ?? 0)
+      (totalExtraCredits._sum.quantity ?? 0) -
+        (extraCreditsUsed._sum.quantity ?? 0)
     );
-    
+
     const creditEventId = uuidv4();
     const records = [];
 

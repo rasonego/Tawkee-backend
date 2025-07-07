@@ -3,7 +3,7 @@ import {
   IsNumber,
   IsOptional,
   IsBoolean,
-  IsArray  
+  IsArray,
 } from 'class-validator';
 
 export class UpdatePlanFromFormDto {

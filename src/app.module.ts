@@ -99,7 +99,7 @@ import { FileModule } from './files/file.module';
     WebsocketModule,
     GoogleCalendarOAuthModule,
     ScheduleValidationModule,
-    FileModule
+    FileModule,
   ],
 })
 export class AppModule {}

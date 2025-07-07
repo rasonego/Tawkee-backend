@@ -171,5 +171,5 @@ export class EnhancedAgentDto {
     description: 'Subscription Limits Overrides',
     type: SubscriptionOverrideDataDto,
   })
-  subscriptionLimits?: any
+  subscriptionLimits?: any;
 }

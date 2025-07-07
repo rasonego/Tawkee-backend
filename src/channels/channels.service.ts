@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { ChannelDto } from './dto/channel.dto';
@@ -210,10 +215,10 @@ export class ChannelsService {
         agent: {
           select: {
             id: true,
-            workspaceId: true
-          }
-        }
-      }
+            workspaceId: true,
+          },
+        },
+      },
     });
 
     if (!channel) {
@@ -239,7 +244,9 @@ export class ChannelsService {
 
       // Check session status first, and only attempt to fetch QR Code if it's SCAN_QR_CODE
       const instanceInfo = await this.wahaApiService.getInstance(
-        wahaApi.instanceName, wahaApiUrl, wahaApiKey
+        wahaApi.instanceName,
+        wahaApiUrl,
+        wahaApiKey
       );
 
       if (instanceInfo.status === 'WORKING') {
@@ -279,9 +286,10 @@ export class ChannelsService {
         );
 
         return;
-        
       } else if (instanceInfo.status !== 'SCAN_QR_CODE') {
-        throw new UnauthorizedException(`Channel is in status ${instanceInfo.status} and is not expecting connections.`);
+        throw new UnauthorizedException(
+          `Channel is in status ${instanceInfo.status} and is not expecting connections.`
+        );
       }
 
       // Now fetch a fresh QR code from Waha API

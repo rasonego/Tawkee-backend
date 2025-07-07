@@ -213,7 +213,7 @@ export class WahaApiService {
           payload.file = {
             mimetype: mediaMimeType,
             filename: fileName,
-            data: mediaUrl
+            data: mediaUrl,
           };
           break;
         }
@@ -225,7 +225,7 @@ export class WahaApiService {
           payload.file = {
             mimetype: mediaMimeType,
             filename: fileName,
-            data: mediaUrl
+            data: mediaUrl,
           };
           break;
         }
@@ -237,7 +237,7 @@ export class WahaApiService {
           payload.file = {
             mimetype: 'audio/ogg; codecs=opus',
             filename: 'audio.ogg',
-            data: base64String
+            data: base64String,
           };
           payload.convert = true;
           break;
@@ -247,8 +247,8 @@ export class WahaApiService {
           payload.caption = caption ? caption : '';
           payload.file = {
             mimetype: mediaMimeType,
-            filename: fileName, 
-            data: mediaUrl
+            filename: fileName,
+            data: mediaUrl,
           };
           break;
         }
@@ -478,9 +478,7 @@ export class WahaApiService {
     apiKey: string
   ): Promise<any> {
     try {
-      this.logger.log(
-        `Getting ${instanceName} info`
-      );
+      this.logger.log(`Getting ${instanceName} info`);
 
       // According to Waha API docs, use the instance name here (not instance ID)
       const response = await axios.get(
@@ -506,10 +504,13 @@ export class WahaApiService {
         );
       }
     } catch (error) {
-      this.logger.error(`Error getting instance info: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error getting instance info: ${error.message}`,
+        error.stack
+      );
       throw error;
     }
-  }  
+  }
 
   /**
    * Get QR code for instance connection
@@ -644,7 +645,6 @@ export class WahaApiService {
    */
   async startInstance(instanceName: string): Promise<any> {
     try {
-
       this.logger.log(`Starting instance ${instanceName} from Waha API`);
 
       const { serverUrl, apiKey } = this.getWahaConfig();
@@ -663,7 +663,6 @@ export class WahaApiService {
 
       this.logger.log(`Instance ${instanceName} started successfully`);
       return response.data;
-
     } catch (error) {
       this.logger.error(
         `Error starting instance: ${error.message}`,
@@ -671,19 +670,18 @@ export class WahaApiService {
       );
       throw error;
     }
-  }  
+  }
 
   /**
    * Stop an Waha API instance
    */
   async stopInstance(instanceName: string): Promise<any> {
     try {
-
       this.logger.log(`Stopping instance ${instanceName} from Waha API`);
 
       const { serverUrl, apiKey } = this.getWahaConfig();
 
-      await this.logoutInstance({instanceName, serverUrl, apiKey });
+      await this.logoutInstance({ instanceName, serverUrl, apiKey });
 
       // According to Waha API docs, use the instance name here (not instance ID)
       const response = await axios.post(
@@ -696,10 +694,9 @@ export class WahaApiService {
           },
         }
       );
-      
+
       this.logger.log(`Instance ${instanceName} stopped successfully`);
       return response.data;
-
     } catch (error) {
       this.logger.error(
         `Error stopping instance: ${error.message}`,
@@ -707,14 +704,13 @@ export class WahaApiService {
       );
       throw error;
     }
-  }  
+  }
 
   /**
    * Delete an Waha API instance
    */
   async deleteInstance(instanceName: string): Promise<any> {
     try {
-
       this.logger.log(`Deleting instance ${instanceName} from Waha API`);
 
       const { serverUrl, apiKey } = this.getWahaConfig();
@@ -732,7 +728,6 @@ export class WahaApiService {
 
       this.logger.log(`Instance ${instanceName} deleted successfully`);
       return response.data;
-
     } catch (error) {
       this.logger.error(
         `Error deleting instance: ${error.message}`,
@@ -880,17 +875,11 @@ export class WahaApiService {
     // Extract just the instanceName from channel config
     const instanceName = channel.config['wahaApi']['instanceName'];
 
-    const config = {
-      instanceName,
-      serverUrl,
-      apiKey,
-    };
-
     // Format phone number (remove leading + if present)
     let formattedPhone = phoneNumber.startsWith('+')
       ? phoneNumber.substring(1)
       : phoneNumber;
-  
+
     // Ensure phone number is properly formatted - remove any non-numeric characters except +
     formattedPhone = formattedPhone.replace(/[^\d+]/g, '');
 
@@ -917,10 +906,11 @@ export class WahaApiService {
       `Sending startTyping event to ${finalPhoneNumber} using instance ${instanceName}`
     );
 
-    response = await axios.post(`${serverUrl}/startTyping`,
+    response = await axios.post(
+      `${serverUrl}/startTyping`,
       {
         session: instanceName,
-        chatId: finalPhoneNumber
+        chatId: finalPhoneNumber,
       },
       {
         headers: {
@@ -932,7 +922,9 @@ export class WahaApiService {
     );
 
     if (response.status === 200 || response.status === 201) {
-      this.logger.log(`Start typing event sent successfully to ${finalPhoneNumber}`);
+      this.logger.log(
+        `Start typing event sent successfully to ${finalPhoneNumber}`
+      );
       return response.data;
     } else {
       // Log the issue but don't throw an error since the message might have been sent
@@ -942,7 +934,7 @@ export class WahaApiService {
       throw new Error(
         `Failed to start typing event: ${response.status}: ${response.statusText}`
       );
-    }    
+    }
   }
 
   async stopTyping(agentId: string, phoneNumber: string): Promise<any> {
@@ -981,7 +973,7 @@ export class WahaApiService {
     let formattedPhone = phoneNumber.startsWith('+')
       ? phoneNumber.substring(1)
       : phoneNumber;
-  
+
     this.logger.log(
       `Sending stopTyping event to ${formattedPhone} using instance ${config.instanceName}`
     );
@@ -1008,10 +1000,11 @@ export class WahaApiService {
       }
     );
 
-    response = await axios.post(`${serverUrl}/stopTyping`,
+    response = await axios.post(
+      `${serverUrl}/stopTyping`,
       {
         session: instanceName,
-        chatId: finalPhoneNumber
+        chatId: finalPhoneNumber,
       },
       {
         headers: {
@@ -1023,7 +1016,9 @@ export class WahaApiService {
     );
 
     if (response.status === 200 || response.status === 201) {
-      this.logger.log(`Stop typing event sent successfully to ${finalPhoneNumber}`);
+      this.logger.log(
+        `Stop typing event sent successfully to ${finalPhoneNumber}`
+      );
       return response.data;
     } else {
       // Log the issue but don't throw an error since the message might have been sent
@@ -1033,6 +1028,6 @@ export class WahaApiService {
       throw new Error(
         `Failed to stop typing event: ${response.status}: ${response.statusText}`
       );
-    }    
+    }
   }
 }

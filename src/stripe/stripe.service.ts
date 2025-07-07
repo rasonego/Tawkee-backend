@@ -19,9 +19,9 @@ interface ExtendedInvoice extends Stripe.Invoice {
     payment_intent?: {
       last_payment_error?: {
         message?: string;
-      }
-    }
-  }
+      };
+    };
+  };
 }
 
 @Injectable()
@@ -36,7 +36,7 @@ export class StripeService {
     @Inject(forwardRef(() => CreditService))
     private creditService: CreditService,
 
-    @Inject(forwardRef(() => WorkspacesService))    
+    @Inject(forwardRef(() => WorkspacesService))
     private workspaceService: WorkspacesService,
     private websocketService: WebsocketService,
     private emailService: EmailService
@@ -49,13 +49,12 @@ export class StripeService {
     );
   }
 
-
   @Cron(CronExpression.EVERY_6_HOURS)
   async deactivateUnpaidWorkspacesTask() {
     this.logger.log('Running scheduled task to check for unpaid workspaces...');
-  
+
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  
+
     const subscriptionsToDeactivate = await this.prisma.subscription.findMany({
       where: {
         status: 'PAST_DUE',
@@ -67,7 +66,7 @@ export class StripeService {
         workspaceId: true,
       },
     });
-  
+
     for (const sub of subscriptionsToDeactivate) {
       try {
         await this.workspaceService.deactivateWorkspace(sub.workspaceId);
@@ -77,7 +76,7 @@ export class StripeService {
         );
       }
     }
-  
+
     this.logger.log(
       `Finished checking unpaid workspaces: ${subscriptionsToDeactivate.length} deactivated`
     );
@@ -85,7 +84,9 @@ export class StripeService {
 
   @Cron(CronExpression.EVERY_6_HOURS)
   async deactivateExpiredTrialWorkspacesTask() {
-    this.logger.log('Running scheduled task to check for expired trial workspaces...');
+    this.logger.log(
+      'Running scheduled task to check for expired trial workspaces...'
+    );
 
     const now = new Date();
 
@@ -94,7 +95,7 @@ export class StripeService {
         status: 'TRIAL',
         trialEnd: {
           lte: now,
-        }
+        },
       },
       select: {
         id: true,
@@ -102,7 +103,7 @@ export class StripeService {
       },
     });
 
-    const expiredTrialIds = expiredTrials.map(sub => sub.id);
+    const expiredTrialIds = expiredTrials.map((sub) => sub.id);
 
     if (expiredTrialIds.length > 0) {
       await this.prisma.subscription.updateMany({
@@ -120,7 +121,9 @@ export class StripeService {
     for (const sub of expiredTrials) {
       try {
         await this.workspaceService.deactivateWorkspace(sub.workspaceId);
-        this.logger.log(`Deactivated expired trial workspace ${sub.workspaceId}`);
+        this.logger.log(
+          `Deactivated expired trial workspace ${sub.workspaceId}`
+        );
       } catch (error) {
         this.logger.error(
           `Failed to deactivate trial workspace ${sub.workspaceId}: ${error.message}`
@@ -158,12 +161,12 @@ export class StripeService {
     const enrichedProducts = await Promise.all(
       customProducts.map(async (product) => {
         const prices = await this.stripe.prices.list({
-          product: product.id
+          product: product.id,
         });
 
         // Try to find a corresponding plan in your database using price ID
         const matchedPlan = await this.prisma.plan.findFirst({
-          where: { stripeProductId: product.id }
+          where: { stripeProductId: product.id },
         });
 
         return {
@@ -268,7 +271,7 @@ export class StripeService {
     trainingVideoLimit,
     trainingWebsiteLimit,
     isEnterprise,
-    isActive
+    isActive,
   }: UpdatePlanFromFormDto): Promise<{ message: string; plan: any }> {
     // 1. Look up product by name
     const products = await this.stripe.products.list({ limit: 100 });
@@ -345,12 +348,14 @@ export class StripeService {
 
     const existingSub = await this.prisma.subscription.findUnique({
       where: {
-        id: subscriptionId
+        id: subscriptionId,
       },
     });
 
     if (!existingSub) {
-      throw new Error(`No active or trial subscription found with ID ${subscriptionId}`);
+      throw new Error(
+        `No active or trial subscription found with ID ${subscriptionId}`
+      );
     }
 
     const updatePayload: Record<string, any> = {};
@@ -584,7 +589,7 @@ export class StripeService {
 
     const smartRecharge = await this.prisma.smartRechargeSetting.findUnique({
       where: { workspaceId },
-    });    
+    });
 
     const { planCreditsRemaining, extraCreditsRemaining } =
       await this.creditService.getWorkspaceRemainingCredits(workspaceId);
@@ -608,7 +613,7 @@ export class StripeService {
           : undefined,
       smartRecharge: smartRecharge || undefined,
       planCreditsRemaining,
-      extraCreditsRemaining
+      extraCreditsRemaining,
     };
   }
 
@@ -679,8 +684,8 @@ export class StripeService {
               description: 'One-time credit purchase',
               metadata: {
                 type: 'credit',
-                credits: amount.toString()
-              }
+                credits: amount.toString(),
+              },
             },
           },
           quantity: 1,
@@ -691,7 +696,7 @@ export class StripeService {
       metadata: {
         workspaceId,
         credits: amount.toString(),
-        type: 'credit_purchase'
+        type: 'credit_purchase',
       },
       // Add payment intent data to make identification easier
       payment_intent_data: {
@@ -897,7 +902,11 @@ export class StripeService {
     };
   }
 
-  async getWorkspacePaymentsInPeriod(workspaceId: string, startDate: Date, endDate: Date) {
+  async getWorkspacePaymentsInPeriod(
+    workspaceId: string,
+    startDate: Date,
+    endDate: Date
+  ) {
     const startTs = Math.floor(startDate.getTime() / 1000);
     const endTs = Math.floor(endDate.getTime() / 1000);
 
@@ -909,11 +918,12 @@ export class StripeService {
     const paymentIntentsParams: Stripe.PaymentIntentListParams = {
       limit: 100,
       created: { gte: startTs, lte: endTs },
-      expand: ['data.invoice', 'data.customer']
+      expand: ['data.invoice', 'data.customer'],
     };
 
     // Get all successful payment intents
-    const paymentIntents = await this.getAllPaymentIntents(paymentIntentsParams);
+    const paymentIntents =
+      await this.getAllPaymentIntents(paymentIntentsParams);
 
     // Process transactions
     const allTransactions = await this.processTransactions(
@@ -923,27 +933,32 @@ export class StripeService {
     );
 
     // Initialize a map for daily aggregates
-    const summaryByDate: Record<string, {
-      date: string;
-      planAmount: number;
-      oneTimeAmount: number;
-      total: number;
-      clients: Record<string, number>;
-    }> = {};
+    const summaryByDate: Record<
+      string,
+      {
+        date: string;
+        planAmount: number;
+        oneTimeAmount: number;
+        total: number;
+        clients: Record<string, number>;
+      }
+    > = {};
 
     for (const transaction of allTransactions) {
-      const dateStr = new Date(transaction.created * 1000).toISOString().slice(0, 10);
-      
+      const dateStr = new Date(transaction.created * 1000)
+        .toISOString()
+        .slice(0, 10);
+
       if (!summaryByDate[dateStr]) {
-        summaryByDate[dateStr] = { 
-          date: dateStr, 
-          planAmount: 0, 
-          oneTimeAmount: 0, 
-          total: 0, 
-          clients: {} 
+        summaryByDate[dateStr] = {
+          date: dateStr,
+          planAmount: 0,
+          oneTimeAmount: 0,
+          total: 0,
+          clients: {},
         };
       }
-      
+
       const dayEntry = summaryByDate[dateStr];
       const amountUsd = transaction.amount / 100;
 
@@ -955,33 +970,37 @@ export class StripeService {
       dayEntry.total += amountUsd;
 
       // Aggregate amount per client email for that day
-      dayEntry.clients[transaction.customerEmail] = 
+      dayEntry.clients[transaction.customerEmail] =
         (dayEntry.clients[transaction.customerEmail] || 0) + amountUsd;
     }
 
-    return Object.values(summaryByDate).sort((a, b) => a.date.localeCompare(b.date));
+    return Object.values(summaryByDate).sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
   }
 
-  private async getAllPaymentIntents(params: Stripe.PaymentIntentListParams): Promise<Stripe.PaymentIntent[]> {
+  private async getAllPaymentIntents(
+    params: Stripe.PaymentIntentListParams
+  ): Promise<Stripe.PaymentIntent[]> {
     const paymentIntents: Stripe.PaymentIntent[] = [];
     let hasMore = true;
-    
+
     while (hasMore) {
       const page = await this.stripe.paymentIntents.list(params);
-      
+
       // Only include succeeded payment intents in USD
-      const validPaymentIntents = page.data.filter(pi => 
-        pi.status === 'succeeded' && pi.currency === 'usd'
+      const validPaymentIntents = page.data.filter(
+        (pi) => pi.status === 'succeeded' && pi.currency === 'usd'
       );
-      
+
       paymentIntents.push(...validPaymentIntents);
-      
+
       hasMore = page.has_more;
       if (hasMore) {
         params.starting_after = page.data[page.data.length - 1].id;
       }
     }
-    
+
     return paymentIntents;
   }
 
@@ -989,36 +1008,48 @@ export class StripeService {
     paymentIntents: Stripe.PaymentIntent[],
     subscriptionProductIds: string[],
     creditProductIds: string[]
-  ): Promise<Array<{
-    id: string;
-    amount: number;
-    created: number;
-    customerEmail: string;
-    isSubscription: boolean;
-    type: 'payment_intent';
-  }>> {
+  ): Promise<
+    Array<{
+      id: string;
+      amount: number;
+      created: number;
+      customerEmail: string;
+      isSubscription: boolean;
+      type: 'payment_intent';
+    }>
+  > {
     const transactions = [];
 
     for (const pi of paymentIntents) {
-      const customerEmail = await this.getCustomerEmail(pi.customer, pi.receipt_email);
-      const isSubscription = await this.determineIfSubscription(pi, subscriptionProductIds, creditProductIds);
-      
+      const customerEmail = await this.getCustomerEmail(
+        pi.customer,
+        pi.receipt_email
+      );
+      const isSubscription = await this.determineIfSubscription(
+        pi,
+        subscriptionProductIds,
+        creditProductIds
+      );
+
       transactions.push({
         id: pi.id,
         amount: pi.amount,
         created: pi.created,
         customerEmail,
         isSubscription,
-        type: 'payment_intent' as const
+        type: 'payment_intent' as const,
       });
     }
 
     return transactions;
   }
 
-  private async getCustomerEmail(customer: any, receiptEmail?: string | null): Promise<string> {
+  private async getCustomerEmail(
+    customer: any,
+    receiptEmail?: string | null
+  ): Promise<string> {
     if (receiptEmail) return receiptEmail;
-    
+
     if (customer) {
       if (typeof customer === 'string') {
         try {
@@ -1031,7 +1062,7 @@ export class StripeService {
         return customer.email;
       }
     }
-    
+
     return 'unknown';
   }
 
@@ -1059,8 +1090,8 @@ export class StripeService {
     const invoice = (paymentIntent as any).invoice;
     if (invoice) {
       const isSubscriptionFromInvoice = await this.checkInvoiceForSubscription(
-        invoice, 
-        subscriptionProductIds, 
+        invoice,
+        subscriptionProductIds,
         creditProductIds
       );
       if (isSubscriptionFromInvoice !== null) {
@@ -1071,7 +1102,8 @@ export class StripeService {
     // Check if description contains subscription indicators
     const description = paymentIntent.description?.toLowerCase() || '';
     if (description.includes('subscription')) return true;
-    if (description.includes('credit') || description.includes('one-time')) return false;
+    if (description.includes('credit') || description.includes('one-time'))
+      return false;
 
     // If we can't determine, check if it has a subscription context
     // This is a fallback - you might want to adjust based on your business logic
@@ -1085,11 +1117,11 @@ export class StripeService {
   ): Promise<boolean | null> {
     try {
       let fullInvoice: ExtendedInvoice;
-      
+
       if (typeof invoice === 'string') {
         // Fetch invoice with proper expansion limits
         fullInvoice = await this.stripe.invoices.retrieve(invoice, {
-          expand: ['lines.data.price']
+          expand: ['lines.data.price'],
         });
       } else {
         fullInvoice = invoice;
@@ -1103,8 +1135,8 @@ export class StripeService {
       // Analyze line items to determine type
       if (fullInvoice.lines?.data) {
         const lineItemAnalysis = await this.analyzeInvoiceLineItems(
-          fullInvoice, 
-          subscriptionProductIds, 
+          fullInvoice,
+          subscriptionProductIds,
           creditProductIds
         );
         if (lineItemAnalysis !== null) {
@@ -1131,21 +1163,23 @@ export class StripeService {
 
     for (const lineItem of invoice.lines.data) {
       const price = (lineItem as any).price;
-      
+
       if (price?.product) {
         let productId: string;
-        
+
         // If product is already expanded
         if (typeof price.product === 'object') {
           productId = price.product.id;
         } else {
           // Product is just an ID, need to fetch it if needed
           productId = price.product;
-          
+
           // For efficiency, we can also check the price metadata or description
           // to avoid additional API calls
-          if (price.nickname?.toLowerCase().includes('credit') || 
-              price.metadata?.type === 'credit') {
+          if (
+            price.nickname?.toLowerCase().includes('credit') ||
+            price.metadata?.type === 'credit'
+          ) {
             hasCreditProduct = true;
             continue;
           }
@@ -1158,17 +1192,20 @@ export class StripeService {
           hasCreditProduct = true;
         }
       }
-      
+
       // Also check line item description for credit indicators
       const description = (lineItem.description || '').toLowerCase();
-      if (description.includes('credit') || description.includes('extra credits')) {
+      if (
+        description.includes('credit') ||
+        description.includes('extra credits')
+      ) {
         hasCreditProduct = true;
       }
     }
 
     // If we found subscription products, it's a subscription
     if (hasSubscriptionProduct) return true;
-    
+
     // If we found credit products, it's one-time
     if (hasCreditProduct) return false;
 
@@ -1179,34 +1216,36 @@ export class StripeService {
   // Fixed database methods
   private async getSubscriptionProductIds(): Promise<string[]> {
     const plans = await this.prisma.plan.findMany({
-      select: { stripeProductId: true }
+      select: { stripeProductId: true },
     });
-    
+
     return plans
-      .map(plan => plan.stripeProductId)
-      .filter(id => id !== null); // Filter out null values
+      .map((plan) => plan.stripeProductId)
+      .filter((id) => id !== null); // Filter out null values
   }
 
   private async getCreditProductIds(): Promise<string[]> {
-    // Since ExtraCreditPurchase doesn't have stripeProductId, 
+    // Since ExtraCreditPurchase doesn't have stripeProductId,
     // you need to define your credit products elsewhere
     // Option 1: Create a separate table for credit products
     // Option 2: Use a configuration object
     // Option 3: Query your price/product configuration
-    
+
     // For now, I'll show you how to get them from Stripe directly
     // You should replace this with your actual credit product IDs
     return await this.getCreditProductIdsFromConfig();
   }
 
-  private async checkIfCreditPurchase(paymentIntent: Stripe.PaymentIntent): Promise<boolean> {
+  private async checkIfCreditPurchase(
+    paymentIntent: Stripe.PaymentIntent
+  ): Promise<boolean> {
     try {
       // If the payment intent has a checkout session, get it to check metadata
       if (paymentIntent.metadata?.checkout_session_id) {
         const session = await this.stripe.checkout.sessions.retrieve(
           paymentIntent.metadata.checkout_session_id
         );
-        
+
         // Check if session metadata indicates credit purchase
         if (session.metadata?.credits || session.metadata?.workspaceId) {
           return true;
@@ -1241,7 +1280,7 @@ export class StripeService {
       if (charges.data.length > 0) {
         const charge = charges.data[0];
         const description = charge.description?.toLowerCase() || '';
-        
+
         // Check for credit-specific patterns in description
         if (
           description.includes('extra credits') ||
@@ -1265,7 +1304,6 @@ export class StripeService {
     // and product descriptions. Return empty array since we're not using predefined products.
     return [];
   }
-
 
   constructWebhookEvent(
     rawBody: Buffer,
@@ -1515,11 +1553,13 @@ export class StripeService {
         const item = sub.items.data[0];
 
         const existingPlan = await this.prisma.plan.findFirst({
-          where: { stripePriceId: item.price.id }
+          where: { stripePriceId: item.price.id },
         });
 
         if (!existingPlan) {
-          this.logger.warn(`No plan found for updated price ID ${item.price.id}`);
+          this.logger.warn(
+            `No plan found for updated price ID ${item.price.id}`
+          );
           return;
         }
 
@@ -1537,7 +1577,7 @@ export class StripeService {
               ? new Date(sub.trial_start * 1000)
               : null,
             trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
-            planId: existingPlan.id
+            planId: existingPlan.id,
           },
         });
 
@@ -1580,7 +1620,7 @@ export class StripeService {
 
         const stripePrice = plan?.stripePriceId
           ? await this.getPriceDetailsById(plan.stripePriceId)
-          : undefined;     
+          : undefined;
 
         this.websocketService.sendToClient(workspaceId, 'subscriptionUpdated', {
           subscription: remainingData,
@@ -1604,13 +1644,16 @@ export class StripeService {
         const invoice = event.data.object as ExtendedInvoice;
 
         if (invoice.parent?.type === 'subscription_details') {
-          const subscriptionId = invoice.parent.subscription_details.subscription;
+          const subscriptionId =
+            invoice.parent.subscription_details.subscription;
           this.logger.warn(
             `Payment failed for subscription: ${subscriptionId} (Invoice ${invoice.id})`
           );
 
           if (!subscriptionId) {
-            this.logger.warn(`No subscription found for failed invoice ${invoice.id}`);
+            this.logger.warn(
+              `No subscription found for failed invoice ${invoice.id}`
+            );
             return;
           }
 
@@ -1650,9 +1693,9 @@ export class StripeService {
               },
               workspace: {
                 select: {
-                  user: true
-                }
-              }
+                  user: true,
+                },
+              },
             },
           });
 
@@ -1673,19 +1716,25 @@ export class StripeService {
 
           const owner = existing.workspace?.user;
           if (retryCount === 1 && owner?.email) {
-            const portalUrl = await this.createCustomerPortal(existing.workspaceId);
+            const portalUrl = await this.createCustomerPortal(
+              existing.workspaceId
+            );
 
-            const charge = invoice.latest_charge && typeof invoice.latest_charge !== 'string'
-              ? invoice.latest_charge
-              : undefined;
+            const charge =
+              invoice.latest_charge && typeof invoice.latest_charge !== 'string'
+                ? invoice.latest_charge
+                : undefined;
 
-            const paymentIntent = charge?.payment_intent && typeof charge.payment_intent !== 'string'
-              ? charge.payment_intent
-              : undefined;
+            const paymentIntent =
+              charge?.payment_intent &&
+              typeof charge.payment_intent !== 'string'
+                ? charge.payment_intent
+                : undefined;
 
             const error = paymentIntent?.last_payment_error;
 
-            const failureMessage = error?.message || 'Your payment could not be processed.';
+            const failureMessage =
+              error?.message || 'Your payment could not be processed.';
             const reason = failureMessage;
 
             await this.emailService.sendPaymentFailureEmail(
@@ -1702,16 +1751,20 @@ export class StripeService {
             ? await this.getPriceDetailsById(plan.stripePriceId)
             : undefined;
 
-          this.websocketService.sendToClient(workspaceId, 'subscriptionUpdated', {
-            subscription: remainingData,
-            plan:
-              plan && stripePrice
-                ? {
-                    ...plan,
-                    ...stripePrice,
-                  }
-                : undefined,
-          });
+          this.websocketService.sendToClient(
+            workspaceId,
+            'subscriptionUpdated',
+            {
+              subscription: remainingData,
+              plan:
+                plan && stripePrice
+                  ? {
+                      ...plan,
+                      ...stripePrice,
+                    }
+                  : undefined,
+            }
+          );
         }
 
         break;
@@ -1726,7 +1779,9 @@ export class StripeService {
         });
 
         if (!workspace) {
-          this.logger.warn(`Workspace not found for customer ${customerId} in invoice.payment_succeeded`);
+          this.logger.warn(
+            `Workspace not found for customer ${customerId} in invoice.payment_succeeded`
+          );
           break;
         }
 
@@ -1755,15 +1810,21 @@ export class StripeService {
                 paymentRetryCount: 0,
                 lastPaymentFailedAt: null,
                 ...(subscriptionLine && {
-                  currentPeriodStart: new Date(subscriptionLine.period.start * 1000),
-                  currentPeriodEnd: new Date(subscriptionLine.period.end * 1000),
+                  currentPeriodStart: new Date(
+                    subscriptionLine.period.start * 1000
+                  ),
+                  currentPeriodEnd: new Date(
+                    subscriptionLine.period.end * 1000
+                  ),
                 }),
               },
             });
 
             try {
               await this.workspaceService.activateWorkspace(workspace.id);
-              this.logger.log(`Workspace ${workspace.id} reactivated after payment`);
+              this.logger.log(
+                `Workspace ${workspace.id} reactivated after payment`
+              );
             } catch (error) {
               this.logger.error(
                 `Error to reactivate workspace ${workspace.id}: ${error.message}`
@@ -1774,12 +1835,19 @@ export class StripeService {
               ? await this.getPriceDetailsById(plan.stripePriceId)
               : undefined;
 
-            this.websocketService.sendToClient(workspace.id, 'subscriptionUpdated', {
-              subscription: subscriptionRecord,
-              plan: plan && stripePrice ? { ...plan, ...stripePrice } : undefined,
-            });
+            this.websocketService.sendToClient(
+              workspace.id,
+              'subscriptionUpdated',
+              {
+                subscription: subscriptionRecord,
+                plan:
+                  plan && stripePrice ? { ...plan, ...stripePrice } : undefined,
+              }
+            );
           } else {
-            this.logger.warn(`Subscription ${subscriptionId} of ${customerId} not found.`);
+            this.logger.warn(
+              `Subscription ${subscriptionId} of ${customerId} not found.`
+            );
           }
         }
 
@@ -1848,5 +1916,3 @@ export class StripeService {
     }
   }
 }
-
-

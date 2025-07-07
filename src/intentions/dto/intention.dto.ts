@@ -7,7 +7,6 @@ import {
   IsBoolean,
   IsArray,
   ValidateNested,
-  IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PreprocessingType, FieldType } from '@prisma/client';
@@ -133,8 +132,10 @@ export class IntentionDto {
   preprocessingText?: string;
 
   @ApiProperty({
-    description: 'A hint of how the AI should answer when executing this intention',
-    example: 'Reply briefly and clearly that the conversation has been handed off to a human agent and that they should wait a moment.',
+    description:
+      'A hint of how the AI should answer when executing this intention',
+    example:
+      'Reply briefly and clearly that the conversation has been handed off to a human agent and that they should wait a moment.',
   })
   @IsString()
   @IsOptional()

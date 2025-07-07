@@ -66,7 +66,10 @@ export class UserResponseDto {
   @ApiProperty({
     description: 'Role associated with the user',
     required: true,
-    example: { name: 'CLIENT', description: 'Client with limited permissions to their own workspace' },
+    example: {
+      name: 'CLIENT',
+      description: 'Client with limited permissions to their own workspace',
+    },
   })
   role: {
     name: string;
@@ -74,7 +77,8 @@ export class UserResponseDto {
   };
 
   @ApiProperty({
-    description: 'Role permissions for accessing various resources in the workspace',
+    description:
+      'Role permissions for accessing various resources in the workspace',
     required: false,
     example: [
       { action: 'VIEW_PROFILE', resource: 'USER' },
@@ -84,7 +88,8 @@ export class UserResponseDto {
   rolePermissions: { action: string; resource: string }[];
 
   @ApiProperty({
-    description: 'User permissions for accessing various resources in the workspace',
+    description:
+      'User permissions for accessing various resources in the workspace',
     required: false,
     example: [
       { action: 'VIEW_PROFILE', resource: 'USER', allowed: true },

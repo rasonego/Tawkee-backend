@@ -19,8 +19,7 @@ import { CreatePlanFromStripeDto } from './dto/create-plan-from-stripe.dto';
 import { ConfigService } from '@nestjs/config';
 import { UpdatePlanFromFormDto } from './dto/update-plan-from-form.dto';
 import { UpdateSubscriptionOverridesDto } from './dto/update-subscription-overrides.dto';
-import { ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { DashboardMetricsDto } from 'src/workspaces/dto/dashboard-metrics.dto';
+import { ApiOperation } from '@nestjs/swagger';
 import { WorkspacePaymentBalanceItem } from './dto/workspace-payment-balance-item';
 import { differenceInDays, isValid, parseISO } from 'date-fns';
 
@@ -94,16 +93,12 @@ export class StripeController {
   }
 
   @Post('plans/create-from-form')
-  async createPlanFromForm(
-    @Body() dto: UpdatePlanFromFormDto
-  ) {
+  async createPlanFromForm(@Body() dto: UpdatePlanFromFormDto) {
     return this.stripeService.createPlanFromForm(dto);
   }
 
   @Post('plans/update-from-form')
-  async updatePlanFromForm(
-    @Body() dto: UpdatePlanFromFormDto
-  ) {
+  async updatePlanFromForm(@Body() dto: UpdatePlanFromFormDto) {
     return this.stripeService.updatePlanFromForm(dto);
   }
 
@@ -113,7 +108,6 @@ export class StripeController {
   ) {
     return this.stripeService.updateSubscriptionOverrides(dto);
   }
-
 
   @Post('plans/sync-from-stripe')
   async createPlanFromStripe(
@@ -186,7 +180,8 @@ export class StripeController {
 
   @Get('billing/payments/:workspaceId')
   @ApiOperation({
-    summary: 'Retrieve daily cumulative payments (plan and one-time) for a workspace or all workspaces',
+    summary:
+      'Retrieve daily cumulative payments (plan and one-time) for a workspace or all workspaces',
   })
   async getWorkspacePaymentsInPeriod(
     @Param('workspaceId') workspaceIdParam: string,
@@ -194,24 +189,38 @@ export class StripeController {
     @Query('endDate') endDateStr: string
   ): Promise<WorkspacePaymentBalanceItem[]> {
     if (!startDateStr || !endDateStr) {
-      throw new HttpException('startDate and endDate are required', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'startDate and endDate are required',
+        HttpStatus.BAD_REQUEST
+      );
     }
 
     const startDate = parseISO(startDateStr);
     const endDate = parseISO(endDateStr);
 
     if (!isValid(startDate) || !isValid(endDate)) {
-      throw new HttpException('Invalid startDate or endDate format', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Invalid startDate or endDate format',
+        HttpStatus.BAD_REQUEST
+      );
     }
 
     const rangeDays = differenceInDays(endDate, startDate);
     if (rangeDays > 180) {
-      throw new HttpException('Date range cannot exceed 180 days', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Date range cannot exceed 180 days',
+        HttpStatus.BAD_REQUEST
+      );
     }
 
     // Interpret "all" keyword to fetch from all workspaces
-    const workspaceId = workspaceIdParam.toLowerCase() === 'all' ? null : workspaceIdParam;
+    const workspaceId =
+      workspaceIdParam.toLowerCase() === 'all' ? null : workspaceIdParam;
 
-    return this.stripeService.getWorkspacePaymentsInPeriod(workspaceId, startDate, endDate);
+    return this.stripeService.getWorkspacePaymentsInPeriod(
+      workspaceId,
+      startDate,
+      endDate
+    );
   }
 }

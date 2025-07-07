@@ -35,7 +35,9 @@ export class CreditController {
   }
 
   @Get('/daily-balance/:workspaceId')
-  @ApiOperation({ summary: 'Get daily credit balance within current subscription period' })
+  @ApiOperation({
+    summary: 'Get daily credit balance within current subscription period',
+  })
   @ApiQuery({
     name: 'startDate',
     required: false,
@@ -53,8 +55,16 @@ export class CreditController {
     description: 'Daily balance of plan and extra credits',
     schema: {
       example: [
-        { date: '2025-06-01', planCreditsRemaining: 80, extraCreditsRemaining: 50 },
-        { date: '2025-06-02', planCreditsRemaining: 75, extraCreditsRemaining: 50 },
+        {
+          date: '2025-06-01',
+          planCreditsRemaining: 80,
+          extraCreditsRemaining: 50,
+        },
+        {
+          date: '2025-06-02',
+          planCreditsRemaining: 75,
+          extraCreditsRemaining: 50,
+        },
       ],
     },
   })

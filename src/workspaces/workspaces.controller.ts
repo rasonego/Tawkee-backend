@@ -15,7 +15,7 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
-import { PaginatedWorkspaceResponseDto, WorkspaceDto } from './dto/workspace.dto';
+import { PaginatedWorkspaceResponseDto } from './dto/workspace.dto';
 import { DashboardMetricsDto } from './dto/dashboard-metrics.dto';
 import { DashboardMetricsQueryDto } from './dto/dashboard-metrics-query.dto';
 import { differenceInDays, parseISO, isValid, subDays } from 'date-fns';
@@ -30,10 +30,13 @@ export class WorkspacesController {
   constructor(private readonly workspacesService: WorkspacesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all workspaces with pagination and optional search' })
+  @ApiOperation({
+    summary: 'List all workspaces with pagination and optional search',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Returns paginated list of workspaces with subscription and user email',
+    description:
+      'Returns paginated list of workspaces with subscription and user email',
     type: PaginatedWorkspaceResponseDto,
   })
   @ApiPaginationQueries()
@@ -44,13 +47,19 @@ export class WorkspacesController {
   }
 
   @Get('basic')
-  @ApiOperation({ summary: 'List all workspaces (id, name, email, isActive) without pagination' })
+  @ApiOperation({
+    summary:
+      'List all workspaces (id, name, email, isActive) without pagination',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Returns all workspace ids, names, and user emails without pagination',
+    description:
+      'Returns all workspace ids, names, and user emails without pagination',
     type: [Object], // Ideally replace with a DTO class if available
   })
-  async findAllBasic(): Promise<{ id: string; name: string; email: string | null }[]> {
+  async findAllBasic(): Promise<
+    { id: string; name: string; email: string | null }[]
+  > {
     return this.workspacesService.findAllWorkspacesBasicInfo();
   }
 
@@ -104,18 +113,24 @@ export class WorkspacesController {
     return this.workspacesService.getDetailedWorkspace(workspaceId);
   }
 
-
   @Put(':workspaceId/activate')
   @ApiOperation({ summary: 'Activate a workspace' })
   @ApiResponse({ status: 200, description: 'Workspace activated successfully' })
-  async activateWorkspace(@Param('workspaceId') workspaceId: string): Promise<void> {
+  async activateWorkspace(
+    @Param('workspaceId') workspaceId: string
+  ): Promise<void> {
     await this.workspacesService.activateWorkspace(workspaceId);
   }
 
   @Put(':workspaceId/deactivate')
   @ApiOperation({ summary: 'Deactivate a workspace and all its agents' })
-  @ApiResponse({ status: 200, description: 'Workspace deactivated successfully' })
-  async deactivateWorkspace(@Param('workspaceId') workspaceId: string): Promise<void> {
+  @ApiResponse({
+    status: 200,
+    description: 'Workspace deactivated successfully',
+  })
+  async deactivateWorkspace(
+    @Param('workspaceId') workspaceId: string
+  ): Promise<void> {
     await this.workspacesService.deactivateWorkspace(workspaceId);
-  }  
+  }
 }

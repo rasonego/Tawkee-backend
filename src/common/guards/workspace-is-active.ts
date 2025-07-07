@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Request } from 'express';
 import { PrismaService } from 'src/prisma/prisma.service';
 
@@ -26,8 +32,8 @@ export class WorkspaceIsActiveGuard implements CanActivate {
       select: {
         name: true,
         isActive: true,
-        isDeleted: true
-      }
+        isDeleted: true,
+      },
     });
 
     if (!workspace) {
@@ -35,13 +41,17 @@ export class WorkspaceIsActiveGuard implements CanActivate {
     }
 
     if (workspace.isDeleted) {
-      throw new UnauthorizedException(`Workspace ${workspace.name} has been deleted.`);
+      throw new UnauthorizedException(
+        `Workspace ${workspace.name} has been deleted.`
+      );
     }
 
     if (!workspace.isActive) {
-      throw new UnauthorizedException(`Workspace ${workspace.name} is not active.`);
+      throw new UnauthorizedException(
+        `Workspace ${workspace.name} is not active.`
+      );
     }
- 
+
     return true;
   }
 }

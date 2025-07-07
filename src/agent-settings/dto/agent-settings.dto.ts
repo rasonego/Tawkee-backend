@@ -45,7 +45,7 @@ export class AgentSettingsDto {
   })
   @IsBoolean()
   reminderIntervalMinutes: number;
-  
+
   @ApiProperty({
     description:
       'Defines if the message will be split in various, in case it is huge',
@@ -70,8 +70,9 @@ export class AgentSettingsDto {
   limitSubjects: boolean;
 
   @ApiProperty({
-    description: 'Defines how long the agent should wait before sending a response, simulating a more human-like typing experience.',
-    example: 5
+    description:
+      'Defines how long the agent should wait before sending a response, simulating a more human-like typing experience.',
+    example: 5,
   })
   @IsEnum(ResponseDelayOptions)
   responseDelaySeconds?: ResponseDelayOptions;

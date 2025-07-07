@@ -1,11 +1,18 @@
-import { Injectable, NotAcceptableException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotAcceptableException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditService } from 'src/credits/credit.service';
-import { PaginatedWorkspaceResponseDto, WorkspaceDto } from './dto/workspace.dto';
+import { PaginatedWorkspaceResponseDto } from './dto/workspace.dto';
 import { AIModel, SubscriptionStatus } from '@prisma/client';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 
-export type OverrideValue = { value: number | 'UNLIMITED' | null; explicitlySet: boolean };
+export type OverrideValue = {
+  value: number | 'UNLIMITED' | null;
+  explicitlySet: boolean;
+};
 
 export function hasExplicitValue(override: unknown): override is OverrideValue {
   return (
@@ -23,12 +30,14 @@ export class WorkspacesService {
     private readonly creditService: CreditService
   ) {}
 
-  async findAll(paginationDto: PaginationDto): Promise<PaginatedWorkspaceResponseDto> {
+  async findAll(
+    paginationDto: PaginationDto
+  ): Promise<PaginatedWorkspaceResponseDto> {
     const { page = 1, pageSize = 3 } = paginationDto;
     const skip = (page - 1) * pageSize;
 
     const where = {
-      isDeleted: false
+      isDeleted: false,
     };
 
     const total = await this.prisma.workspace.count({ where });
@@ -72,7 +81,9 @@ export class WorkspacesService {
         subscription: subscription
           ? {
               status: subscription.status,
-              plan: subscription.plan ? { name: subscription.plan.name } : undefined,
+              plan: subscription.plan
+                ? { name: subscription.plan.name }
+                : undefined,
             }
           : null,
       };
@@ -85,11 +96,13 @@ export class WorkspacesService {
         pageSize,
         total,
         totalPages,
-      }
+      },
     };
   }
 
-  async findAllWorkspacesBasicInfo(): Promise<{ id: string; name: string; email: string | null }[]> {
+  async findAllWorkspacesBasicInfo(): Promise<
+    { id: string; name: string; email: string | null }[]
+  > {
     const workspaces = await this.prisma.workspace.findMany({
       where: { isDeleted: false },
       select: {
@@ -104,7 +117,7 @@ export class WorkspacesService {
       },
     });
 
-    return workspaces.map(ws => ({
+    return workspaces.map((ws) => ({
       id: ws.id,
       name: ws.name,
       isActive: ws.isActive,
@@ -494,8 +507,9 @@ export class WorkspacesService {
               workspaceName: record.workspace?.name ?? 'Unknown',
             };
           }
-          creditByDate[dateKey].creditsByWorkspace[record.workspaceId].credits +=
-            record.quantity;
+          creditByDate[dateKey].creditsByWorkspace[
+            record.workspaceId
+          ].credits += record.quantity;
         }
 
         if (record.model) {
@@ -653,11 +667,11 @@ export class WorkspacesService {
               select: {
                 id: true,
                 name: true,
-                description: true
-              }
-            }
-          }
-        }
+                description: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -668,9 +682,9 @@ export class WorkspacesService {
           select: {
             resource: true,
             action: true,
-            description: true
-          }
-        },      
+            description: true,
+          },
+        },
       },
     });
 
@@ -681,11 +695,11 @@ export class WorkspacesService {
         permission: {
           select: {
             resource: true,
-            action: true
-          }
-        },      
+            action: true,
+          },
+        },
       },
-    });  
+    });
 
     if (!ws) {
       throw new Error(`Workspace with ID ${workspaceId} not found`);
@@ -718,19 +732,34 @@ export class WorkspacesService {
               ? { agentLimitOverrides: subscription.agentLimitOverrides.value }
               : {}),
             ...(hasExplicitValue(subscription.creditsLimitOverrides)
-              ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value }
-              : {}),            
+              ? {
+                  creditsLimitOverrides:
+                    subscription.creditsLimitOverrides.value,
+                }
+              : {}),
             ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
-              ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value }
+              ? {
+                  trainingTextLimitOverrides:
+                    subscription.trainingTextLimitOverrides.value,
+                }
               : {}),
             ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
-              ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value }
+              ? {
+                  trainingWebsiteLimitOverrides:
+                    subscription.trainingWebsiteLimitOverrides.value,
+                }
               : {}),
             ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
-              ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value }
+              ? {
+                  trainingDocumentLimitOverrides:
+                    subscription.trainingDocumentLimitOverrides.value,
+                }
               : {}),
             ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
-              ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value }
+              ? {
+                  trainingVideoLimitOverrides:
+                    subscription.trainingVideoLimitOverrides.value,
+                }
               : {}),
             plan: subscription.plan && {
               name: subscription.plan.name,
@@ -770,21 +799,21 @@ export class WorkspacesService {
               provider: ws.user.provider,
               emailVerified: ws.user.emailVerified,
               role: ws.user.role,
-              rolePermissions: rolePermissions.map(permission => ({
+              rolePermissions: rolePermissions.map((permission) => ({
                 resource: permission.permission.resource,
                 action: permission.permission.action,
-                description: permission.permission.description
+                description: permission.permission.description,
               })),
-              userPermissions: userPermissions.map(permission => ({
+              userPermissions: userPermissions.map((permission) => ({
                 allowed: permission.allowed,
                 resource: permission.permission.resource,
-                action: permission.permission.action
+                action: permission.permission.action,
               })),
               createdAt: ws.user.createdAt.toISOString(),
-              updatedAt: ws.user.updatedAt.toISOString()
+              updatedAt: ws.user.updatedAt.toISOString(),
             },
           ]
-        : []
+        : [],
     };
   }
 }

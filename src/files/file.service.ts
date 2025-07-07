@@ -10,8 +10,12 @@ export class FileService {
   private readonly uploadsFolder: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.tmpFolder = this.configService.get<string>('TMP_FOLDER') || path.resolve(__dirname, '..', '..', 'tmp');
-    this.uploadsFolder = this.configService.get<string>('UPLOADS_FOLDER') || path.resolve(__dirname, '..', '..', 'uploads');
+    this.tmpFolder =
+      this.configService.get<string>('TMP_FOLDER') ||
+      path.resolve(__dirname, '..', '..', 'tmp');
+    this.uploadsFolder =
+      this.configService.get<string>('UPLOADS_FOLDER') ||
+      path.resolve(__dirname, '..', '..', 'uploads');
 
     this.ensureFoldersExist(); // 👈 initialize folders
   }
@@ -19,7 +23,9 @@ export class FileService {
   private async ensureFoldersExist() {
     await fs.mkdir(this.tmpFolder, { recursive: true });
     await fs.mkdir(this.uploadsFolder, { recursive: true });
-    this.logger.log(`Folders ensured: ${this.tmpFolder}, ${this.uploadsFolder}`);
+    this.logger.log(
+      `Folders ensured: ${this.tmpFolder}, ${this.uploadsFolder}`
+    );
   }
 
   async saveFile(file: string): Promise<string> {

@@ -48,7 +48,11 @@ export class UsersService {
   async create(
     createUserDto: CreateUserDto,
     roleName: string = 'CLIENT', // Optional role parameter, defaults to CLIENT
-    userPermissionsEntries: { action: string; resource: string; allowed: boolean }[] = [] // Optional permissions array, defaults to empty
+    userPermissionsEntries: {
+      action: string;
+      resource: string;
+      allowed: boolean;
+    }[] = [] // Optional permissions array, defaults to empty
   ): Promise<{ user: UserResponseDto; token: string }> {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: createUserDto.email },
@@ -94,7 +98,9 @@ export class UsersService {
         if (!plan) throw new Error('No valid public trial plan found');
 
         const now = new Date();
-        const trialEnd = new Date(now.getTime() + (plan.trialDays ?? 14) * 86400000);
+        const trialEnd = new Date(
+          now.getTime() + (plan.trialDays ?? 14) * 86400000
+        );
 
         const subscription = await prisma.subscription.create({
           data: {
@@ -134,7 +140,7 @@ export class UsersService {
         });
 
         const role = await prisma.role.findUnique({
-          where: { name: roleName }
+          where: { name: roleName },
         });
 
         const user = await prisma.user.create({
@@ -145,7 +151,7 @@ export class UsersService {
             workspaceId: workspace.id,
             provider: 'password',
             emailVerified: false,
-            roleId: role.id
+            roleId: role.id,
           },
         });
 
@@ -159,7 +165,10 @@ export class UsersService {
         if (userPermissionsEntries.length > 0) {
           const userPermissionsData = await Promise.all(
             userPermissionsEntries.map(async (permission) => {
-              const permissionId = await this.getPermissionId(permission.resource, permission.action); // Get permission ID asynchronously
+              const permissionId = await this.getPermissionId(
+                permission.resource,
+                permission.action
+              ); // Get permission ID asynchronously
               return {
                 userId: user.id,
                 permissionId: permissionId, // Use the permission ID
@@ -175,30 +184,32 @@ export class UsersService {
         }
 
         const rolePermissions = await this.prisma.rolePermission.findMany({
-          where: { roleId: role.id},
+          where: { roleId: role.id },
           include: {
             permission: {
               select: {
                 resource: true,
-                action: true
-              }
-            }
-          }
+                action: true,
+              },
+            },
+          },
         });
 
         const userPermissions = await this.prisma.userPermission.findMany({
-          where: { userId: user.id},
+          where: { userId: user.id },
           include: {
             permission: {
               select: {
                 resource: true,
-                action: true
-              }
-            }
-          }
+                action: true,
+              },
+            },
+          },
         });
 
-        const stripePrice = await this.stripeService.getPriceDetailsById(plan.stripePriceId);
+        const stripePrice = await this.stripeService.getPriceDetailsById(
+          plan.stripePriceId
+        );
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, stripePriceId, ...sanitizedPlan } = plan;
@@ -219,15 +230,19 @@ export class UsersService {
               name: role.name,
               description: role.description,
             },
-            rolePermissions: rolePermissions.map(permission => { return {
-              resource: permission.permission.resource,
-              action: permission.permission.action
-            }}),
-            userPermissions: userPermissions.map(permission => { return {
-              allowed: permission.allowed,
-              resource: permission.permission.resource,
-              action: permission.permission.action
-            }}),
+            rolePermissions: rolePermissions.map((permission) => {
+              return {
+                resource: permission.permission.resource,
+                action: permission.permission.action,
+              };
+            }),
+            userPermissions: userPermissions.map((permission) => {
+              return {
+                allowed: permission.allowed,
+                resource: permission.permission.resource,
+                action: permission.permission.action,
+              };
+            }),
             smartRecharge: {
               threshold: 1000,
               rechargeAmount: 1000,
@@ -239,23 +254,41 @@ export class UsersService {
               trialEnd: subscription.trialEnd?.toISOString(),
 
               ...(hasExplicitValue(subscription.agentLimitOverrides)
-                ? { agentLimitOverrides: subscription.agentLimitOverrides.value as number }
+                ? {
+                    agentLimitOverrides: subscription.agentLimitOverrides
+                      .value as number,
+                  }
                 : {}),
               ...(hasExplicitValue(subscription.creditsLimitOverrides)
-                ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value as number }
-                : {}),              
+                ? {
+                    creditsLimitOverrides: subscription.creditsLimitOverrides
+                      .value as number,
+                  }
+                : {}),
               ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
-                ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value as number }
+                ? {
+                    trainingTextLimitOverrides: subscription
+                      .trainingTextLimitOverrides.value as number,
+                  }
                 : {}),
               ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
-                ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value as number }
+                ? {
+                    trainingWebsiteLimitOverrides: subscription
+                      .trainingWebsiteLimitOverrides.value as number,
+                  }
                 : {}),
               ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
-                ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value as number }
+                ? {
+                    trainingDocumentLimitOverrides: subscription
+                      .trainingDocumentLimitOverrides.value as number,
+                  }
                 : {}),
               ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
-                ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value as number }
-                : {}),               
+                ? {
+                    trainingVideoLimitOverrides: subscription
+                      .trainingVideoLimitOverrides.value as number,
+                  }
+                : {}),
             },
             plan: {
               ...sanitizedPlan,
@@ -267,7 +300,9 @@ export class UsersService {
         };
       });
 
-      if (this.configService.get<string>('REQUIRE_EMAIL_VERIFICATION') !== 'false') {
+      if (
+        this.configService.get<string>('REQUIRE_EMAIL_VERIFICATION') !== 'false'
+      ) {
         await this.verificationService.sendVerificationEmail(result.user.id);
       }
 
@@ -283,11 +318,13 @@ export class UsersService {
   ): Promise<{ user: UserResponseDto; token: string }> {
     let user = await this.prisma.user.findUnique({
       where: { email: loginUserDto.email },
-      include: { workspace: {
-        select: {
-          isActive: true
-        }
-      } },
+      include: {
+        workspace: {
+          select: {
+            isActive: true,
+          },
+        },
+      },
     });
 
     if (!user || !user.password) {
@@ -324,8 +361,8 @@ export class UsersService {
     user = await this.prisma.user.update({
       where: { id: user.id },
       data: { provider: 'password' },
-      include: { 
-        workspace: true
+      include: {
+        workspace: true,
       },
     });
 
@@ -335,7 +372,7 @@ export class UsersService {
 
     const subscription = await this.prisma.subscription.findFirst({
       where: {
-        workspaceId: user.workspaceId
+        workspaceId: user.workspaceId,
       },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -390,19 +427,19 @@ export class UsersService {
         id: user.id,
       },
       select: {
-        role: true      
+        role: true,
       },
     });
-    
+
     const rolePermissions = await this.prisma.rolePermission.findMany({
       where: { roleId: roleOfUser.role.id },
       select: {
         permission: {
           select: {
             resource: true,
-            action: true
-          }
-        },      
+            action: true,
+          },
+        },
       },
     });
 
@@ -415,11 +452,11 @@ export class UsersService {
         permission: {
           select: {
             resource: true,
-            action: true
-          }
-        },      
+            action: true,
+          },
+        },
       },
-    });  
+    });
 
     return {
       user: {
@@ -434,15 +471,19 @@ export class UsersService {
         avatar: user.avatar || undefined,
         emailVerified: user.emailVerified || false,
         role: roleOfUser.role,
-        rolePermissions: rolePermissions.map(permission => { return {
-          resource: permission.permission.resource,
-          action: permission.permission.action
-        }}),
-        userPermissions: userPermissions.map(permission => { return {
-          allowed: permission.allowed,
-          resource: permission.permission.resource,
-          action: permission.permission.action
-        }}),
+        rolePermissions: rolePermissions.map((permission) => {
+          return {
+            resource: permission.permission.resource,
+            action: permission.permission.action,
+          };
+        }),
+        userPermissions: userPermissions.map((permission) => {
+          return {
+            allowed: permission.allowed,
+            resource: permission.permission.resource,
+            action: permission.permission.action,
+          };
+        }),
         smartRecharge: smartRecharge || undefined,
         subscription: subscription
           ? {
@@ -450,24 +491,42 @@ export class UsersService {
               trialEnd: subscription.trialEnd?.toISOString(),
               featureOverrides: subscription.featureOverrides as string[],
 
-            ...(hasExplicitValue(subscription.agentLimitOverrides)
-              ? { agentLimitOverrides: subscription.agentLimitOverrides.value as number }
-              : {}),
-            ...(hasExplicitValue(subscription.creditsLimitOverrides)
-              ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value as number }
-              : {}),              
-            ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
-              ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value as number }
-              : {}),
-            ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
-              ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value as number }
-              : {}),
-            ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
-              ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value as number }
-              : {}),
-            ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
-              ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value as number }
-              : {}), 
+              ...(hasExplicitValue(subscription.agentLimitOverrides)
+                ? {
+                    agentLimitOverrides: subscription.agentLimitOverrides
+                      .value as number,
+                  }
+                : {}),
+              ...(hasExplicitValue(subscription.creditsLimitOverrides)
+                ? {
+                    creditsLimitOverrides: subscription.creditsLimitOverrides
+                      .value as number,
+                  }
+                : {}),
+              ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
+                ? {
+                    trainingTextLimitOverrides: subscription
+                      .trainingTextLimitOverrides.value as number,
+                  }
+                : {}),
+              ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
+                ? {
+                    trainingWebsiteLimitOverrides: subscription
+                      .trainingWebsiteLimitOverrides.value as number,
+                  }
+                : {}),
+              ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
+                ? {
+                    trainingDocumentLimitOverrides: subscription
+                      .trainingDocumentLimitOverrides.value as number,
+                  }
+                : {}),
+              ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
+                ? {
+                    trainingVideoLimitOverrides: subscription
+                      .trainingVideoLimitOverrides.value as number,
+                  }
+                : {}),
             }
           : undefined,
         plan:
@@ -486,12 +545,12 @@ export class UsersService {
   async findOne(id: string): Promise<UserResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      include: { 
+      include: {
         workspace: {
           select: {
-            isActive: true
-          }
-        }
+            isActive: true,
+          },
+        },
       },
     });
 
@@ -503,7 +562,7 @@ export class UsersService {
 
     const subscription = await this.prisma.subscription.findFirst({
       where: {
-        workspaceId: user.workspaceId
+        workspaceId: user.workspaceId,
       },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -549,19 +608,19 @@ export class UsersService {
         id: user.id,
       },
       select: {
-        role: true      
+        role: true,
       },
     });
-    
+
     const rolePermissions = await this.prisma.rolePermission.findMany({
       where: { roleId: roleOfUser.role.id },
       select: {
         permission: {
           select: {
             resource: true,
-            action: true
-          }
-        },      
+            action: true,
+          },
+        },
       },
     });
 
@@ -574,11 +633,11 @@ export class UsersService {
         permission: {
           select: {
             resource: true,
-            action: true
-          }
-        },      
+            action: true,
+          },
+        },
       },
-    });   
+    });
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { stripePriceId, ...sanitizedPlan } = subscription.plan;
@@ -595,15 +654,19 @@ export class UsersService {
       avatar: user.avatar || undefined,
       emailVerified: user.emailVerified || false,
       role: roleOfUser.role,
-      rolePermissions: rolePermissions.map(permission => { return {
-        resource: permission.permission.resource,
-        action: permission.permission.action
-      }}),
-      userPermissions: userPermissions.map(permission => { return {
-        allowed: permission.allowed,
-        resource: permission.permission.resource,
-        action: permission.permission.action
-      }}),
+      rolePermissions: rolePermissions.map((permission) => {
+        return {
+          resource: permission.permission.resource,
+          action: permission.permission.action,
+        };
+      }),
+      userPermissions: userPermissions.map((permission) => {
+        return {
+          allowed: permission.allowed,
+          resource: permission.permission.resource,
+          action: permission.permission.action,
+        };
+      }),
       smartRecharge: smartRecharge || undefined,
       subscription: subscription
         ? {
@@ -612,23 +675,41 @@ export class UsersService {
             featureOverrides: subscription.featureOverrides as string[],
 
             ...(hasExplicitValue(subscription.agentLimitOverrides)
-              ? { agentLimitOverrides: subscription.agentLimitOverrides.value as number }
+              ? {
+                  agentLimitOverrides: subscription.agentLimitOverrides
+                    .value as number,
+                }
               : {}),
             ...(hasExplicitValue(subscription.creditsLimitOverrides)
-              ? { creditsLimitOverrides: subscription.creditsLimitOverrides.value as number }
-              : {}),              
+              ? {
+                  creditsLimitOverrides: subscription.creditsLimitOverrides
+                    .value as number,
+                }
+              : {}),
             ...(hasExplicitValue(subscription.trainingTextLimitOverrides)
-              ? { trainingTextLimitOverrides: subscription.trainingTextLimitOverrides.value as number }
+              ? {
+                  trainingTextLimitOverrides: subscription
+                    .trainingTextLimitOverrides.value as number,
+                }
               : {}),
             ...(hasExplicitValue(subscription.trainingWebsiteLimitOverrides)
-              ? { trainingWebsiteLimitOverrides: subscription.trainingWebsiteLimitOverrides.value as number }
+              ? {
+                  trainingWebsiteLimitOverrides: subscription
+                    .trainingWebsiteLimitOverrides.value as number,
+                }
               : {}),
             ...(hasExplicitValue(subscription.trainingDocumentLimitOverrides)
-              ? { trainingDocumentLimitOverrides: subscription.trainingDocumentLimitOverrides.value as number }
+              ? {
+                  trainingDocumentLimitOverrides: subscription
+                    .trainingDocumentLimitOverrides.value as number,
+                }
               : {}),
             ...(hasExplicitValue(subscription.trainingVideoLimitOverrides)
-              ? { trainingVideoLimitOverrides: subscription.trainingVideoLimitOverrides.value as number }
-              : {}), 
+              ? {
+                  trainingVideoLimitOverrides: subscription
+                    .trainingVideoLimitOverrides.value as number,
+                }
+              : {}),
           }
         : undefined,
       plan:
@@ -700,7 +781,8 @@ export class UsersService {
       // Step 3: Create user permissions based on the role permissions if not exist (done only once)
       for (const rolePermission of rolePermissions) {
         const exists = userPermissions.some(
-          (userPermission) => userPermission.permissionId === rolePermission.permissionId
+          (userPermission) =>
+            userPermission.permissionId === rolePermission.permissionId
         );
 
         // If permission does not exist for user, create it with allowed = true
@@ -718,7 +800,9 @@ export class UsersService {
       // Step 4: Now, update the permissions as per the input provided
       for (const perm of updateUserPermissionsDto.permissions) {
         const permission = await this.prisma.permission.findUnique({
-          where: { action_resource: { action: perm.action, resource: perm.resource } },
+          where: {
+            action_resource: { action: perm.action, resource: perm.resource },
+          },
         });
 
         if (!permission) {
@@ -742,11 +826,16 @@ export class UsersService {
       return { success: true };
     } catch (error) {
       console.error(error);
-      throw new BadRequestException('An error occurred while updating permissions');
+      throw new BadRequestException(
+        'An error occurred while updating permissions'
+      );
     }
-  }  
+  }
 
-  private async getPermissionId(resource: string, action: string): Promise<string | null> {
+  private async getPermissionId(
+    resource: string,
+    action: string
+  ): Promise<string | null> {
     try {
       const permission = await this.prisma.permission.findUnique({
         where: {
@@ -756,7 +845,7 @@ export class UsersService {
           },
         },
       });
-      
+
       return permission?.id || null;
     } catch (error) {
       this.logger.error(`Error fetching permission ID: ${error.message}`);

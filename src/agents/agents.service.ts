@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { OverrideValue, WorkspacesService } from '../workspaces/workspaces.service';
+import {
+  OverrideValue,
+  WorkspacesService,
+} from '../workspaces/workspaces.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -23,7 +26,9 @@ export class AgentsService {
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async permanentlyDeleteStaleAgentsTask() {
-    this.logger.log('Running daily task to permanently delete agents soft-deleted over 60 days ago...');
+    this.logger.log(
+      'Running daily task to permanently delete agents soft-deleted over 60 days ago...'
+    );
 
     const cutoffDate = subDays(new Date(), 60);
 
@@ -58,7 +63,9 @@ export class AgentsService {
         }
       } catch (error) {
         failureCount++;
-        this.logger.error(`Failed to permanently delete agent ${id}: ${error.message}`);
+        this.logger.error(
+          `Failed to permanently delete agent ${id}: ${error.message}`
+        );
       }
     }
 
@@ -67,7 +74,11 @@ export class AgentsService {
     );
   }
 
-  async findAll(workspaceId: string, paginationDto: PaginationDto, asAdmin: boolean = false) {
+  async findAll(
+    workspaceId: string,
+    paginationDto: PaginationDto,
+    asAdmin: boolean = false
+  ) {
     // Ensure the workspace exists
     await this.workspacesService.findOne(workspaceId);
 
@@ -90,8 +101,8 @@ export class AgentsService {
         isDeleted: false,
         ...(query
           ? { name: { contains: query, mode: 'insensitive' as any } }
-          : {}),        
-      }      
+          : {}),
+      },
     });
 
     // Calculate total pages
@@ -181,14 +192,14 @@ export class AgentsService {
       subscription = await this.prisma.subscription.findFirst({
         where: { workspaceId },
         select: {
-            agentLimitOverrides: true,
-            plan: {
-              select: {
-                agentLimit: true
-              }
-            }
-        }
-      })
+          agentLimitOverrides: true,
+          plan: {
+            select: {
+              agentLimit: true,
+            },
+          },
+        },
+      });
     }
 
     // Transform the data to match the EnhancedAgentDto structure
@@ -221,7 +232,8 @@ export class AgentsService {
       };
     });
 
-    const agentLimitOverrides = subscription?.agentLimitOverrides as OverrideValue;
+    const agentLimitOverrides =
+      subscription?.agentLimitOverrides as OverrideValue;
 
     return {
       data: enhancedAgents,
@@ -234,8 +246,8 @@ export class AgentsService {
       subscriptionLimits: {
         agentLimit: agentLimitOverrides?.explicitlySet
           ? agentLimitOverrides.value
-          : subscription?.plan?.agentLimit
-      }
+          : subscription?.plan?.agentLimit,
+      },
     };
   }
 
@@ -535,7 +547,7 @@ export class AgentsService {
               },
             },
           },
-        }
+        },
       },
     });
 
@@ -544,7 +556,7 @@ export class AgentsService {
     }
 
     const subscription = await this.prisma.subscription.findFirst({
-      where: { workspaceId: agent.workspaceId},
+      where: { workspaceId: agent.workspaceId },
       select: {
         featureOverrides: true,
         creditsLimitOverrides: true,
@@ -562,17 +574,23 @@ export class AgentsService {
             trainingWebsiteLimit: true,
             trainingVideoLimit: true,
             trainingDocumentLimit: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
-    const creditsLimitOverrides = subscription?.creditsLimitOverrides as OverrideValue;
-    const agentLimitOverrides = subscription?.agentLimitOverrides as OverrideValue;
-    const trainingTextLimitOverrides = subscription?.trainingTextLimitOverrides as OverrideValue;
-    const trainingWebsiteLimitOverrides = subscription?.trainingWebsiteLimitOverrides as OverrideValue;
-    const trainingVideoLimitOverrides = subscription?.trainingVideoLimitOverrides as OverrideValue;
-    const trainingDocumentLimitOverrides = subscription?.trainingDocumentLimitOverrides as OverrideValue;
+    const creditsLimitOverrides =
+      subscription?.creditsLimitOverrides as OverrideValue;
+    const agentLimitOverrides =
+      subscription?.agentLimitOverrides as OverrideValue;
+    const trainingTextLimitOverrides =
+      subscription?.trainingTextLimitOverrides as OverrideValue;
+    const trainingWebsiteLimitOverrides =
+      subscription?.trainingWebsiteLimitOverrides as OverrideValue;
+    const trainingVideoLimitOverrides =
+      subscription?.trainingVideoLimitOverrides as OverrideValue;
+    const trainingDocumentLimitOverrides =
+      subscription?.trainingDocumentLimitOverrides as OverrideValue;
 
     const {
       settings,
@@ -632,8 +650,8 @@ export class AgentsService {
           : subscription.plan.trainingVideoLimit,
         trainingDocumentLimit: trainingDocumentLimitOverrides.explicitlySet
           ? trainingDocumentLimitOverrides.value
-          : subscription.plan.trainingDocumentLimit     
-      }
+          : subscription.plan.trainingDocumentLimit,
+      },
     };
   }
 
@@ -830,32 +848,49 @@ export class AgentsService {
     };
   }
 
-  async remove(id: string, asAdmin?: boolean): Promise<{ success: boolean; message?: string, deletedPermanently: boolean; }> {
+  async remove(
+    id: string,
+    asAdmin?: boolean
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    deletedPermanently: boolean;
+  }> {
     let deletedPermanently: boolean = false;
     try {
       if (asAdmin) {
         // Check if agent has been marked for deletion
         const agent = await this.prisma.agent.findUnique({
-          where: { id, isDeleted: true}
+          where: { id, isDeleted: true },
         });
 
         if (agent) {
           const configsOfChannels = await this.prisma.channel.findMany({
             where: { agentId: id },
             select: {
-              config: true
-            }
+              config: true,
+            },
           });
 
           const wahaInstanceNames: string[] = [];
 
-          for (let { config } of configsOfChannels) {
-            if (typeof config === 'object' && config !== null && 'wahaApi' in config) {
+          for (const { config } of configsOfChannels) {
+            if (
+              typeof config === 'object' &&
+              config !== null &&
+              'wahaApi' in config
+            ) {
               const confObj = config as Prisma.JsonObject;
               const wahaApi = confObj['wahaApi'];
-              
-              if (typeof wahaApi === 'object' && wahaApi !== null && 'instanceName' in wahaApi) {
-                const instanceName = (wahaApi as Prisma.JsonObject)['instanceName'];
+
+              if (
+                typeof wahaApi === 'object' &&
+                wahaApi !== null &&
+                'instanceName' in wahaApi
+              ) {
+                const instanceName = (wahaApi as Prisma.JsonObject)[
+                  'instanceName'
+                ];
                 if (typeof instanceName === 'string') {
                   wahaInstanceNames.push(instanceName);
                 }
@@ -863,18 +898,17 @@ export class AgentsService {
             }
           }
 
-          for (let instanceName of wahaInstanceNames) {
+          for (const instanceName of wahaInstanceNames) {
             await this.wahaApiService.deleteInstance(instanceName);
-          }   
+          }
 
           // Actually delete from database
           await this.prisma.agent.delete({
-            where: { id }
+            where: { id },
           });
           deletedPermanently = true;
-
         } else {
-          // Mark as deleted       
+          // Mark as deleted
           await this.prisma.agent.update({
             where: { id },
             data: { isDeleted: true, isActive: false, updatedAt: new Date() },
@@ -883,19 +917,29 @@ export class AgentsService {
           const configsOfChannels = await this.prisma.channel.findMany({
             where: { agentId: id },
             select: {
-              config: true
-            }
+              config: true,
+            },
           });
 
           const wahaInstanceNames: string[] = [];
 
-          for (let { config } of configsOfChannels) {
-            if (typeof config === 'object' && config !== null && 'wahaApi' in config) {
+          for (const { config } of configsOfChannels) {
+            if (
+              typeof config === 'object' &&
+              config !== null &&
+              'wahaApi' in config
+            ) {
               const confObj = config as Prisma.JsonObject;
               const wahaApi = confObj['wahaApi'];
-              
-              if (typeof wahaApi === 'object' && wahaApi !== null && 'instanceName' in wahaApi) {
-                const instanceName = (wahaApi as Prisma.JsonObject)['instanceName'];
+
+              if (
+                typeof wahaApi === 'object' &&
+                wahaApi !== null &&
+                'instanceName' in wahaApi
+              ) {
+                const instanceName = (wahaApi as Prisma.JsonObject)[
+                  'instanceName'
+                ];
                 if (typeof instanceName === 'string') {
                   wahaInstanceNames.push(instanceName);
                 }
@@ -903,13 +947,12 @@ export class AgentsService {
             }
           }
 
-          for (let instanceName of wahaInstanceNames) {
+          for (const instanceName of wahaInstanceNames) {
             await this.wahaApiService.stopInstance(instanceName);
-          }         
+          }
         }
-
       } else {
-        // Mark as deleted       
+        // Mark as deleted
         await this.prisma.agent.update({
           where: { id },
           data: { isDeleted: true, isActive: false, updatedAt: new Date() },
@@ -918,19 +961,29 @@ export class AgentsService {
         const configsOfChannels = await this.prisma.channel.findMany({
           where: { agentId: id },
           select: {
-            config: true
-          }
+            config: true,
+          },
         });
 
         const wahaInstanceNames: string[] = [];
 
-        for (let { config } of configsOfChannels) {
-          if (typeof config === 'object' && config !== null && 'wahaApi' in config) {
+        for (const { config } of configsOfChannels) {
+          if (
+            typeof config === 'object' &&
+            config !== null &&
+            'wahaApi' in config
+          ) {
             const confObj = config as Prisma.JsonObject;
             const wahaApi = confObj['wahaApi'];
-            
-            if (typeof wahaApi === 'object' && wahaApi !== null && 'instanceName' in wahaApi) {
-              const instanceName = (wahaApi as Prisma.JsonObject)['instanceName'];
+
+            if (
+              typeof wahaApi === 'object' &&
+              wahaApi !== null &&
+              'instanceName' in wahaApi
+            ) {
+              const instanceName = (wahaApi as Prisma.JsonObject)[
+                'instanceName'
+              ];
               if (typeof instanceName === 'string') {
                 wahaInstanceNames.push(instanceName);
               }
@@ -938,12 +991,16 @@ export class AgentsService {
           }
         }
 
-        for (let instanceName of wahaInstanceNames) {
+        for (const instanceName of wahaInstanceNames) {
           await this.wahaApiService.stopInstance(instanceName);
-        }   
+        }
       }
 
-      return { success: true, message: 'Agent deleted successfully', deletedPermanently };
+      return {
+        success: true,
+        message: 'Agent deleted successfully',
+        deletedPermanently,
+      };
     } catch (error) {
       // Handle unexpected errors
       if (error.code === 'P2003') {
@@ -954,7 +1011,7 @@ export class AgentsService {
         return {
           success: false,
           message: `Cannot delete this agent because it is referenced by other records (constraint: ${constraintName}). You must delete the dependent records first.`,
-          deletedPermanently: false
+          deletedPermanently: false,
         };
       }
 
@@ -963,45 +1020,48 @@ export class AgentsService {
     }
   }
 
-  async restore(id: string): Promise<{ success: boolean; message?: string; }> {
-    try {
-      await this.prisma.agent.update({
-        where: { id },
-        data: { isDeleted: false, updatedAt: new Date() },
-      });
+  async restore(id: string): Promise<{ success: boolean; message?: string }> {
+    await this.prisma.agent.update({
+      where: { id },
+      data: { isDeleted: false, updatedAt: new Date() },
+    });
 
-      const configsOfChannels = await this.prisma.channel.findMany({
-        where: { agentId: id },
-        select: {
-          config: true
-        }
-      });
+    const configsOfChannels = await this.prisma.channel.findMany({
+      where: { agentId: id },
+      select: {
+        config: true,
+      },
+    });
 
-      const wahaInstanceNames: string[] = [];
+    const wahaInstanceNames: string[] = [];
 
-      for (let { config } of configsOfChannels) {
-        if (typeof config === 'object' && config !== null && 'wahaApi' in config) {
-          const confObj = config as Prisma.JsonObject;
-          const wahaApi = confObj['wahaApi'];
-          
-          if (typeof wahaApi === 'object' && wahaApi !== null && 'instanceName' in wahaApi) {
-            const instanceName = (wahaApi as Prisma.JsonObject)['instanceName'];
-            if (typeof instanceName === 'string') {
-              wahaInstanceNames.push(instanceName);
-            }
+    for (const { config } of configsOfChannels) {
+      if (
+        typeof config === 'object' &&
+        config !== null &&
+        'wahaApi' in config
+      ) {
+        const confObj = config as Prisma.JsonObject;
+        const wahaApi = confObj['wahaApi'];
+
+        if (
+          typeof wahaApi === 'object' &&
+          wahaApi !== null &&
+          'instanceName' in wahaApi
+        ) {
+          const instanceName = (wahaApi as Prisma.JsonObject)['instanceName'];
+          if (typeof instanceName === 'string') {
+            wahaInstanceNames.push(instanceName);
           }
         }
       }
-
-      for (let instanceName of wahaInstanceNames) {
-        await this.wahaApiService.startInstance(instanceName);
-      }   
-
-      return { success: true, message: 'Agent restored successfully' };
-    } catch (error) {
-      // Re-throw other errors to be handled by the global error handler
-      throw error;
     }
+
+    for (const instanceName of wahaInstanceNames) {
+      await this.wahaApiService.startInstance(instanceName);
+    }
+
+    return { success: true, message: 'Agent restored successfully' };
   }
 
   async deactivate(id: string): Promise<{ success: boolean }> {

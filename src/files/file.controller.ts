@@ -28,7 +28,7 @@ export class FileController {
           cb(null, filename);
         },
       }),
-    }),
+    })
   )
   async uploadFile(@UploadedFile() file: Express.Multer.File) {
     // Moves file from tmp to uploads folder
