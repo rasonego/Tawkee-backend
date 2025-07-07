@@ -633,22 +633,22 @@ export class AgentsService {
         ...elevenLabsSettings,
       },
       subscriptionLimits: {
-        agentLimit: agentLimitOverrides.explicitlySet
+        agentLimit: agentLimitOverrides?.explicitlySet
           ? agentLimitOverrides.value
           : subscription.plan.agentLimit,
-        creditsLimit: creditsLimitOverrides.explicitlySet
+        creditsLimit: creditsLimitOverrides?.explicitlySet
           ? creditsLimitOverrides.value
           : subscription.plan.creditsLimit,
-        trainingTextLimit: trainingTextLimitOverrides.explicitlySet
+        trainingTextLimit: trainingTextLimitOverrides?.explicitlySet
           ? trainingTextLimitOverrides.value
           : subscription.plan.trainingTextLimit,
-        trainingWebsiteLimit: trainingWebsiteLimitOverrides.explicitlySet
+        trainingWebsiteLimit: trainingWebsiteLimitOverrides?.explicitlySet
           ? trainingWebsiteLimitOverrides.value
           : subscription.plan.trainingWebsiteLimit,
-        trainingVideoLimit: trainingVideoLimitOverrides.explicitlySet
+        trainingVideoLimit: trainingVideoLimitOverrides?.explicitlySet
           ? trainingVideoLimitOverrides.value
           : subscription.plan.trainingVideoLimit,
-        trainingDocumentLimit: trainingDocumentLimitOverrides.explicitlySet
+        trainingDocumentLimit: trainingDocumentLimitOverrides?.explicitlySet
           ? trainingDocumentLimitOverrides.value
           : subscription.plan.trainingDocumentLimit,
       },
