@@ -404,6 +404,7 @@ model WebhookEvent {
   sender           String?
   serverUrl        String?
   apikey           String?
+  aggregableUntil  DateTime?
   remoteJid        String?
   fromMe           Boolean?
   messageId        String?

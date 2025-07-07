@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { ConversationDto } from 'src/conversations/dto/conversation.dto';
 import { CreditService } from 'src/credits/credit.service';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 export const responseDelayMapToSeconds: Record<ResponseDelayOptions, number> = {
   IMMEDIATELY: 0,
@@ -35,6 +36,44 @@ export class WebhooksService {
     private readonly websocketService: WebsocketService,
     private readonly mediaService: MediaService
   ) {}
+
+  @Cron(CronExpression.EVERY_10_SECONDS)
+  async handleWebhookAggregation() {
+    const now = new Date();
+
+    const expiredEvents = await this.prisma.webhookEvent.findMany({
+      where: {
+        processed: false,
+        messageType: 'chat',
+        aggregableUntil: { lt: now },
+      },
+      orderBy: { dateTime: 'asc' },
+    });
+
+    const seen = new Set<string>();
+    const eventsToProcess = [];
+
+    for (const event of expiredEvents) {
+      const key = `${event.remoteJid}-${event.channelId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        eventsToProcess.push(event);
+      }
+    }
+
+    for (const event of eventsToProcess) {
+      try {
+        this.logger.log(`🔄 Processando evento agregado ID: ${event.id}`);
+        await this.processWebhookEvent(event.id);
+        await this.prisma.webhookEvent.update({
+          where: { id: event.id },
+          data: { processed: true },
+        });
+      } catch (err) {
+        this.logger.error(`❌ Erro ao processar evento ID ${event.id}: ${err.message}`);
+      }
+    }
+  }
 
   async handleEvolutionWebhook(
     webhookData: any
@@ -1657,11 +1696,8 @@ export class WebhooksService {
     channel: any
   ): Promise<{ success: boolean }> {
     try {
-      // Basic validation
       if (!webhookData) {
-        this.logger.error(
-          `Invalid webhook data: received ${typeof webhookData}`
-        );
+        this.logger.error(`Invalid webhook data: received ${typeof webhookData}`);
         return { success: false };
       }
 
@@ -1670,7 +1706,6 @@ export class WebhooksService {
         return { success: false };
       }
 
-      // Safely extract data with optional chaining, fallbacks, and additional logging
       const event = webhookData?.event || 'unknown';
       if (event === 'unknown') {
         this.logger.warn(`Missing event type in webhook data, using "unknown"`);
@@ -1695,107 +1730,64 @@ export class WebhooksService {
       const messageId = dataObject?.id || '';
       const pushName = dataObject?._data?.notifyName || '';
 
+      // Determine message type
       let messageType: string;
       if (dataObject?._data?.type) {
-        if (dataObject._data.type == 'location') {
+        if (dataObject._data.type === 'location') {
           this.logger.warn(`Skipping location message`);
           return { success: false };
-        } else if (dataObject._data.type == 'vcard') {
+        } else if (dataObject._data.type === 'vcard') {
           this.logger.warn('Skipping contact message');
           return { success: false };
         }
-
-        messageType =
-          dataObject._data.type === 'ptt' ? 'audio' : dataObject._data.type;
+        messageType = dataObject._data.type === 'ptt' ? 'audio' : dataObject._data.type;
       } else if (dataObject.hasMedia) {
-        if (dataObject.media && dataObject.media.mimetype) {
-          const mimetype = dataObject.media.mimetype;
-          if (mimetype.startsWith('image/')) {
-            messageType = 'image';
-          } else if (mimetype.startsWith('video/')) {
-            messageType = 'video';
-          } else if (mimetype.startsWith('audio/')) {
-            messageType = 'audio';
-          } else {
-            messageType = 'document';
-          }
+        const mimetype = dataObject?.media?.mimetype || '';
+        if (mimetype.startsWith('image/')) {
+          messageType = 'image';
+        } else if (mimetype.startsWith('video/')) {
+          messageType = 'video';
+        } else if (mimetype.startsWith('audio/')) {
+          messageType = 'audio';
         } else {
-          messageType = 'unknown';
+          messageType = 'document';
         }
       } else {
         messageType = 'chat';
       }
 
-      if (messageType === 'unknown') {
-        this.logger.warn(
-          `Missing messageType in webhook data, using "unknown"`
-        );
-      }
-
-      // Safely handle timestamps to avoid conversion errors
+      // Handle timestamp
       let messageTimestamp;
       try {
         messageTimestamp = webhookData?.timestamp || Date.now();
-        // Validate that it's a number
         if (isNaN(Number(messageTimestamp))) {
-          this.logger.warn(
-            `Invalid messageTimestamp format: ${messageTimestamp}, using current time`
-          );
+          this.logger.warn(`Invalid messageTimestamp format: ${messageTimestamp}, using current time`);
           messageTimestamp = Date.now();
         }
       } catch (error) {
-        this.logger.warn(
-          `Error processing messageTimestamp: ${error.message}, using current time`
-        );
+        this.logger.warn(`Error processing messageTimestamp: ${error.message}, using current time`);
         messageTimestamp = Date.now();
       }
 
-      // Check if this is a group message (we need to ignore these)
-      const isPrivateMessage = dataObject?.from.endsWith('@c.us');
-
-      // Skip processing for group messages or others (e.g. status broadcasts)
+      // Ignore non-private messages (e.g., group or broadcast)
+      const isPrivateMessage = remoteJid.endsWith('@c.us');
       if (!isPrivateMessage) {
         this.logger.log(`Ignoring non-private message from ${remoteJid}`);
         return { success: true };
       }
 
-      // Optional fields
       const dateTime = new Date();
       const destination = dataObject?.to || '';
       const sender = dataObject?.from || '';
 
-      // Extract message content based on message type
+      // Extract message content
       let messageContent = '';
       try {
-        const messageObj = dataObject?.media || {};
-        this.logger.debug(
-          `Message type: ${messageType}, Keys: ${Object.keys(messageObj).join(', ')}`
-        );
-
-        // Handle different message types
         if (messageType === 'chat') {
           messageContent = dataObject.body;
-          this.logger.debug(`Extracted conversation text: "${messageContent}"`);
-        } else if (messageType === 'image') {
-          // Handle image with caption
+        } else if (['image', 'video', 'document'].includes(messageType)) {
           messageContent = dataObject.body;
-          this.logger.debug(
-            `Extracted image caption: "${messageContent}" (Image message)`
-          );
-        } else if (messageType === 'video') {
-          // Handle video with caption
-          messageContent = dataObject.body;
-          this.logger.debug(
-            `Extracted video caption: "${messageContent}" (Video message)`
-          );
-        } else if (messageType === 'document') {
-          // Handle document with caption
-          messageContent = dataObject.body;
-          this.logger.debug(
-            `Extracted document caption: "${messageContent}" (Document message)`
-          );
         } else if (messageType === 'audio') {
-          // Handle audio message (typically no text)
           const { apiKey } = this.wahaApiService.getWahaConfig();
           const textContent = await this.mediaService.extractTextFromMedia(
             dataObject.media.url,
@@ -1804,127 +1796,119 @@ export class WebhooksService {
           );
           messageContent = textContent || '(Audio message)';
         } else {
-          // Unknown message type
-          this.logger.warn(
-            `Unknown message type encountered, message keys: ${Object.keys(messageObj).join(', ')}`
-          );
           messageContent = '(Message received)';
         }
       } catch (error) {
-        this.logger.error(
-          `Error extracting message content: ${error.message}`,
-          error.stack
-        );
+        this.logger.error(`Error extracting message content: ${error.message}`, error.stack);
         messageContent = '(Message content extraction failed)';
       }
 
-      // Log the received data for debugging
-      this.logger.debug(
-        `Processing webhook: ${event} for channel ${channel.id} with message: "${messageContent}"`
-      );
+      const rawData = JSON.stringify(dataObject?.media || {});
+      const mediaUrl = dataObject?.media?.url || '';
+      const now = new Date();
 
-      // Build the webhook event data object
-      const webhookEventData = {
-        event: event,
-        instance: instance,
-        instanceId: 'undefined',
-        rawData: JSON.stringify(dataObject?.media),
-        remoteJid: remoteJid,
-        fromMe: fromMe,
-        messageId: messageId,
-        pushName: pushName,
-        messageType: messageType,
-        messageContent: messageContent,
-        mediaUrl: dataObject?.media?.url,
-        messageTimestamp: BigInt(messageTimestamp),
-        dateTime: dateTime,
-        destination: destination,
-        sender: sender,
-        serverUrl: 'undefined',
-        apikey: 'undefined',
-        channel: {
-          connect: {
-            id: channel.id,
+      // 👇 AGREGAÇÃO de mensagens de texto (chat)
+      if (messageType === 'chat') {
+        const aggregationWindowMs = 10 * 1000;
+        const activeEvent = await this.prisma.webhookEvent.findFirst({
+          where: {
+            remoteJid,
+            messageType: 'chat',
+            channel: { id: channel.id },
+            processed: false,
+            aggregableUntil: { gte: now },
           },
-        },
-      };
-
-      // Log for debugging
-      this.logger.debug(
-        `Preparing to save webhook event: ${JSON.stringify({
-          event,
-          instance,
-          messageType,
-          messageContent: messageContent?.substring(0, 50),
-          remoteJid,
-        })}`
-      );
-
-      // Save the webhook event with all necessary safety checks
-      let webhookEvent;
-      try {
-        webhookEvent = await this.prisma.webhookEvent.create({
-          data: webhookEventData,
+          orderBy: { createdAt: 'asc' },
         });
 
-        this.logger.log(
-          `Webhook event saved successfully with ID: ${webhookEvent.id}`
-        );
+        if (activeEvent) {
+          const updatedContent = [activeEvent.messageContent, messageContent]
+            .filter(Boolean)
+            .join('\n');
 
-        // Process the webhook to create or update a chat
-        this.logger.log(`Processing webhook event ID: ${webhookEvent.id}`);
-        await this.processWebhookEvent(webhookEvent.id);
-      } catch (error) {
-        this.logger.error(
-          `Failed to save webhook event: ${error.message}`,
-          error.stack
-        );
+          await this.prisma.webhookEvent.update({
+            where: { id: activeEvent.id },
+            data: {
+              messageContent: updatedContent,
+            },
+          });
 
-        // Try to save a simplified version without the raw data if it might be too large
-        if (
-          error.message.includes('too large') ||
-          error.message.includes('size exceeds')
-        ) {
-          this.logger.warn(
-            `Attempting to save webhook event without raw data due to size constraints`
-          );
-          try {
-            const simplifiedData = {
-              ...webhookEventData,
-              rawData: JSON.stringify({ message_too_large: true }),
-            };
-            webhookEvent = await this.prisma.webhookEvent.create({
-              data: simplifiedData,
-            });
-
-            this.logger.log(
-              `Simplified webhook event saved with ID: ${webhookEvent.id}`
-            );
-
-            // Process the webhook to create or update a chat
-            this.logger.log(
-              `Processing simplified webhook event ID: ${webhookEvent.id}`
-            );
-            await this.processWebhookEvent(webhookEvent.id);
-          } catch (innerError) {
-            this.logger.error(
-              `Failed to save simplified webhook event: ${innerError.message}`,
-              innerError.stack
-            );
-            throw innerError; // Re-throw to be caught by outer catch
-          }
-        } else {
-          // Re-throw original error if it's not related to size
-          throw error;
+          this.logger.log(`✅ Mensagem agregada ao evento existente ID: ${activeEvent.id}`);
+          return { success: true };
         }
+
+        const aggregableUntil = new Date(now.getTime() + aggregationWindowMs);
+        await this.prisma.webhookEvent.create({
+          data: {
+            event,
+            instance,
+            instanceId: 'undefined',
+            rawData,
+            remoteJid,
+            fromMe,
+            messageId,
+            pushName,
+            messageType,
+            messageContent,
+            mediaUrl,
+            messageTimestamp: BigInt(messageTimestamp),
+            dateTime,
+            destination,
+            sender,
+            serverUrl: 'undefined',
+            apikey: 'undefined',
+            processed: false,
+            aggregableUntil,
+            channel: {
+              connect: { id: channel.id },
+            },
+          },
+        });
+
+        this.logger.log(`📥 Novo evento de chat criado para agregação futura`);
+        return { success: true };
       }
+
+      // 🚀 Fluxo padrão para mensagens de mídia (execução imediata)
+      const webhookEvent = await this.prisma.webhookEvent.create({
+        data: {
+          event,
+          instance,
+          instanceId: 'undefined',
+          rawData,
+          remoteJid,
+          fromMe,
+          messageId,
+          pushName,
+          messageType,
+          messageContent,
+          mediaUrl,
+          messageTimestamp: BigInt(messageTimestamp),
+          dateTime,
+          destination,
+          sender,
+          serverUrl: 'undefined',
+          apikey: 'undefined',
+          processed: false,
+          aggregableUntil: null,
+          channel: {
+            connect: { id: channel.id },
+          },
+        },
+      });
+
+      this.logger.log(`📥 Webhook event salvo com ID: ${webhookEvent.id}`);
+      await this.processWebhookEvent(webhookEvent.id);
+
+      // Após processamento de mídia, marcar como processado
+      await this.prisma.webhookEvent.update({
+        where: { id: webhookEvent.id },
+        data: { processed: true },
+      });
 
       return { success: true };
     } catch (error) {
-      this.logger.error(
-        `Error processing webhook channel data: ${error.message}`,
-        error.stack
-      );
+      this.logger.error(`❌ Erro ao processar webhook: ${error.message}`, error.stack);
       return { success: false };
     }
   }
