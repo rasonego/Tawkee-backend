@@ -11,6 +11,7 @@ import {
   PrismaClientRustPanicError,
   PrismaClientInitializationError,
 } from '@prisma/client/runtime/library';
+import { ResponseDelayOptions } from '@prisma/client';
 
 @Injectable()
 export class AgentSettingsService {
@@ -40,10 +41,11 @@ export class AgentSettingsService {
         timezone: settings.timezone,
         enabledHumanTransfer: settings.enabledHumanTransfer,
         enabledReminder: settings.enabledReminder,
+        reminderIntervalMinutes: settings.reminderIntervalMinutes,
         splitMessages: settings.splitMessages,
         enabledEmoji: settings.enabledEmoji,
         limitSubjects: settings.limitSubjects,
-        messageGroupingTime: settings.messageGroupingTime,
+        responseDelaySeconds: settings.responseDelaySeconds,
       };
     } catch (error) {
       this.logger.error(
@@ -128,10 +130,11 @@ export class AgentSettingsService {
         timezone: '(GMT+00:00) London',
         enabledHumanTransfer: true,
         enabledReminder: true,
+        reminderIntervalMinutes: 10,
         splitMessages: true,
         enabledEmoji: true,
         limitSubjects: true,
-        messageGroupingTime: 'NO_GROUP',
+        responseDelaySeconds: ResponseDelayOptions.FIVE_SECONDS,
 
         respondAudioWithAudio: false,
         alwaysRespondWithAudio: false,

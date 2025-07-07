@@ -7,7 +7,7 @@ import {
   Min,
   Max,
 } from 'class-validator';
-import { AIModel, GroupingTime } from '@prisma/client';
+import { AIModel, ResponseDelayOptions } from '@prisma/client';
 
 export class AgentSettingsDto {
   @ApiProperty({
@@ -40,6 +40,13 @@ export class AgentSettingsDto {
   enabledReminder: boolean;
 
   @ApiProperty({
+    description: 'Defines the time to wait before sending reminders',
+    example: true,
+  })
+  @IsBoolean()
+  reminderIntervalMinutes: number;
+  
+  @ApiProperty({
     description:
       'Defines if the message will be split in various, in case it is huge',
     example: true,
@@ -63,12 +70,11 @@ export class AgentSettingsDto {
   limitSubjects: boolean;
 
   @ApiProperty({
-    description: 'Message grouping time setting',
-    enum: GroupingTime,
-    example: GroupingTime.NO_GROUP,
+    description: 'Defines how long the agent should wait before sending a response, simulating a more human-like typing experience.',
+    example: 5
   })
-  @IsEnum(GroupingTime)
-  messageGroupingTime?: GroupingTime;
+  @IsEnum(ResponseDelayOptions)
+  responseDelaySeconds?: ResponseDelayOptions;
 
   @ApiProperty({
     description: 'If true, the agent will always respond using audio',

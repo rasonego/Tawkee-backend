@@ -140,7 +140,7 @@ model AgentSettings {
   splitMessages        Boolean      @default(true)
   enabledEmoji         Boolean      @default(true)
   limitSubjects        Boolean      @default(true)
-  messageGroupingTime  GroupingTime @default(NO_GROUP)
+  responseDelaySeconds ResponseDelayOptions          @default(FIVE_SECONDS)
   agentId              String       @unique
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
@@ -628,11 +628,11 @@ enum AIModel {
   SABIA_3
 }
 
-enum GroupingTime {
-  NO_GROUP
-  FIVE_SEC
-  TEN_SEC
-  THIRD_SEC
+enum ResponseDelayOptions {
+  IMMEDIATELY
+  FIVE_SECONDS
+  TEN_SECONDS
+  THIRTY_SECONDS
   ONE_MINUTE
 }
 

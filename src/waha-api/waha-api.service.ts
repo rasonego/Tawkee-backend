@@ -853,4 +853,186 @@ export class WahaApiService {
       throw error;
     }
   }
+
+  async startTyping(agentId: string, phoneNumber: string): Promise<any> {
+    // Find the first WhatsApp channel for this agent
+    const channel = await this.prisma.channel.findFirst({
+      where: {
+        agentId,
+        type: 'WHATSAPP',
+      },
+    });
+
+    if (!channel) {
+      throw new Error(`No WhatsApp channel found for agent ${agentId}`);
+    }
+
+    const { serverUrl, apiKey } = this.getWahaConfig();
+
+    if (
+      !channel.config ||
+      !channel.config['wahaApi'] ||
+      !channel.config['wahaApi']['instanceName']
+    ) {
+      throw new Error('Missing Waha API instance name in channel config');
+    }
+
+    // Extract just the instanceName from channel config
+    const instanceName = channel.config['wahaApi']['instanceName'];
+
+    const config = {
+      instanceName,
+      serverUrl,
+      apiKey,
+    };
+
+    // Format phone number (remove leading + if present)
+    let formattedPhone = phoneNumber.startsWith('+')
+      ? phoneNumber.substring(1)
+      : phoneNumber;
+  
+    // Ensure phone number is properly formatted - remove any non-numeric characters except +
+    formattedPhone = formattedPhone.replace(/[^\d+]/g, '');
+
+    // If phone number doesn't start with +, ensure it doesn't start with a leading 0
+    const finalPhoneNumber = formattedPhone.startsWith('+')
+      ? formattedPhone.substring(1) // Waha API doesn't want the + prefix
+      : formattedPhone.replace(/^0/, ''); // Remove leading 0 if present
+
+    // This must actually only happen on the first time sending message to the contact
+    this.logger.log(
+      `Checking actual ${finalPhoneNumber} chatId value using instance ${instanceName} on ${serverUrl}`
+    );
+    let response = await axios.get(
+      `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+        },
+      }
+    );
+
+    this.logger.log(
+      `Sending startTyping event to ${finalPhoneNumber} using instance ${instanceName}`
+    );
+
+    response = await axios.post(`${serverUrl}/startTyping`,
+      {
+        session: instanceName,
+        chatId: finalPhoneNumber
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+        },
+        timeout: 10000, // 10 second timeout
+      }
+    );
+
+    if (response.status === 200 || response.status === 201) {
+      this.logger.log(`Start typing event sent successfully to ${finalPhoneNumber}`);
+      return response.data;
+    } else {
+      // Log the issue but don't throw an error since the message might have been sent
+      // this.logger.warn(
+      //   `Unexpected response from Waha API: ${JSON.stringify(response.data)}`
+      // );
+      throw new Error(
+        `Failed to start typing event: ${response.status}: ${response.statusText}`
+      );
+    }    
+  }
+
+  async stopTyping(agentId: string, phoneNumber: string): Promise<any> {
+    // Find the first WhatsApp channel for this agent
+    const channel = await this.prisma.channel.findFirst({
+      where: {
+        agentId,
+        type: 'WHATSAPP',
+      },
+    });
+
+    if (!channel) {
+      throw new Error(`No WhatsApp channel found for agent ${agentId}`);
+    }
+
+    const { serverUrl, apiKey } = this.getWahaConfig();
+
+    if (
+      !channel.config ||
+      !channel.config['wahaApi'] ||
+      !channel.config['wahaApi']['instanceName']
+    ) {
+      throw new Error('Missing Waha API instance name in channel config');
+    }
+
+    // Extract just the instanceName from channel config
+    const instanceName = channel.config['wahaApi']['instanceName'];
+
+    const config = {
+      instanceName,
+      serverUrl,
+      apiKey,
+    };
+
+    // Format phone number (remove leading + if present)
+    let formattedPhone = phoneNumber.startsWith('+')
+      ? phoneNumber.substring(1)
+      : phoneNumber;
+  
+    this.logger.log(
+      `Sending stopTyping event to ${formattedPhone} using instance ${config.instanceName}`
+    );
+
+    // Ensure phone number is properly formatted - remove any non-numeric characters except +
+    formattedPhone = formattedPhone.replace(/[^\d+]/g, '');
+
+    // If phone number doesn't start with +, ensure it doesn't start with a leading 0
+    const finalPhoneNumber = formattedPhone.startsWith('+')
+      ? formattedPhone.substring(1) // Waha API doesn't want the + prefix
+      : formattedPhone.replace(/^0/, ''); // Remove leading 0 if present
+
+    // This must actually only happen on the first time sending message to the contact
+    this.logger.log(
+      `Checking actual ${finalPhoneNumber} chatId value using instance ${instanceName} on ${serverUrl}`
+    );
+    let response = await axios.get(
+      `${serverUrl}/contacts/check-exists?phone=${finalPhoneNumber}&session=${instanceName}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+        },
+      }
+    );
+
+    response = await axios.post(`${serverUrl}/stopTyping`,
+      {
+        session: instanceName,
+        chatId: finalPhoneNumber
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+        },
+        timeout: 10000, // 10 second timeout
+      }
+    );
+
+    if (response.status === 200 || response.status === 201) {
+      this.logger.log(`Stop typing event sent successfully to ${finalPhoneNumber}`);
+      return response.data;
+    } else {
+      // Log the issue but don't throw an error since the message might have been sent
+      // this.logger.warn(
+      //   `Unexpected response from Waha API: ${JSON.stringify(response.data)}`
+      // );
+      throw new Error(
+        `Failed to stop typing event: ${response.status}: ${response.statusText}`
+      );
+    }    
+  }
 }

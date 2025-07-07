@@ -5,7 +5,7 @@ import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { EnhancedAgentDto } from './dto/enhanced-agent.dto';
-import { GroupingTime, AIModel, Subscription, Plan, Prisma } from '@prisma/client';
+import { ResponseDelayOptions, AIModel, Prisma } from '@prisma/client';
 import { AvailableTimesDto } from 'src/intentions/google-calendar/schedule-validation/dto/schedule-validation.dto';
 import { WahaApiService } from 'src/waha-api/waha-api.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -124,7 +124,7 @@ export class AgentsService {
             splitMessages: true,
             enabledEmoji: true,
             limitSubjects: true,
-            messageGroupingTime: true,
+            responseDelaySeconds: true,
           },
         },
         scheduleSettings: {
@@ -210,7 +210,7 @@ export class AgentsService {
           reminderIntervalMinutes: true,
           enabledEmoji: true,
           limitSubjects: true,
-          messageGroupingTime: GroupingTime.NO_GROUP,
+          responseDelaySeconds: 5,
         },
         webhooks: webhooks || {
           onNewMessage: null,
@@ -280,7 +280,7 @@ export class AgentsService {
           splitMessages: true,
           enabledEmoji: true,
           limitSubjects: true,
-          messageGroupingTime: GroupingTime.NO_GROUP,
+          responseDelaySeconds: ResponseDelayOptions.FIVE_SECONDS,
         },
       });
 
@@ -364,10 +364,11 @@ export class AgentsService {
         timezone: result.settings.timezone,
         enabledHumanTransfer: result.settings.enabledHumanTransfer,
         enabledReminder: result.settings.enabledReminder,
+        reminderIntervalMinutes: result.settings.reminderIntervalMinutes,
         splitMessages: result.settings.splitMessages,
         enabledEmoji: result.settings.enabledEmoji,
         limitSubjects: result.settings.limitSubjects,
-        messageGroupingTime: result.settings.messageGroupingTime,
+        responseDelaySeconds: result.settings.responseDelaySeconds,
       },
       webhooks: {
         onNewMessage: result.webhooks.onNewMessage,
@@ -421,7 +422,7 @@ export class AgentsService {
             splitMessages: true,
             enabledEmoji: true,
             limitSubjects: true,
-            messageGroupingTime: true,
+            responseDelaySeconds: true,
           },
         },
         webhooks: {
@@ -598,7 +599,7 @@ export class AgentsService {
         splitMessages: true,
         enabledEmoji: true,
         limitSubjects: true,
-        messageGroupingTime: GroupingTime.NO_GROUP,
+        responseDelaySeconds: 5,
       },
       webhooks: webhooks || {
         onNewMessage: null,
@@ -747,10 +748,11 @@ export class AgentsService {
         timezone: true,
         enabledHumanTransfer: true,
         enabledReminder: true,
+        reminderIntervalMinutes: true,
         splitMessages: true,
         enabledEmoji: true,
         limitSubjects: true,
-        messageGroupingTime: true,
+        responseDelaySeconds: true,
       },
     });
 
@@ -804,10 +806,11 @@ export class AgentsService {
         timezone: '(GMT+00:00) London',
         enabledHumanTransfer: true,
         enabledReminder: true,
+        reminderIntervalMinutes: 10,
         splitMessages: true,
         enabledEmoji: true,
         limitSubjects: true,
-        messageGroupingTime: GroupingTime.NO_GROUP,
+        responseDelaySeconds: ResponseDelayOptions.FIVE_SECONDS,
         respondAudioWithAudio: false,
         alwaysRespondWithAudio: false,
       },

@@ -27,6 +27,7 @@ import { GoogleCalendarOAuthModule } from './intentions/google-calendar/google-c
 import * as Joi from 'joi';
 import { ScheduleValidationModule } from './intentions/google-calendar/schedule-validation/schedule-validation.module';
 import { StripeModule } from './stripe/stripe.module';
+import { FileModule } from './files/file.module';
 
 @Module({
   imports: [
@@ -98,6 +99,7 @@ import { StripeModule } from './stripe/stripe.module';
     WebsocketModule,
     GoogleCalendarOAuthModule,
     ScheduleValidationModule,
+    FileModule
   ],
 })
 export class AppModule {}

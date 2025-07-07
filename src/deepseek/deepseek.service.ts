@@ -171,12 +171,14 @@ export class DeepseekService {
         prompt +=
           "\n- If you can't resolve an issue or if the user explicitly asks for a human, acknowledge that you can transfer them to a human agent.";
       }
+      // Message splitting preference
       if (agent.settings.splitMessages === true) {
         prompt +=
-          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs.';
+          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs. **WARNING: Use the | character to delimit sentences!**';
       } else {
         prompt += '\n- Aim to provide complete answers in a single response.';
       }
+
       if (agent.settings.timezone) {
         prompt += `\n- When discussing time-related matters, consider the user's timezone (${agent.settings.timezone}).`;
       }

@@ -137,17 +137,20 @@ export class CreditService {
       creditsLimitOverrides,
     } = subscription;
 
-    const basePlanLimit = plan?.creditsLimit;
-    let effectiveLimit: number | 'UNLIMITED' | null = basePlanLimit ?? null;
+    const typedCreditsLimitOverrides = creditsLimitOverrides as OverrideValue;
 
-    if (this.isOverrideValue(creditsLimitOverrides) && creditsLimitOverrides.explicitlySet) {
-      effectiveLimit = creditsLimitOverrides.value;
-    }
+    const unlimitedCredits = typedCreditsLimitOverrides?.explicitlySet
+      ? typedCreditsLimitOverrides.value == 'UNLIMITED'
+      : plan.creditsLimit == null;
 
-    if (effectiveLimit === null || effectiveLimit === undefined || effectiveLimit === 'UNLIMITED') {
+    if (unlimitedCredits) {
       // Unlimited plan, skip computation
       return [];
     }
+
+    const effectiveLimit = typedCreditsLimitOverrides?.explicitlySet
+      ? typedCreditsLimitOverrides.value
+      : plan.creditsLimit;
 
     const start = startOfDay(startDate ? parseISO(startDate) : currentPeriodStart);
     const end = endOfDay(endDate ? parseISO(endDate) : currentPeriodEnd);
@@ -209,7 +212,7 @@ export class CreditService {
 
       result.push({
         date: iso,
-        planCreditsRemaining: Math.max(0, effectiveLimit - cumulativePlanUsed),
+        planCreditsRemaining: Math.max(0, (effectiveLimit as number) - cumulativePlanUsed),
         extraCreditsRemaining: Math.max(0, extraCreditsAvailable - cumulativeExtraUsed),
       });
     }
@@ -257,16 +260,6 @@ export class CreditService {
 
     const totalAvailable = planCreditsRemaining + extraCreditsRemaining;
     const allowed = totalAvailable >= creditCost;
-
-    console.log('credits situation: ', {
-      agentId,
-      workspaceId,
-      model,
-      requiredCredits: creditCost,
-      planCreditsAvailable: planCreditsRemaining,
-      extraCreditsAvailable: extraCreditsRemaining,
-      allowed,
-    });
 
     return {
       agentId,
@@ -356,10 +349,11 @@ export class CreditService {
       where: { workspaceId },
     });
 
-    let remainingExtraCredits =
-      (totalExtraCredits._sum.quantity ?? 0) -
-      (extraCreditsUsed._sum.quantity ?? 0);
-
+    let remainingExtraCredits = Math.max(
+      0,
+      (totalExtraCredits._sum.quantity ?? 0) - (extraCreditsUsed._sum.quantity ?? 0)
+    );
+    
     const creditEventId = uuidv4();
     const records = [];
 
@@ -408,6 +402,8 @@ export class CreditService {
     }
 
     await this.prisma.usageRecord.createMany({ data: records });
+
+    console.log({ remainingPlanCredits, remainingExtraCredits });
 
     this.websocketService.sendToClient(workspaceId, 'workspaceCreditsUpdate', {
       planCredits: remainingPlanCredits,

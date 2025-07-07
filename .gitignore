@@ -4,3 +4,6 @@ dist
 .env*
 
 qdrant_storage
+
+uploads/
+tmp/

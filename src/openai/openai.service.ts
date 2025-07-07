@@ -217,7 +217,7 @@ export class OpenAiService {
       // Message splitting preference
       if (agent.settings.splitMessages === true) {
         prompt +=
-          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs.';
+          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs. **WARNING: Use the | character to delimit sentences!**';
       } else {
         prompt += '\n- Aim to provide complete answers in a single response.';
       }
@@ -293,9 +293,9 @@ export class OpenAiService {
       retrievedContext // Pass retrieved context to buildPrompt
     );
 
-    this.logger.debug(
-      `Generated prompt for OpenAI: ${prompt.substring(0, 100)}...`
-    );
+    // this.logger.debug(
+    //   `Generated prompt for OpenAI: ${prompt.substring(0, 100)}...`
+    // );
 
     // Determine the model to use
     let modelPreference = 'GPT_4_O'; // Default to GPT-4o
@@ -1121,7 +1121,7 @@ export class OpenAiService {
     const transferChatToHumanIntention = intention?.name === 'start_human_attendance';
 
     try {
-      const prompt = `
+      let prompt = `
   The assistant just completed a task for ${userName}, who is a real person and ${contactLine}.
 
   ${googleCalendarIntention ? 'The task might have been executed using ${agent.jobName}’s resources (e.g., calendar), but the final response must be addressed to ${userName}.' : 'Do not invent a google calendar event when delivering the response.'}
@@ -1172,7 +1172,13 @@ export class OpenAiService {
   Final response (directly to the user):
   `.trim();
 
-      console.log({prompt});
+      // Message splitting preference
+      if (agent.settings.splitMessages === true) {
+        prompt +=
+          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs. **WARNING: Use the | character to delimit sentences!**';
+      } else {
+        prompt += '\n- Aim to provide complete answers in a single response.';
+      }
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4',
@@ -1214,7 +1220,7 @@ export class OpenAiService {
     scheduleSettings: ScheduleSettings
   ): Promise<string> {
     try {
-      const prompt = `
+      let prompt = `
   The assistant encountered an issue while trying to execute the task whose description is ${intention.description}, requested by ${userName}, who is a real person".
 
   The task executed by the agent occurred on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
@@ -1243,6 +1249,14 @@ export class OpenAiService {
     - Maintain natural and fluent tone in the detected language.
   Reply:
       `.trim();
+
+      // Message splitting preference
+      if (agent.settings.splitMessages === true) {
+        prompt +=
+          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs. **WARNING: Use the | character to delimit sentences!**';
+      } else {
+        prompt += '\n- Aim to provide complete answers in a single response.';
+      }
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4',
@@ -1295,7 +1309,7 @@ export class OpenAiService {
         .map((f) => `- ${f.name}: ${f.description}`)
         .join('\n');
 
-      const prompt = `
+      let prompt = `
   You are an assistant helping ${userName} on behalf of ${agent.jobName}. You are trying to complete this action: "${intention.description}" but need more info.
 
   The task your are trying to carry out is always executed on behalf of ${agent.jobName}. For example, when scheduling meetings on Google Calendar, it is ${agent.jobName}'s calendar we're talking about.
@@ -1328,6 +1342,14 @@ export class OpenAiService {
     
   Response:
       `.trim();
+
+      // Message splitting preference
+      if (agent.settings.splitMessages === true) {
+        prompt +=
+          '\n- Keep responses concise. If you need to provide a lengthy answer, break it into multiple shorter paragraphs. **WARNING: Use the | character to delimit sentences!**';
+      } else {
+        prompt += '\n- Aim to provide complete answers in a single response.';
+      }
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4',

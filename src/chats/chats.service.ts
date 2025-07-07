@@ -754,12 +754,12 @@ export class ChatsService {
         text: message,
         role: 'human', // From human operator
         chatId,
-        type: media.type,
+        type: media?.type || 'text',
         time: Date.now(),
         sentToEvolution: false, // Will be updated after sending
-        imageUrl: media.type === 'image' ? media.url : undefined,
-        audioUrl: media.type === 'audio' ? media.url : undefined,
-        documentUrl: media.type === 'document' ? media.url : undefined,
+        imageUrl: media?.type === 'image' ? media.url : undefined,
+        audioUrl: media?.type === 'audio' ? media.url : undefined,
+        documentUrl: media?.type === 'document' ? media.url : undefined,
         interactionId: latestInteraction.id,
       },
     });
@@ -787,7 +787,7 @@ export class ChatsService {
             sentAt: new Date(),
             whatsappMessageId: response?.id?.id ?? response?.key?.id,
             whatsappStatus: response?.ack?.toString(), // convertido para string, conforme esperado no schema
-            whatsappTimestamp: response?.timestamp.toString(),
+            whatsappTimestamp: response?.timestamp?.toString(),
             type: response?.type,
             text: response?.body,
             mimetype: response?._data?.mimetype,

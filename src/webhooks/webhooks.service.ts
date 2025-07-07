@@ -5,9 +5,17 @@ import { InteractionsService } from '../interactions/interactions.service';
 import { WahaApiService } from '../waha-api/waha-api.service';
 import { MediaService } from '../media/media.service';
 import { WebsocketService } from '../websocket/websocket.service';
-import { Chat, Interaction, Message } from '@prisma/client';
+import { Chat, Interaction, Message, ResponseDelayOptions } from '@prisma/client';
 import { ConversationDto } from 'src/conversations/dto/conversation.dto';
 import { CreditService } from 'src/credits/credit.service';
+
+export const responseDelayMapToSeconds: Record<ResponseDelayOptions, number> = {
+  'IMMEDIATELY': 0,
+  'FIVE_SECONDS': 5,
+  'TEN_SECONDS': 10,
+  'THIRTY_SECONDS': 30,
+  'ONE_MINUTE': 60
+}
 
 @Injectable()
 export class WebhooksService {
@@ -848,39 +856,245 @@ export class WebhooksService {
               this.logger.log(
                 `Got agent text response: "${agentResponse.message.substring(0, 50)}${agentResponse.message.length > 50 ? '...' : ''}"`
               );
-              const botMessage = await this.prisma.message.create({
-                data: {
-                  text: agentResponse.message,
-                  role: 'assistant',
-                  type: 'chat',
-                  chatId: chat.id,
-                  sentToEvolution: false,
-                  interactionId: interaction.id,
-                },
-              });
-              this.logger.log(
-                `Bot text message created with ID: ${botMessage.id}`
-              );
-
               try {
-                this.logger.log(
-                  `Sending text response to ${phoneNumber}: "${agentResponse.message}"`
-                );
-                const responseData =
-                  await this.wahaApiService.sendWhatsAppMessage(
-                    webhookEvent.channel.agentId,
-                    phoneNumber,
-                    agentResponse.message
-                  );
-                if (responseData) {
-                  const messageId: string = responseData.id.id;
-                  await this.prisma.message.update({
-                    where: { id: botMessage.id },
+                const { agent } = webhookEvent.channel;
+                const phone = phoneNumber;
+                const { responseDelaySeconds, splitMessages } = agent.settings;
+
+                const message = agentResponse.message;
+
+                this.logger.log(`Preparing to send message to ${phone}: "${message}"`);
+
+                if (!splitMessages) {
+                  const botMessage = await this.prisma.message.create({
                     data: {
-                      sentToEvolution: true,
-                      whatsappMessageId: messageId,
+                      text: agentResponse.message,
+                      role: 'assistant',
+                      type: 'chat',
+                      chatId: chat.id,
+                      sentToEvolution: false,
+                      interactionId: interaction.id,
                     },
                   });
+                  this.logger.log(
+                    `Bot text message created with ID: ${botMessage.id}`
+                  );
+
+                  this.logger.log(`Sending start typing event to ${phone}: "${message}"`);
+                  await this.wahaApiService.startTyping(agent.id, phone);
+
+                  if (responseDelaySeconds !== ResponseDelayOptions.IMMEDIATELY) {
+                    await new Promise((resolve) =>
+                      setTimeout(resolve, responseDelayMapToSeconds[responseDelaySeconds] * 1000)
+                    );
+                  }
+
+                  this.logger.log(`Sending text response to ${phone}: "${message}"`);
+                  const responseData = await this.wahaApiService.sendWhatsAppMessage(
+                    agent.id,
+                    phone,
+                    message
+                  );
+
+                  if (responseData) {
+                    const messageId: string = responseData.id.id;
+                    await this.prisma.message.update({
+                      where: { id: botMessage.id },
+                      data: {
+                        sentToEvolution: true,
+                        whatsappMessageId: messageId,
+                      },
+                    });
+                  }
+
+                  const chatMayHaveBeenUpdated = await this.prisma.chat.findUnique({
+                    where: { id: chat.id}
+                  });
+
+                  await this.prisma.interaction.update({
+                    where: { id: interaction.id },
+                    data: { status: chatMayHaveBeenUpdated.humanTalk ? 'WAITING' : 'RUNNING' },
+                  });
+
+                  // Update chat status and send websocket updates after all messages (text and audio) are processed
+                  // This part remains largely the same, but ensures all messages are sent before updating UI
+                  this.logger.log(
+                    `Updating chat ${chat.id} as unread and unfinished`
+                  );
+                  await this.prisma.chat.update({
+                    where: { id: chat.id },
+                    data: {
+                      read: false,
+                      unReadCount: { increment: 1 },
+                      finished: false,
+                    },
+                  });
+
+                  const latestInteractionUpdated =
+                    await this.interactionsService.findLatestInteractionByChatWithMessages(
+                      chat.id
+                    );
+                  const agentAfterResponse = await this.prisma.agent.findFirst({
+                    where: { id: chat.agentId },
+                    select: { id: true, workspaceId: true },
+                  });
+
+                  // Fetch the latest message (could be text or audio) to send in websocket update
+                  const latestMessageSent = await this.prisma.message.findFirst({
+                    where: { chatId: chat.id, role: 'assistant' },
+                    orderBy: { createdAt: 'desc' },
+                  });
+
+                  const updatedChat = await this.prisma.chat.findUnique({
+                    where: { id: chat.id },
+                    select: {
+                      id: true,
+                      agentId: true,
+                      title: true,
+                      name: true,
+                      userName: true,
+                      userPicture: true,
+                      whatsappPhone: true,
+                      humanTalk: true,
+                      read: true,
+                      finished: true,
+                      unReadCount: true,
+                    },
+                  });
+
+                  this.websocketService.sendToClient(
+                    agentAfterResponse.workspaceId,
+                    'messageChatUpdate',
+                    {
+                      chat: updatedChat,
+                      latestInteraction: latestInteractionUpdated,
+                      latestMessage: {
+                        ...latestMessageSent,
+                        whatsappTimestamp:
+                          latestMessageSent?.whatsappTimestamp?.toString(),
+                        time: latestMessageSent?.time?.toString(),
+                      },
+                    }
+                  );
+
+                  this.logger.log(`Sending stop typing event to ${phone}: "${message}"`);
+                  await this.wahaApiService.stopTyping(agent.id, phone);
+                } else {
+                  const sentences = message.split('|').filter(Boolean); // avoid empty strings
+
+                  for (const sentence of sentences) {
+                    const botMessage = await this.prisma.message.create({
+                      data: {
+                        text: sentence,
+                        role: 'assistant',
+                        type: 'chat',
+                        chatId: chat.id,
+                        sentToEvolution: false,
+                        interactionId: interaction.id,
+                      },
+                    });
+                    this.logger.log(
+                      `Bot text message created with ID: ${botMessage.id}`
+                    );
+
+                    this.logger.log(`Sending start typing for sentence to ${phone}: "${sentence}"`);
+                    await this.wahaApiService.startTyping(agent.id, phone);
+
+                    // wait random 2-3 seconds
+                    const delayMs = 2000 + Math.floor(Math.random() * 1000);
+                    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+                    this.logger.log(`Sending sentence to ${phone}: "${sentence}"`);
+                    const responseData = await this.wahaApiService.sendWhatsAppMessage(
+                      agent.id,
+                      phone,
+                      sentence
+                    );
+
+                    if (responseData) {
+                      const messageId: string = responseData.id.id;
+                      await this.prisma.message.update({
+                        where: { id: botMessage.id },
+                        data: {
+                          sentToEvolution: true,
+                          whatsappMessageId: messageId,
+                        },
+                      });
+                    }
+
+                    const chatMayHaveBeenUpdated = await this.prisma.chat.findUnique({
+                      where: { id: chat.id}
+                    });
+
+                    await this.prisma.interaction.update({
+                      where: { id: interaction.id },
+                      data: { status: chatMayHaveBeenUpdated.humanTalk ? 'WAITING' : 'RUNNING' },
+                    });
+
+                    // Update chat status and send websocket updates after all messages (text and audio) are processed
+                    // This part remains largely the same, but ensures all messages are sent before updating UI
+                    this.logger.log(
+                      `Updating chat ${chat.id} as unread and unfinished`
+                    );
+                    await this.prisma.chat.update({
+                      where: { id: chat.id },
+                      data: {
+                        read: false,
+                        unReadCount: { increment: 1 },
+                        finished: false,
+                      },
+                    });
+
+                    const latestInteractionUpdated =
+                      await this.interactionsService.findLatestInteractionByChatWithMessages(
+                        chat.id
+                      );
+                    const agentAfterResponse = await this.prisma.agent.findFirst({
+                      where: { id: chat.agentId },
+                      select: { id: true, workspaceId: true },
+                    });
+
+                    // Fetch the latest message (could be text or audio) to send in websocket update
+                    const latestMessageSent = await this.prisma.message.findFirst({
+                      where: { chatId: chat.id, role: 'assistant' },
+                      orderBy: { createdAt: 'desc' },
+                    });
+
+                    const updatedChat = await this.prisma.chat.findUnique({
+                      where: { id: chat.id },
+                      select: {
+                        id: true,
+                        agentId: true,
+                        title: true,
+                        name: true,
+                        userName: true,
+                        userPicture: true,
+                        whatsappPhone: true,
+                        humanTalk: true,
+                        read: true,
+                        finished: true,
+                        unReadCount: true,
+                      },
+                    });
+
+                    this.websocketService.sendToClient(
+                      agentAfterResponse.workspaceId,
+                      'messageChatUpdate',
+                      {
+                        chat: updatedChat,
+                        latestInteraction: latestInteractionUpdated,
+                        latestMessage: {
+                          ...latestMessageSent,
+                          whatsappTimestamp:
+                            latestMessageSent?.whatsappTimestamp?.toString(),
+                          time: latestMessageSent?.time?.toString(),
+                        },
+                      }
+                    );
+                  }
+
+                  this.logger.log(`Sending final stop typing event to ${phone}`);
+                  await this.wahaApiService.stopTyping(agent.id, phone);
                 }
               } catch (error) {
                 this.logger.error(
@@ -888,6 +1102,7 @@ export class WebhooksService {
                   error.stack
                 );
               }
+
             }
 
             // Handle audio messages
@@ -951,75 +1166,75 @@ export class WebhooksService {
               }
             }
 
-            const chatMayHaveBeenUpdated = await this.prisma.chat.findUnique({
-              where: { id: chat.id}
-            });
+            // const chatMayHaveBeenUpdated = await this.prisma.chat.findUnique({
+            //   where: { id: chat.id}
+            // });
 
-            await this.prisma.interaction.update({
-              where: { id: interaction.id },
-              data: { status: chatMayHaveBeenUpdated.humanTalk ? 'WAITING' : 'RUNNING' },
-            });
+            // await this.prisma.interaction.update({
+            //   where: { id: interaction.id },
+            //   data: { status: chatMayHaveBeenUpdated.humanTalk ? 'WAITING' : 'RUNNING' },
+            // });
 
-            // Update chat status and send websocket updates after all messages (text and audio) are processed
-            // This part remains largely the same, but ensures all messages are sent before updating UI
-            this.logger.log(
-              `Updating chat ${chat.id} as unread and unfinished`
-            );
-            await this.prisma.chat.update({
-              where: { id: chat.id },
-              data: {
-                read: false,
-                unReadCount: { increment: 1 },
-                finished: false,
-              },
-            });
+            // // Update chat status and send websocket updates after all messages (text and audio) are processed
+            // // This part remains largely the same, but ensures all messages are sent before updating UI
+            // this.logger.log(
+            //   `Updating chat ${chat.id} as unread and unfinished`
+            // );
+            // await this.prisma.chat.update({
+            //   where: { id: chat.id },
+            //   data: {
+            //     read: false,
+            //     unReadCount: { increment: 1 },
+            //     finished: false,
+            //   },
+            // });
 
-            const latestInteractionUpdated =
-              await this.interactionsService.findLatestInteractionByChatWithMessages(
-                chat.id
-              );
-            const agentAfterResponse = await this.prisma.agent.findFirst({
-              where: { id: chat.agentId },
-              select: { id: true, workspaceId: true },
-            });
+            // const latestInteractionUpdated =
+            //   await this.interactionsService.findLatestInteractionByChatWithMessages(
+            //     chat.id
+            //   );
+            // const agentAfterResponse = await this.prisma.agent.findFirst({
+            //   where: { id: chat.agentId },
+            //   select: { id: true, workspaceId: true },
+            // });
 
-            // Fetch the latest message (could be text or audio) to send in websocket update
-            const latestMessageSent = await this.prisma.message.findFirst({
-              where: { chatId: chat.id, role: 'assistant' },
-              orderBy: { createdAt: 'desc' },
-            });
+            // // Fetch the latest message (could be text or audio) to send in websocket update
+            // const latestMessageSent = await this.prisma.message.findFirst({
+            //   where: { chatId: chat.id, role: 'assistant' },
+            //   orderBy: { createdAt: 'desc' },
+            // });
 
-            const updatedChat = await this.prisma.chat.findUnique({
-              where: { id: chat.id },
-              select: {
-                id: true,
-                agentId: true,
-                title: true,
-                name: true,
-                userName: true,
-                userPicture: true,
-                whatsappPhone: true,
-                humanTalk: true,
-                read: true,
-                finished: true,
-                unReadCount: true,
-              },
-            });
+            // const updatedChat = await this.prisma.chat.findUnique({
+            //   where: { id: chat.id },
+            //   select: {
+            //     id: true,
+            //     agentId: true,
+            //     title: true,
+            //     name: true,
+            //     userName: true,
+            //     userPicture: true,
+            //     whatsappPhone: true,
+            //     humanTalk: true,
+            //     read: true,
+            //     finished: true,
+            //     unReadCount: true,
+            //   },
+            // });
 
-            this.websocketService.sendToClient(
-              agentAfterResponse.workspaceId,
-              'messageChatUpdate',
-              {
-                chat: updatedChat,
-                latestInteraction: latestInteractionUpdated,
-                latestMessage: {
-                  ...latestMessageSent,
-                  whatsappTimestamp:
-                    latestMessageSent?.whatsappTimestamp?.toString(),
-                  time: latestMessageSent?.time?.toString(),
-                },
-              }
-            );
+            // this.websocketService.sendToClient(
+            //   agentAfterResponse.workspaceId,
+            //   'messageChatUpdate',
+            //   {
+            //     chat: updatedChat,
+            //     latestInteraction: latestInteractionUpdated,
+            //     latestMessage: {
+            //       ...latestMessageSent,
+            //       whatsappTimestamp:
+            //         latestMessageSent?.whatsappTimestamp?.toString(),
+            //       time: latestMessageSent?.time?.toString(),
+            //     },
+            //   }
+            // );
           } catch (error) {
             this.logger.error(
               `Error generating or sending agent response: ${error.message}`,

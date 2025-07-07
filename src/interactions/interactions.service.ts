@@ -323,8 +323,10 @@ export class InteractionsService {
       },
     });
 
+    let interactionsToStopTyping = [];
+    // Send start typing indicators
     for (let interaction of interactions) {
-      const { chat, agent } = interaction;
+      const { chat, agent } = interaction;     
 
       // Skip if remainderIntervalMinutes not defined or invalid
       if (!agent.settings.reminderIntervalMinutes || agent.settings.reminderIntervalMinutes <= 0) continue;
@@ -333,6 +335,20 @@ export class InteractionsService {
 
       // Check chat idle time
       if (chat.updatedAt >= idleThreshold) continue;
+
+      if (chat?.whatsappPhone) {
+        interactionsToStopTyping = [...interactionsToStopTyping, interaction];
+
+        await this.wahaApiService.startTyping(
+          agent.id,
+          chat.whatsappPhone
+        );
+      }
+    }
+
+    // Actually deliver messages
+    for (let interaction of interactionsToStopTyping) {
+      const { chat, agent } = interaction;
 
       const prompt = `
         Given the messages from this ongoing chat between a user and you (AI agent), generate a short and 
@@ -395,6 +411,18 @@ export class InteractionsService {
       }
 
       this.logger.log(`Sent idle warning to interaction ${interaction.id}`);
+    }
+
+    // Send stop typing indicators
+    for (let interaction of interactionsToStopTyping) {
+      const { chat, agent } = interaction;
+
+      if (chat?.whatsappPhone) {
+        await this.wahaApiService.stopTyping(
+          agent.id,
+          chat.whatsappPhone
+        );
+      }
     }
   }
 
