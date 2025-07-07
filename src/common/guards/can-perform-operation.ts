@@ -89,7 +89,7 @@ export class CanPermformOperationGuard implements CanActivate {
 
     let adminOperation = undefined;
     if (workspaceId) {
-      adminOperation = workspaceId === user.workspaceId;
+      adminOperation = workspaceId !== user.workspaceId;
     }
 
     const action = this.reflector.get<string>('action', context.getHandler());
