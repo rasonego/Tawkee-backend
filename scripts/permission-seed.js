@@ -196,57 +196,56 @@ const createPermissionsAndRoles = async () => {
         resource: 'CHAT',
         description: 'Allows viewing the chat list in the workspace.'
     },
-    { 
-        action: 'VIEW_LIST_AS_ADMIN',
-        resource: 'CHAT',
-        description: 'Allows viewing the chat list in any workspace.'
-    },
-    { 
-        action: 'VIEW_MESSAGES',
-        resource: 'CHAT',
-        description: 'Allows viewing messages in a chat in the workspace.'
-    },
-    { 
-        action: 'VIEW_MESSAGES_AS_ADMIN',
-        resource: 'CHAT',
-        description: 'Allows viewing messages in any chat in the workspace.'
-    },
-    { 
-        action: 'ATTEND',
-        resource: 'CHAT',
-        description: 'Allows attending to a chat in the workspace.'
-    },
-    { 
-        action: 'ATTEND_AS_ADMIN',
-        resource: 'CHAT',
-        description: 'Allows attending to any chat in the workspace.'
-    },
-    { 
-        action: 'MANAGE_STATUS',
-        resource: 'CHAT',
-        description: 'Allows managing a chat\'s status in the workspace.'
-    },
-    { 
-        action: 'MANAGE_STATUS_AS_ADMIN',
-        resource: 'CHAT',
-        description: 'Allows managing any chat\'s status in the workspace.'
-    },
-    { 
-        action: 'DELETE',
-        resource: 'CHAT',
-        description: 'Allows deleting a chat in the workspace.'
-    },
-    { 
-        action: 'DELETE_AS_ADMIN',
-        resource: 'CHAT',
-        description: 'Allows deleting any chat in the workspace.'
-    },
-    { 
-        action: 'DELETE_PERMANENTLY_AS_ADMIN',
-        resource: 'CHAT',
-        description: 'Allows permanently deleting any chat in the workspace.'
-    },
-
+    // { 
+    //     action: 'VIEW_LIST_AS_ADMIN',
+    //     resource: 'CHAT',
+    //     description: 'Allows viewing the chat list in any workspace.'
+    // },
+    // { 
+    //     action: 'VIEW_MESSAGES',
+    //     resource: 'CHAT',
+    //     description: 'Allows viewing messages in a chat in the workspace.'
+    // },
+    // { 
+    //     action: 'VIEW_MESSAGES_AS_ADMIN',
+    //     resource: 'CHAT',
+    //     description: 'Allows viewing messages in any chat in the workspace.'
+    // },
+    // { 
+    //     action: 'ATTEND',
+    //     resource: 'CHAT',
+    //     description: 'Allows attending to a chat in the workspace.'
+    // },
+    // { 
+    //     action: 'ATTEND_AS_ADMIN',
+    //     resource: 'CHAT',
+    //     description: 'Allows attending to any chat in the workspace.'
+    // },
+    // { 
+    //     action: 'MANAGE_STATUS',
+    //     resource: 'CHAT',
+    //     description: 'Allows managing a chat\'s status in the workspace.'
+    // },
+    // { 
+    //     action: 'MANAGE_STATUS_AS_ADMIN',
+    //     resource: 'CHAT',
+    //     description: 'Allows managing any chat\'s status in the workspace.'
+    // },
+    // { 
+    //     action: 'DELETE',
+    //     resource: 'CHAT',
+    //     description: 'Allows deleting a chat in the workspace.'
+    // },
+    // { 
+    //     action: 'DELETE_AS_ADMIN',
+    //     resource: 'CHAT',
+    //     description: 'Allows deleting any chat in the workspace.'
+    // },
+    // { 
+    //     action: 'DELETE_PERMANENTLY_AS_ADMIN',
+    //     resource: 'CHAT',
+    //     description: 'Allows permanently deleting any chat in the workspace.'
+    // },
     { 
         action: 'VIEW',
         resource: 'BILLING',
@@ -287,36 +286,15 @@ const createPermissionsAndRoles = async () => {
         resource: 'BILLING',
         description: 'Allows managing the credit recharge settings for any workspace.'
     },
-
-    { 
-        action: 'VIEW_PROFILE',
-        resource: 'USER',
-        description: 'Allows viewing a user\'s profile in the workspace.'
-    },
-    { 
-        action: 'VIEW_PROFILE_AS_ADMIN',
-        resource: 'USER',
-        description: 'Allows viewing a user\'s profile in the workspace.'
-    },
-    { 
-        action: 'EDIT_PROFILE',
-        resource: 'USER',
-        description: 'Allows editing a user\'s profile in the workspace.'
-    },
-    { 
-        action: 'EDIT_PROFILE_AS_ADMIN',
-        resource: 'USER',
-        description: 'Allows editing a user\'s profile in the workspace.'
-    },
     { 
         action: 'DELETE_PROFILE',
         resource: 'USER',
-        description: 'Allows deleting a user\'s profile in the workspace.'
+        description: 'Allows deleting your user\'s profile in the workspace.'
     },
     { 
         action: 'DELETE_PROFILE_AS_ADMIN',
         resource: 'USER',
-        description: 'Allows deleting a user\'s profile in the workspace.'
+        description: 'Allows deleting any user\'s profile in the workspace.'
     },
     { 
         action: 'DELETE_PROFILE_PERMANENTLY_AS_ADMIN',

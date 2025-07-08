@@ -235,6 +235,7 @@ export class UsersService {
             email: user.email,
             name: user.name,
             workspaceId: user.workspaceId,
+            workspaceName: workspace.name,
             workspaceIsActive: workspace.isActive,
             provider: user.provider,
             firstName: user.firstName || undefined,
@@ -336,6 +337,7 @@ export class UsersService {
       include: {
         workspace: {
           select: {
+            name: true,
             isActive: true,
           },
         },
@@ -480,6 +482,7 @@ export class UsersService {
         email: user.email,
         name: user.name,
         workspaceId: user.workspaceId,
+        workspaceName: user.workspace.name,
         workspaceIsActive: user.workspace.isActive,
         provider: user.provider,
         firstName: user.firstName || undefined,
@@ -565,6 +568,7 @@ export class UsersService {
       include: {
         workspace: {
           select: {
+            name: true,
             isActive: true,
           },
         },
@@ -665,6 +669,7 @@ export class UsersService {
       email: user.email,
       name: user.name,
       workspaceId: user.workspaceId,
+      workspaceName: user.workspace.name,
       workspaceIsActive: user.workspace.isActive,
       provider: user.provider || undefined,
       firstName: user.firstName || undefined,

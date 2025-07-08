@@ -190,6 +190,21 @@ export class WorkspacesService {
     });
   }
 
+  async updateWorkspaceName(workspaceId: string, newName: string): Promise<void> {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException(`Workspace with ID ${workspaceId} not found`);
+    }
+
+    await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { name: newName },
+    });
+  }  
+
   // When user finishes a chat using our platform, it does not necessarily mean it is resolved by human.
   // Conditions to assign a userId to a given interaction:
   // 1. The agent itself transfers attendance to human
@@ -713,7 +728,9 @@ export class WorkspacesService {
     return {
       id: ws.id,
       name: ws.name,
+      isActive: ws.isActive,
       createdAt: ws.createdAt.toISOString(),
+      updatedAt: ws.updatedAt.toISOString(),
       workspacePlanCredits: planCreditsRemaining ?? 0,
       workspaceExtraCredits: extraCreditsRemaining ?? 0,
       subscription: subscription

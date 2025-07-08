@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Param,
@@ -21,6 +22,7 @@ import { DashboardMetricsQueryDto } from './dto/dashboard-metrics-query.dto';
 import { differenceInDays, parseISO, isValid, subDays } from 'date-fns';
 import { ApiPaginationQueries } from 'src/common/decorators/api-pagination.decorator';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { UpdateWorkspaceNameDto } from './dto/update-workspace-name.dto';
 
 @ApiTags('Workspaces')
 @ApiBearerAuth()
@@ -133,4 +135,13 @@ export class WorkspacesController {
   ): Promise<void> {
     await this.workspacesService.deactivateWorkspace(workspaceId);
   }
+
+  @Put(':workspaceId/name')
+  async updateWorkspaceName(
+    @Param('workspaceId') workspaceId: string,
+    @Body() dto: UpdateWorkspaceNameDto
+  ) {
+    await this.workspacesService.updateWorkspaceName(workspaceId, dto.name);
+    return { message: 'Workspace name updated successfully' };
+  }  
 }

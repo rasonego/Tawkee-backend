@@ -16,6 +16,9 @@ export class UserResponseDto {
   @ApiProperty({ description: 'User name', example: 'John Doe' })
   name: string;
 
+  @ApiProperty({ description: 'Name of Workspace', example: 'John Doe Workspace' })
+  workspaceName: string;
+
   @ApiProperty({
     description: 'Workspace ID',
     example: 'w1x2y3z4-a5b6-c7d8-e9f0-g1h2i3j4k5l6',
