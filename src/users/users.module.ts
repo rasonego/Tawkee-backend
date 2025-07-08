@@ -8,6 +8,7 @@ import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
 import { GoogleCalendarOAuthModule } from 'src/intentions/google-calendar/google-calendar-oauth.module';
 import { StripeModule } from 'src/stripe/stripe.module';
+import { FileModule } from 'src/files/file.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { StripeModule } from 'src/stripe/stripe.module';
       }),
       inject: [ConfigService],
     }),
+    FileModule
   ],
   controllers: [UsersController],
   providers: [UsersService],

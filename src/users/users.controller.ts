@@ -12,6 +12,8 @@ import {
   UseFilters,
   Put,
   Param,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -30,13 +32,18 @@ import { AuthService } from '../auth/auth.service';
 import { AuthGuard as PassportAuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { VerificationService } from '../email/verification.service';
-import { PasswordResetService } from '../email/password-reset.service';
+import { PasswordResetService, UpdatePasswordDto } from '../email/password-reset.service';
 import { FacebookAuthExceptionFilter } from '../auth/facebook-auth.exception-filter';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyResetTokenDto } from './dto/verify-reset-token.dto';
 import { GoogleCalendarOAuthService } from 'src/intentions/google-calendar/google-calendar-oauth.service';
 import { UpdateUserPermissionsDto } from './dto/update-user-permission.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import * as crypto from 'crypto';
+import * as path from 'path';
+import { FileService } from 'src/files/file.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -47,7 +54,8 @@ export class UsersController {
     private readonly googleCalendarOAuthService: GoogleCalendarOAuthService,
     private readonly configService: ConfigService,
     private readonly verificationService: VerificationService,
-    private readonly passwordResetService: PasswordResetService
+    private readonly passwordResetService: PasswordResetService,
+    private readonly fileService: FileService
   ) {}
 
   @Post('register')
@@ -437,6 +445,115 @@ export class UsersController {
         success: false,
         message:
           error.message || 'An error occurred while updating user permissions',
+      };
+    }
+  }
+
+  @Post('update-password')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update user password' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password updated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid current password or input' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async updatePassword(
+    @Request() req,
+    @Body() updatePasswordDto: UpdatePasswordDto
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const userId = req.user?.userId || req.user?.sub;
+      if (!userId) throw new BadRequestException('User ID missing from token');
+
+      await this.passwordResetService.updatePassword(
+        userId,
+        updatePasswordDto.currentPassword,
+        updatePasswordDto.newPassword
+      );
+
+      return {
+        success: true,
+        message: 'Password updated successfully',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Failed to update password',
+      };
+    }
+  }  
+
+  @Put('update-name')
+  @UseGuards(AuthGuard)
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: diskStorage({
+        destination: path.resolve(__dirname, '..', '..', 'tmp'),
+        filename: (req, file, cb) => {
+          const hash = crypto.randomBytes(10).toString('hex');
+          const filename = `${hash}-${file.originalname}`;
+          cb(null, filename);
+        },
+      }),
+    })
+  )
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update user name and avatar' })
+  @ApiResponse({
+    status: 200,
+    description: 'User name updated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        avatarUrl: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input or request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async updateName(
+    @Request() req,
+    @Body() body: { firstName: string; lastName: string },
+    @UploadedFile() avatar?: Express.Multer.File
+  ): Promise<{ success: boolean; message: string; avatarUrl?: string }> {
+    try {
+      const userId = req.user?.userId || req.user?.sub;
+      if (!userId) throw new BadRequestException('User ID missing from token');
+
+      let avatarUrl: string | undefined;
+
+      if (avatar) {
+        const filename = await this.fileService.saveFile(avatar.filename);
+        avatarUrl = `/files/${filename}`;
+      }
+
+      await this.usersService.updateName(
+        userId,
+        body.firstName,
+        body.lastName,
+        avatarUrl
+      );
+
+      return {
+        success: true,
+        message: 'Name updated successfully',
+        ...(avatar && { avatar: avatarUrl }),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Failed to update name',
       };
     }
   }

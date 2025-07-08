@@ -92,7 +92,6 @@ export class AuthService {
         const updateData: any = {
           provider,
           providerId,
-          avatar: avatar || user.avatar,
           emailVerified: true,
         };
 

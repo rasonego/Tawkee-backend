@@ -2,11 +2,22 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
-import { randomBytes, scrypt } from 'crypto';
+import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 import { Cron } from '@nestjs/schedule';
 
 const scryptAsync = promisify(scrypt);
+
+import { IsString, MinLength } from 'class-validator';
+
+export class UpdatePasswordDto {
+  @IsString()
+  currentPassword: string;
+
+  @IsString()
+  @MinLength(8, { message: 'New password must be at least 8 characters long' })
+  newPassword: string;
+}
 
 @Injectable()
 export class PasswordResetService {
@@ -154,6 +165,61 @@ export class PasswordResetService {
 
     return user.id;
   }
+
+  /**
+   * Update a user's password if currentPassword is provided
+   * @param currentPassword Current password
+   * @param newPassword New password
+   * @returns User ID if reset successful
+   */
+  async updatePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        password: true,
+        email: true,
+      },
+    });
+
+    if (!user || !user.password) {
+      throw new BadRequestException('User not found or password not set');
+    }
+
+    // Validate current password
+    const [storedHash, salt] = user.password.split('.');
+    const storedHashBuf = Buffer.from(storedHash, 'hex');
+    const suppliedHashBuf = (await scryptAsync(
+      currentPassword,
+      salt,
+      64
+    )) as Buffer;
+
+    const isValid = timingSafeEqual(storedHashBuf, suppliedHashBuf);
+    if (!isValid) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+
+    // Hash new password using your existing utility method
+    const hashedPassword = await this.hashPassword(newPassword);
+
+    // Update the user password
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+      },
+    });
+
+    this.logger.log(`Password updated for user ${user.id}`);
+
+    return user.id;
+  }
+
 
   /**
    * Remove reset token for a user

@@ -16,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 import { StripeService } from 'src/stripe/stripe.service';
 import { hasExplicitValue } from 'src/workspaces/workspaces.service';
 import { UpdateUserPermissionsDto } from './dto/update-user-permission.dto';
+import { FileService } from 'src/files/file.service';
 
 const scryptAsync = promisify(scrypt);
 
@@ -37,7 +38,8 @@ export class UsersService {
     private readonly jwtService: JwtService,
     private readonly verificationService: VerificationService,
     private readonly configService: ConfigService,
-    private readonly stripeService: StripeService
+    private readonly stripeService: StripeService,
+    private readonly fileService: FileService
   ) {
     this.clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
@@ -143,11 +145,24 @@ export class UsersService {
           where: { name: roleName },
         });
 
+        function splitFullName(fullName: string): { firstName: string; lastName: string } {
+          const parts = fullName.trim().split(/\s+/);
+          
+          const firstName = parts[0];
+          const lastName = parts.slice(1).join(' ') || '';
+
+          return { firstName, lastName };
+        }        
+
+        const { firstName, lastName } = splitFullName(createUserDto.name);
+
         const user = await prisma.user.create({
           data: {
             email: createUserDto.email,
             password: hashedPassword,
             name: createUserDto.name,
+            firstName,
+            lastName,
             workspaceId: workspace.id,
             provider: 'password',
             emailVerified: false,
@@ -224,7 +239,7 @@ export class UsersService {
             provider: user.provider,
             firstName: user.firstName || undefined,
             lastName: user.lastName || undefined,
-            avatar: user.avatar || undefined,
+            avatar: user?.avatar ? process.env.OUR_ADDRESS + user.avatar : undefined,
             emailVerified: user.emailVerified || false,
             role: {
               name: role.name,
@@ -438,6 +453,7 @@ export class UsersService {
           select: {
             resource: true,
             action: true,
+            description: true
           },
         },
       },
@@ -468,13 +484,14 @@ export class UsersService {
         provider: user.provider,
         firstName: user.firstName || undefined,
         lastName: user.lastName || undefined,
-        avatar: user.avatar || undefined,
+        avatar: user?.avatar ? process.env.OUR_ADDRESS + user.avatar : undefined,
         emailVerified: user.emailVerified || false,
         role: roleOfUser.role,
         rolePermissions: rolePermissions.map((permission) => {
           return {
             resource: permission.permission.resource,
             action: permission.permission.action,
+            description: permission.permission.description
           };
         }),
         userPermissions: userPermissions.map((permission) => {
@@ -619,6 +636,7 @@ export class UsersService {
           select: {
             resource: true,
             action: true,
+            description: true
           },
         },
       },
@@ -651,13 +669,18 @@ export class UsersService {
       provider: user.provider || undefined,
       firstName: user.firstName || undefined,
       lastName: user.lastName || undefined,
-      avatar: user.avatar || undefined,
+      avatar: user?.avatar 
+        ? user.avatar.startsWith('/files')
+          ? process.env.OUR_ADDRESS + user.avatar
+          : user.avatar
+        : undefined,
       emailVerified: user.emailVerified || false,
       role: roleOfUser.role,
       rolePermissions: rolePermissions.map((permission) => {
         return {
           resource: permission.permission.resource,
           action: permission.permission.action,
+          description: permission.permission.description
         };
       }),
       userPermissions: userPermissions.map((permission) => {
@@ -752,6 +775,53 @@ export class UsersService {
     } catch (error) {
       this.logger.error(`Error during logout: ${error.message}`);
       throw error;
+    }
+  }
+
+  async updateName(userId: string, firstName: string, lastName: string, avatarUrl: string): Promise<{ success: boolean }> {
+    try {
+      if (!firstName || typeof firstName !== 'string') {
+        throw new BadRequestException('First name is required');
+      }
+
+      const fullName = `${firstName} ${lastName}`.trim();
+
+      // Try to delete first the old avatar file, if any
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          avatar: true
+        }
+      });
+
+      try {
+        if (user.avatar) {
+          await this.fileService.deleteFile(
+            user.avatar.startsWith('/files/') 
+              ? user.avatar.replace(/^\/?files\//, "")
+              : user.avatar
+          );
+        }
+      } catch {
+        this.logger.warn("There was no user avatar to delete in the server");
+      }
+
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          name: fullName,
+          firstName,
+          lastName,
+          avatar: avatarUrl
+        },
+      });
+
+      this.logger.log(`Updated name for user ${userId}: ${fullName}`);
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to update name for user ${userId}: ${error.message}`);
+      throw new BadRequestException('Failed to update user name');
     }
   }
 
