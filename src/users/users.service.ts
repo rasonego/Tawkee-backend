@@ -783,7 +783,11 @@ export class UsersService {
     }
   }
 
-  async updateName(userId: string, firstName: string, lastName: string, avatarUrl: string): Promise<{ success: boolean }> {
+  async updateName({
+    userId, firstName, lastName, avatarUrl
+  } : {
+    userId: string, firstName: string, lastName?: string, avatarUrl: string
+  }): Promise<{ success: boolean }> {
     try {
       if (!firstName || typeof firstName !== 'string') {
         throw new BadRequestException('First name is required');

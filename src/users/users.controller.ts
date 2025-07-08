@@ -538,12 +538,12 @@ export class UsersController {
         avatarUrl = `/files/${filename}`;
       }
 
-      await this.usersService.updateName(
+      await this.usersService.updateName({
         userId,
-        body.firstName,
-        body.lastName,
-        avatarUrl
-      );
+        firstName: body.firstName,
+        lastName: body?.lastName,
+        avatarUrl: avatarUrl
+      });
 
       return {
         success: true,
