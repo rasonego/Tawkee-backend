@@ -59,6 +59,24 @@ export class AuthService {
     const { providerId, provider, email, firstName, lastName, avatar } =
       userData;
 
+    function splitFullName(fullName: string): { firstName: string; lastName: string } {
+      const parts = fullName.trim().split(/\s+/);
+      
+      const firstName = parts[0];
+      const lastName = parts.slice(1).join(' ') || '';
+
+      return { firstName, lastName };
+    }        
+
+    if (!lastName) {
+      let output = splitFullName(firstName);
+      userData = {
+        ...userData,
+        firstName: output.firstName,
+        lastName: output.lastName
+      }
+    }
+
     this.logger.debug(
       `Looking for user with ${provider} providerId: ${providerId}`
     );
