@@ -553,6 +553,7 @@ export class StripeService {
           orderBy: { createdAt: 'desc' },
           take: 1,
           select: {
+            stripeSubscriptionId: true,
             status: true,
             currentPeriodEnd: true,
             trialEnd: true,
@@ -596,11 +597,34 @@ export class StripeService {
 
     const latestSub = workspace?.subscriptions?.[0];
 
+    if (!latestSub) {
+      return {
+        subscription: null,
+        plan: null,
+        smartRecharge,
+        planCreditsRemaining,
+        extraCreditsRemaining,
+      };
+    }
+
     const { plan, ...remainingData } = latestSub;
 
-    const stripePrice = plan?.stripePriceId
-      ? await this.getPriceDetailsById(plan.stripePriceId)
-      : undefined;
+    // Searching Price on the time the user subscribed this Stripe Plan
+    let stripePrice = {};
+    if (remainingData.stripeSubscriptionId) {
+      const stripeSub = await this.stripe.subscriptions.retrieve(remainingData.stripeSubscriptionId);
+
+      const priceItem = stripeSub.items.data[0]?.price;
+      if (priceItem) {
+        stripePrice = {
+          stripePriceId: priceItem.id,
+          amount: priceItem.unit_amount, // valor em centavos
+          currency: priceItem.currency,
+          interval: priceItem.recurring?.interval,
+          intervalCount: priceItem.recurring?.interval_count,
+        };
+      }
+    }
 
     return {
       subscription: remainingData,
