@@ -611,7 +611,7 @@ export class StripeService {
 
     // Searching Price on the time the user subscribed this Stripe Plan
     let stripePrice = {};
-    if (remainingData.stripeSubscriptionId) {
+    if (remainingData.stripeSubscriptionId !== 'trial-local') {
       const stripeSub = await this.stripe.subscriptions.retrieve(remainingData.stripeSubscriptionId);
 
       const priceItem = stripeSub.items.data[0]?.price;
@@ -624,6 +624,10 @@ export class StripeService {
           intervalCount: priceItem.recurring?.interval_count,
         };
       }
+    } else {
+      stripePrice = plan?.stripePriceId
+        ? await this.getPriceDetailsById(plan.stripePriceId)
+        : undefined;
     }
 
     return {
