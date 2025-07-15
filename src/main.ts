@@ -77,7 +77,7 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
-  const port = process.env.PORT || 5003;
+  const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
 
   const url = await app.getUrl();
