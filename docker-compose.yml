@@ -19,8 +19,8 @@ services:
       - NODE_ENV=development
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/nestjs}
       - PORT=${PORT:-5003}
-    depends_on:
-      - db
+    # depends_on:
+    #   - db
     command: npm run start:dev
 
   app-prod:
@@ -39,8 +39,8 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/nestjs}
       - PORT=${PORT:-5003}
-    depends_on:
-      - db
+    # depends_on:
+    #   - db
     restart: always
     networks:
       - tawkee-network
