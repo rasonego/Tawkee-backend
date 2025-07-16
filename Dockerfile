@@ -12,8 +12,8 @@ ENV NODE_ENV=development
 COPY package*.json ./
 RUN npm install
 COPY . .
-# Generate Prisma client
-RUN npx prisma generate
+# # Generate Prisma client
+# RUN npx prisma generate
 EXPOSE 8080
 CMD ["npm", "run", "start:dev"]
 
@@ -23,8 +23,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-# Generate Prisma client and build the application
-RUN npx prisma generate
+# # Generate Prisma client and build the application
+# RUN npx prisma generate
 RUN npm run build
 
 # Production stage
