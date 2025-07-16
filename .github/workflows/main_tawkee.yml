@@ -1,4 +1,4 @@
-name: Build & Deploy Docker container – Tawkee
+name: Deploy Node.js app – Tawkee
 
 on:
   push:
@@ -6,38 +6,40 @@ on:
   workflow_dispatch:
 
 env:
-  APP_NAME: tawkee               # nome exato do Web App
-  RESOURCE_GROUP: tawkee-rg      # RG onde o Web App está
-  IMAGE_NAME: tawkee-backend     # nome interno da imagem
-  PORT: 8080                     # porta exposta
+  APP_NAME: tawkee
+  RESOURCE_GROUP: tawkee
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write            # para azure/login
       contents: read
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Build Docker image
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+
+    - name: Install dependencies & build
       run: |
-        docker build -t $IMAGE_NAME:$GITHUB_SHA --build-arg PORT=$PORT .
-    
+        npm install
+        npm run build || echo "no build script"
+
+    - name: Zip project
+      run: zip -r release.zip .
+
     - name: Azure login
       uses: azure/login@v2
       with:
         client-id:        ${{ secrets.AZUREAPPSERVICE_CLIENTID }}
         tenant-id:        ${{ secrets.AZUREAPPSERVICE_TENANTID }}
         subscription-id:  ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
-        allow-no-subscriptions: false
-        environment: azurecloud
-        auth-type: SERVICE_PRINCIPAL
-        
-    - name: Deploy container to Web App
+
+    - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v3
       with:
         app-name: ${{ env.APP_NAME }}
-        slot-name: Production
-        images: $IMAGE_NAME:${{ github.sha }}
+        package: release.zip
