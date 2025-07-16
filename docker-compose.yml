@@ -5,9 +5,9 @@ services:
     build:
       context: .
       target: development
-    # volumes:
-    #   - .:/app
-    #   - /app/node_modules
+    volumes:
+      - .:/app
+      - /app/node_modules
     #   # Monta os certificados SSL no container
     #   - /etc/letsencrypt/live/tawkee.ai/fullchain.pem:/etc/certs/fullchain.pem:ro
     #   - /etc/letsencrypt/live/tawkee.ai/privkey.pem:/etc/certs/privkey.pem:ro
