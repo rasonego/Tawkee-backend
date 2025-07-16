@@ -13,10 +13,12 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      id-token: write      # ✅ necessário para login com OIDC
+      contents: read       # ✅ necessário para actions/checkout
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -31,12 +33,13 @@ jobs:
     - name: Zip project
       run: zip -r release.zip .
 
-    - name: Azure login
+    - name: Azure login with OIDC
       uses: azure/login@v2
       with:
         client-id:        ${{ secrets.AZUREAPPSERVICE_CLIENTID }}
         tenant-id:        ${{ secrets.AZUREAPPSERVICE_TENANTID }}
         subscription-id:  ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
+        auth-type:        federated
 
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v3
