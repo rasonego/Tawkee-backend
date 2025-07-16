@@ -1,4 +1,4 @@
-name: Deploy Node.js app – Tawkee
+name: Build & Deploy Docker container – Tawkee
 
 on:
   push:
@@ -6,43 +6,54 @@ on:
   workflow_dispatch:
 
 env:
-  APP_NAME: tawkee
+  APP_NAME: tawkee-backend-app
   RESOURCE_GROUP: tawkee
+  ACR_NAME: tawkee
+  ACR_LOGIN_SERVER: tawkee.azurecr.io
+  IMAGE_NAME: tawkee-backend-app-prod
+  PORT: 8080
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write      # Necessário para login via OIDC
-      contents: read       # Necessário para checkout do repositório
+      id-token: write
+      contents: read
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout do código
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '20'
+      - name: Login no Azure
+        uses: azure/login@v2
+        with:
+          client-id:        ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:        ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          auth-type: SERVICE_PRINCIPAL
+          allow-no-subscriptions: false
 
-    - name: Install dependencies & build
-      run: |
-        npm install
-        npm run build || echo "no build script"
+      - name: Login no ACR
+        run: az acr login --name $ACR_NAME
 
-    - name: Zip project
-      run: zip -r release.zip .
+      - name: Build da imagem Docker
+        run: |
+          docker build -t $IMAGE_NAME:$GITHUB_SHA --build-arg PORT=$PORT .
+          docker tag $IMAGE_NAME:$GITHUB_SHA $ACR_LOGIN_SERVER/$IMAGE_NAME:$GITHUB_SHA
 
-    - name: Azure login (OIDC via Service Principal)
-      uses: azure/login@v2
-      with:
-        client-id:        ${{ secrets.AZUREAPPSERVICE_CLIENTID }}
-        tenant-id:        ${{ secrets.AZUREAPPSERVICE_TENANTID }}
-        subscription-id:  ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
-        auth-type:        SERVICE_PRINCIPAL
+      - name: Push da imagem para o ACR
+        run: docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:$GITHUB_SHA
 
-    - name: Deploy to Azure Web App
-      uses: azure/webapps-deploy@v3
-      with:
-        app-name: ${{ env.APP_NAME }}
-        package: release.zip
+      - name: Atualizar App Service com imagem do ACR
+        run: |
+          az webapp config container set \
+            --name $APP_NAME \
+            --resource-group $RESOURCE_GROUP \
+            --docker-custom-image-name $ACR_LOGIN_SERVER/$IMAGE_NAME:$GITHUB_SHA \
+            --docker-registry-server-url https://$ACR_LOGIN_SERVER
+
+      - name: Reiniciar App Service
+        run: |
+          az webapp restart \
+            --name $APP_NAME \
+            --resource-group $RESOURCE_GROUP
