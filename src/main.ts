@@ -119,7 +119,7 @@ async function bootstrap() {
     });
   });
 
-  const port = process.env.PORT || 5003;
+  const port = process.env.WEBSITES_PORT || process.env.PORT || 8080;
   await app.listen(port, '0.0.0.0');
 
   const protocol = httpsOptions ? 'https' : 'http';

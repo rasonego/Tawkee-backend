@@ -14,7 +14,7 @@ RUN npm install
 COPY . .
 # Generate Prisma client
 RUN npx prisma generate
-EXPOSE ${PORT:-5003}
+EXPOSE ${PORT:-8080}
 CMD ["npm", "run", "start:dev"]
 
 # Builder stage for production
@@ -58,6 +58,6 @@ COPY --from=builder /app/prisma ./prisma
 # Ensure scripts are available in the production container
 COPY --from=builder /app/scripts ./scripts
 
-EXPOSE ${PORT:-5003}
+EXPOSE ${PORT:-8080}
 # Executa as migrações e inicia a aplicação
 CMD sh -c "npx prisma migrate deploy && node dist/main.js"
