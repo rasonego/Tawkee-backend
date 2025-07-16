@@ -8,6 +8,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
 import { rawBodyMiddleware } from './common/middleware/raw-body.middleware';
+import { existsSync } from 'fs';
 
 // Polyfill for older Node.js versions
 if (!global.crypto) {
@@ -18,17 +19,37 @@ if (!global.crypto) {
 
 async function bootstrap() {
   const isProduction = process.env.NODE_ENV === 'production';
+  const isAzure = process.env.WEBSITE_HOSTNAME || process.env.AZURE_FUNCTIONS_ENVIRONMENT;
+  
+  let httpsOptions;
 
-  const httpsOptions = isProduction
-    ? {
-        key: readFileSync(
-          process.env.SSL_KEY_PATH || '/etc/ssl/private/privkey.pem'
-        ),
-        cert: readFileSync(
-          process.env.SSL_CERT_PATH || '/etc/ssl/certs/fullchain.pem'
-        ),
-      }
-    : undefined;
+  // 🔧 Configuração SSL baseada no ambiente
+  if (isProduction && !isAzure) {
+    // Ambiente de produção tradicional (VPS, servidor próprio)
+    const sslKeyPath = process.env.SSL_KEY_PATH || '/etc/certs/privkey.pem';
+    const sslCertPath = process.env.SSL_CERT_PATH || '/etc/certs/fullchain.pem';
+    
+    // Verificar se os certificados existem antes de tentar carregá-los
+    if (existsSync(sslKeyPath) && existsSync(sslCertPath)) {
+      console.log('🔐 Loading SSL certificates from filesystem...');
+      httpsOptions = {
+        key: readFileSync(sslKeyPath),
+        cert: readFileSync(sslCertPath),
+      };
+    } else {
+      console.log('⚠️  SSL certificates not found, running HTTP only');
+      console.log(`Key path: ${sslKeyPath}`);
+      console.log(`Cert path: ${sslCertPath}`);
+    }
+  } else if (isAzure) {
+    // No Azure, SSL é gerenciado pelo serviço (App Service, Container Apps, etc.)
+    console.log('☁️  Running on Azure - SSL managed by Azure services');
+    httpsOptions = undefined;
+  } else {
+    // Ambiente de desenvolvimento
+    console.log('🛠️  Development mode - HTTP only');
+    httpsOptions = undefined;
+  }
 
   const app = await NestFactory.create(AppModule, {
     httpsOptions,
@@ -67,9 +88,18 @@ async function bootstrap() {
   const server = app.getHttpAdapter().getInstance();
   server.get('/', (req, res) => res.redirect('/health'));
 
-  // CORS config
+  // CORS config - mais restritivo em produção
+  const corsOrigins = isProduction 
+    ? [
+        'https://tawkee.ai',
+        'https://www.tawkee.ai',
+        'https://app.tawkee.ai',
+        // Adicione outros domínios conforme necessário
+      ]
+    : true; // Permite qualquer origem em desenvolvimento
+
   app.enableCors({
-    origin: true,
+    origin: corsOrigins,
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type,Accept,Authorization,X-Requested-With',
@@ -77,12 +107,37 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
+  // 🏥 Health check endpoint para Azure
+  const healthController = app.getHttpAdapter().getInstance();
+  healthController.get('/health', (req, res) => {
+    res.status(200).json({
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      platform: isAzure ? 'Azure' : 'Other',
+      version: process.env.npm_package_version || '1.0.0',
+    });
+  });
+
   const port = process.env.PORT || 5003;
   await app.listen(port, '0.0.0.0');
 
-  const url = await app.getUrl();
+  const protocol = httpsOptions ? 'https' : 'http';
+  const url = `${protocol}://localhost:${port}`;
+  
   console.log(`🚀 App is running on: ${url}`);
-  console.log(`🔐 HTTPS Mode: ${isProduction}`);
+  console.log(`🔐 HTTPS Mode: ${!!httpsOptions}`);
+  console.log(`☁️  Azure Mode: ${!!isAzure}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+  
+  // Log adicional para debugging no Azure
+  if (isAzure) {
+    console.log(`📋 Azure Website Hostname: ${process.env.WEBSITE_HOSTNAME}`);
+    console.log(`🔧 Azure Functions Environment: ${process.env.AZURE_FUNCTIONS_ENVIRONMENT}`);
+  }
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error('💥 Error starting application:', error);
+  process.exit(1);
+});

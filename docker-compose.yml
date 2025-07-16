@@ -5,12 +5,12 @@ services:
     build:
       context: .
       target: development
-    volumes:
-      - .:/app
-      - /app/node_modules
-      # Monta os certificados SSL no container
-      - /etc/letsencrypt/live/tawkee.ai/fullchain.pem:/etc/certs/fullchain.pem:ro
-      - /etc/letsencrypt/live/tawkee.ai/privkey.pem:/etc/certs/privkey.pem:ro
+    # volumes:
+    #   - .:/app
+    #   - /app/node_modules
+    #   # Monta os certificados SSL no container
+    #   - /etc/letsencrypt/live/tawkee.ai/fullchain.pem:/etc/certs/fullchain.pem:ro
+    #   - /etc/letsencrypt/live/tawkee.ai/privkey.pem:/etc/certs/privkey.pem:ro
     ports:
       - "${PORT:-5003}:${PORT:-5003}"
     env_file:
@@ -27,10 +27,10 @@ services:
     build:
       context: .
       target: production
-    volumes:
-      # Monta os certificados SSL também no ambiente de produção
-      - /etc/letsencrypt/live/tawkee.ai/fullchain.pem:/etc/certs/fullchain.pem:ro
-      - /etc/letsencrypt/live/tawkee.ai/privkey.pem:/etc/certs/privkey.pem:ro
+    # volumes:
+    #   # Monta os certificados SSL também no ambiente de produção
+    #   - /etc/letsencrypt/live/tawkee.ai/fullchain.pem:/etc/certs/fullchain.pem:ro
+    #   - /etc/letsencrypt/live/tawkee.ai/privkey.pem:/etc/certs/privkey.pem:ro
     ports:
       - "${PORT:-5003}:${PORT:-5003}"
     env_file:
@@ -45,23 +45,23 @@ services:
     networks:
       - tawkee-network
 
-  db:
-    image: postgres:15
-    restart: always
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=nestjs
-    ports:
-      - "5434:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - tawkee-network
+  # db:
+  #   image: postgres:15
+  #   restart: always
+  #   environment:
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #     - POSTGRES_DB=nestjs
+  #   ports:
+  #     - "5434:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - tawkee-network
       
-volumes:
-  postgres_data:
+# volumes:
+#   postgres_data:
 
-networks:
-  tawkee-network:
-    external: true
+# networks:
+#   tawkee-network:
+#     external: true
